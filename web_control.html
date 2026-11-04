@@ -99,7 +99,7 @@ async function fetchConfig(){
   $('delay').value=d.delay_s;$('limit').value=d.max_per_min;$('gap').value=d.min_gap_s;$('digi_auto').checked=d.autostart;
   $('lat').value=p.latitude===null?'':p.latitude;$('lon').value=p.longitude===null?'':p.longitude;
   $('comment').value=p.comment;$('beacon').checked=p.beacon_enabled;$('beacon_interval').value=p.beacon_interval;
-  $('view').href='/'+(c.viewer_token?'?key='+encodeURIComponent(c.viewer_token):'');
+  $('view').href='/?admin='+encodeURIComponent(key);
   $('msgpage').href='/messages?admin='+encodeURIComponent(key);$('operations').href='/operations?admin='+encodeURIComponent(key);
   notify('Nastavení načteno. APRS-IS passcode se nezobrazuje.');
  }catch(e){notify(tr('Nelze načíst konfiguraci: ')+e.message)}

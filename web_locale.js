@@ -2,6 +2,16 @@
 "use strict";
 (() => {
 const english = {
+  "Mapa / Map": "Map / Mapa",
+  "APRS objekty": "APRS objects",
+  "Pro zprávy a objekty spusť plnou webovou službu; klasický monitor poskytuje jen mapu.": "Start the full web service for messages and objects; the classic monitor provides a read-only map.",
+  "Toto je pouze mapa klasického monitoru. Pro zprávy a objekty ukonči monitor a spusť spustit_sluzbu_windows.bat.": "This is the classic monitor map only. Close the monitor and run spustit_sluzbu_windows.bat for messages and objects.",
+  "Vlož administrátorský odkaz nebo klíč z příkazu zobrazit_odkazy_windows.bat:": "Paste the admin URL or key printed by zobrazit_odkazy_windows.bat:",
+  "Administrátorský klíč nebyl zadán.": "No admin key provided.",
+  "Neplatný formát administrátorského klíče.": "Invalid admin key format.",
+  "Administrátorský klíč není platný.": "The admin key is invalid.",
+  "Nepodařilo se ověřit stav webové služby.": "Could not check the web service status.",
+  "Nelze otevřít administrátorskou stránku: ": "Cannot open admin page: ",
   "Statistiky za posledních 15 minut / Last 15 minutes": "Last 15 minutes / Statistiky za posledních 15 minut",
   "Vlastní APRS-IS majáky": "Own APRS-IS beacons",
   "APRS iGate – tabulka ikon / Symbol table": "APRS iGate – symbol table / Tabulka ikon",

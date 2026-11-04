@@ -35,7 +35,7 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
 </head>
 <body>
 <main>
-<nav><span class="mark">OK5TVR · APRS KISS</span><a id="admin" href="#">Nastavení</a><a id="map" href="#">Mapa a statistiky</a></nav>
+<nav><span class="mark">OK5TVR · APRS KISS</span><a id="admin" href="#">Nastavení</a><a id="map" href="#">Mapa a statistiky</a><a id="objects_nav" href="#">APRS objekty</a><a id="diagnostics_nav" href="#">Diagnostika</a></nav>
 <h1>APRS zprávy</h1>
 <p>Adresované zprávy přes <b>UV-K1(8) · USB KISS TNC · 144,800 MHz FM</b>. Přenos probíhá přes rádio, nikoli přes APRS-IS → RF. Zprávy jsou veřejné a mohou je číst ostatní radioamatéři.</p>
 <div class="statrow">
@@ -95,6 +95,8 @@ const tr=value=>window.OK5TVRLocale.tr(value);
 const key=new URLSearchParams(location.search).get('admin')||'';
 const authUrl=p=>p+'?admin='+encodeURIComponent(key);
 $('admin').href=authUrl('/control');$('map').href=authUrl('/');
+$('objects_nav').href=authUrl('/operations')+'#objects';
+$('diagnostics_nav').href=authUrl('/operations')+'#diagnostics';
 const label={queued:'Čeká na USB',usb_queued:'V USB frontě',waiting_ack:'Čeká na ACK',ack:'ACK přijato',rej:'REJ – odmítnuto',failed:'Bez ACK',interrupted:'Přerušeno',cancelled:'Zrušeno'};
 let pane='inbox',last=null,configured=false;
 function toast(msg,error=false){$('toast').textContent=tr(msg);$('toast').style.borderColor=error?'#ad5c69':'#557b8b';}

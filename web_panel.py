@@ -108,7 +108,9 @@ class WebPanel:
                 if not self._allowed_viewer(parsed):
                     self._respond(403, '{"error":"Přístup pouze z lokální/LAN sítě s klíčem."}')
                     return
-                if parsed.path == '/':
+                if parsed.path == '/api/capabilities':
+                    self._respond(200, json.dumps({'admin_enabled': operator is not None}))
+                elif parsed.path == '/':
                     self._respond(200, HTML, 'text/html; charset=utf-8')
                 elif parsed.path == '/api/state':
                     self._respond(200, json.dumps(state.snapshot(), ensure_ascii=False))

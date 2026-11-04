@@ -22,6 +22,11 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 .pill{font-size:12px;padding:3px 9px;border-radius:99px;background:#1d433f;color:#81efd6}.pill.off{background:#4e3734;color:#ffd0b8}
 .stations{max-height:604px}input{padding:9px 12px;color:var(--fg);background:#09192a;border:1px solid var(--edge);border-radius:6px;width:100%;margin:10px 0}
 #events{margin-top:16px}#events td:last-child{white-space:normal;min-width:150px;word-break:break-word}
+.app-nav{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px clamp(14px,3vw,35px);border-bottom:1px solid var(--edge);background:#111f31}
+.app-nav a{color:#e6f7ff;text-decoration:none;font-weight:650;padding:8px 13px;border:1px solid #45647f;border-radius:8px;background:#21394f}
+.app-nav a:hover,.app-nav a:focus-visible{background:#26665e;outline:2px solid var(--mint);outline-offset:1px}
+.app-nav .nav-link-primary{background:#15685d;border-color:#399c90}
+#nav-info{margin:0;padding:8px clamp(14px,3vw,35px);background:#283449;color:#ffdf9a;font-size:13px}
 .map-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.map-header select,.map-header button{font-size:12px}
 #map{position:relative;height:clamp(330px,55vh,650px);overflow:hidden;touch-action:none;cursor:grab;background:#1b3345;border-radius:0 0 12px 12px;user-select:none}
 #map.dragging{cursor:grabbing}
@@ -53,6 +58,14 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <body>
 <header><div class="brand"><b>OK5TVR</b> APRS KISS <span class="muted">· živá mapa</span></div>
 <div><span id="rf" class="pill off">Rádio: odpojeno</span> &nbsp; <span id="igate" class="pill off">iGate: vypnuto</span> &nbsp; <span id="digi" class="pill off">DIGI: vypnuto</span></div></header>
+<nav class="app-nav" aria-label="APRS navigace">
+<a href="/" id="nav-map" aria-current="page" class="nav-link-primary">Mapa / Map</a>
+<a href="/control" id="nav-control" data-admin-target="control">Nastavení</a>
+<a href="/messages" id="nav-messages" data-admin-target="messages">APRS zprávy</a>
+<a href="/operations#objects" id="nav-objects" data-admin-target="operations" data-section="objects">APRS objekty</a>
+<a href="/operations#diagnostics" id="nav-diagnostics" data-admin-target="operations" data-section="diagnostics">Diagnostika</a>
+</nav>
+<p id="nav-info" aria-live="polite" hidden></p>
 <main>
 <div class="cards">
 <div class="card"><div class="caption">Přijaté RF rámce</div><div class="metric" id="rx">0</div></div>
@@ -101,8 +114,39 @@ offline geografie: GSHHG / WDBII / basemap_data (LGPL-3.0-or-later).</p>
 'use strict';
 const $=id=>document.getElementById(id);
 const tr=value=>window.OK5TVRLocale.tr(value);
-const token=new URLSearchParams(location.search).get('key')||'';
-const authPath=(path)=>path+(token?(path.includes('?')?'&':'?')+'key='+encodeURIComponent(token):'');
+const urlParams=new URLSearchParams(location.search);
+const token=urlParams.get('key')||'';
+const adminToken=urlParams.get('admin')||'';
+const authPath=(path)=>path+(adminToken?'?admin='+encodeURIComponent(adminToken):token?'?key='+encodeURIComponent(token):'');
+let capabilityPromise=null;
+function navInfo(message){const box=$('nav-info');box.hidden=false;box.textContent=tr(message);}
+async function capabilities(){
+ if(!capabilityPromise){capabilityPromise=fetch(authPath('/api/capabilities'),{cache:'no-store'})
+   .then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()});}
+ return capabilityPromise;
+}
+function adminFromInput(value){
+ const typed=value.trim(); if(!typed)return '';
+ if(typed.includes('?')||typed.includes('/')){try{return new URL(typed,location.origin).searchParams.get('admin')||''}catch(e){return ''}}
+ return typed;
+}
+async function openProtectedPage(event){
+ event.preventDefault();
+ let enabled=false;try{enabled=Boolean((await capabilities()).admin_enabled)}catch(e){navInfo('Nepodařilo se ověřit stav webové služby.');return}
+ if(!enabled){navInfo('Toto je pouze mapa klasického monitoru. Pro zprávy a objekty ukonči monitor a spusť spustit_sluzbu_windows.bat.');return}
+ let supplied=adminToken;
+ if(!supplied){const entry=window.prompt(tr('Vlož administrátorský odkaz nebo klíč z příkazu zobrazit_odkazy_windows.bat:'));
+  if(entry===null)return;supplied=adminFromInput(entry);if(!supplied){navInfo('Administrátorský klíč nebyl zadán.');return}}
+ if(!/^[A-Za-z0-9_-]{20,128}$/.test(supplied)){navInfo('Neplatný formát administrátorského klíče.');return}
+ try{const response=await fetch('/api/config?admin='+encodeURIComponent(supplied),{cache:'no-store'});
+  if(!response.ok){navInfo('Administrátorský klíč není platný.');return}
+  const target=event.currentTarget.dataset.adminTarget,section=event.currentTarget.dataset.section;
+  location.assign('/'+target+'?admin='+encodeURIComponent(supplied)+(section?'#'+section:''));
+ }catch(e){navInfo('Nelze otevřít administrátorskou stránku: '+e.message)}
+}
+for(const link of document.querySelectorAll('[data-admin-target]'))link.addEventListener('click',openProtectedPage);
+capabilities().then(cap=>{if(!cap.admin_enabled)navInfo('Pro zprávy a objekty spusť plnou webovou službu; klasický monitor poskytuje jen mapu.');})
+ .catch(()=>navInfo('Nepodařilo se ověřit stav webové služby.'));
 const TILE=256, MAX_ZOOM=16;
 const templates={
  'carto-light':'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
