@@ -1,0 +1,37 @@
+# Credentials and locally configured stations
+config.json
+secrets.json
+.env
+.env.*
+*.key
+*.pem
+# Persistent APRS data
+messages.sqlite3
+*.sqlite
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+*.db-shm
+*.db-wal
+*.csv
+*.log
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+# Build / OS
+build/
+dist/
+*.spec
+*.exe
+*.zip
+*.tar.gz
+.DS_Store
+Thumbs.db
+# IDE
+.idea/
+.vscode/

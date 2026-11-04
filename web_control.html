@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>OK5TVR – správa APRS služby</title>
+<style>
+:root{color-scheme:dark;--bg:#101a27;--panel:#1b2b3e;--line:#385069;--ink:#e8f5ff;--mint:#5bd9c3;--sub:#afc6d6;--warn:#ffd28a}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--ink);font:15px system-ui,Arial;margin:0;padding:18px}
+main{max-width:1120px;margin:auto}h1{font-size:25px}h2{font-size:17px;margin:0 0 13px;color:var(--mint)}p{color:var(--sub)}
+section{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:19px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}.grid section{margin:0}
+label{display:block;margin:10px 0 3px;color:var(--sub);font-size:13px}
+input,select{background:#102134;color:var(--ink);border:1px solid #52718c;border-radius:7px;width:100%;padding:8px 10px;font-size:14px}
+input[type=checkbox]{width:auto;margin-right:6px}.check{display:flex;align-items:center;gap:6px;color:var(--ink);font-size:14px;line-height:1.4}
+button,.link{cursor:pointer;border:none;background:#2a4961;color:#fff;padding:10px 13px;border-radius:8px;font-weight:700;margin:5px 5px 0 0;display:inline-block;text-decoration:none}
+button.primary{background:#167f70}button.danger{background:#9e4651}button:disabled{opacity:.5;cursor:default}
+.summary{display:flex;gap:20px;flex-wrap:wrap}.summary b{color:var(--mint)}.note{font-size:12px;color:var(--warn)}
+#result{white-space:pre-wrap;background:#152739;border-radius:8px;padding:12px;min-height:48px}
+</style></head>
+<body><main><h1>OK5TVR · APRS KISS služba</h1>
+<p>Správa Raspberry Pi / PC bez monitoru. Přenos je HTTP: používej pouze v důvěryhodné LAN, bez přesměrování portu do internetu.</p>
+<section><div class="summary"><span>USB: <b id="rf">–</b></span><span>APRS-IS: <b id="is">–</b></span><span>DIGI: <b id="dg">–</b></span><span>RX: <b id="rx">0</b></span><span>→ IS: <b id="gate">0</b></span><span>DIGI TX: <b id="dtx">0</b></span></div>
+<a id="view" class="link" href="#" target="_blank" rel="noopener noreferrer">Otevřít mapu</a>
+<a id="msgpage" class="link" href="#">APRS Zprávy · Inbox / Outbox</a>
+</section>
+<div class="grid">
+<section><h2>USB KISS / web</h2><label>Port (auto, /dev/ttyACM0, COM3)</label><input id="serial_port" autocomplete="off">
+<label>Rychlost USB CDC</label><input id="serial_baud" type="number" min="1200" max="2000000">
+<label>Interval opakování USB (s)</label><input id="retry" type="number" min="2" max="60">
+<p class="note">Změna USB portu se projeví po restartu služby. Výchozí režim nevyžaduje displej.</p></section>
+<section><h2>APRS-IS iGate · RF → internet</h2>
+<label>Značka iGate</label><input id="igate_call"><label>APRS-IS passcode (ponech prázdný pro zachování)</label><input type="password" id="passcode" autocomplete="new-password">
+<label>Server</label><input id="host"><label>TCP port</label><input type="number" id="igate_port" min="1" max="65535">
+<label class="check"><input id="is_auto" type="checkbox"> Spustit iGate automaticky po restartu</label>
+<div><button class="primary" id="ison">Zapnout iGate</button><button id="isoff">Vypnout iGate</button></div></section>
+<section><h2>Vlastní GPS poloha</h2><label>Latitude (desetinné °)</label><input id="lat" placeholder="49.7384">
+<label>Longitude (desetinné °)</label><input id="lon" placeholder="13.3736"><label>ASCII komentář</label><input id="comment">
+<label>Interval majáku (minuty)</label><input id="beacon_interval" type="number" min="30" max="120">
+<label class="check"><input type="checkbox" id="beacon"> Veřejný APRS-IS poziční maják (ne na RF)</label></section>
+<section><h2>APRS DIGI · opakování na RF</h2><label>Značka DIGI</label><input id="digi_call">
+<label>Režim</label><select id="mode"><option value="fill">Fill-in WIDE1-1</option><option value="regional">Regionální WIDE1/WIDE2</option></select>
+<label class="check"><input type="checkbox" id="trace"> Volitelné TRACE2-N</label>
+<label>Zpoždění před retransmisí (s)</label><input type="number" id="delay" min="0" max="10" step="0.5">
+<label>Max TX za minutu (1–12)</label><input type="number" id="limit" min="1" max="12">
+<label>Minimální rozestup TX (s)</label><input type="number" id="gap" min="1" max="30" step="0.5">
+<label class="check"><input type="checkbox" id="digi_auto"> Po restartu automaticky obnovit DIGI <b>(RF TX!)</b></label>
+<div><button class="danger" id="dgon">Zapnout DIGI</button><button id="dgoff">Vypnout DIGI</button></div>
+<p class="note">Na UV-K1 musí být KISS TNC s TX povoleným a interní APRS DIGI vypnutá. PC nemůže potvrdit skutečnou VF retransmisi.</p></section>
+</div>
+<section><h2>Uložit konfiguraci</h2>
+<p>Uložení běžných parametrů nic nevysílá. Změna automatického DIGI se potvrzuje zvlášť. Aktuální běžící iGate/DIGI případně vypni a znovu zapni pro nové parametry.</p>
+<button class="primary" id="save">Uložit nastavení</button>
+<button id="test">Jeden testovací APRS status přes RF</button>
+<p class="note">Test vysílání je dostupný pouze po potvrzení; opakované stisky jsou omezené. Nepovoluj TX bez antény a dodržuj pravidla místní APRS sítě.</p></section>
+<div id="result" aria-live="polite">Načítám…</div>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),key=new URLSearchParams(location.search).get('admin')||'';
+const url=p=>p+'?admin='+encodeURIComponent(key);
+function notify(t){$('result').textContent=t;}
+async function fetchConfig(){
+ try{
+  const r=await fetch(url('/api/config'),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
+  const c=await r.json(),s=c.serial,w=c.web,i=c.igate,d=c.digi,p=c.position;
+  $('serial_port').value=s.port;$('serial_baud').value=s.baud;$('retry').value=s.retry_seconds;
+  $('igate_call').value=i.call;$('host').value=i.host;$('igate_port').value=i.port;$('is_auto').checked=i.autostart;
+  $('passcode').placeholder=i.has_passcode?'Uloženo bezpečně':'Chybí';
+  $('digi_call').value=d.call;$('mode').value=d.mode;$('trace').checked=d.trace;
+  $('delay').value=d.delay_s;$('limit').value=d.max_per_min;$('gap').value=d.min_gap_s;$('digi_auto').checked=d.autostart;
+  $('lat').value=p.latitude===null?'':p.latitude;$('lon').value=p.longitude===null?'':p.longitude;
+  $('comment').value=p.comment;$('beacon').checked=p.beacon_enabled;$('beacon_interval').value=p.beacon_interval;
+  $('view').href='/'+(c.viewer_token?'?key='+encodeURIComponent(c.viewer_token):'');
+  $('msgpage').href='/messages?admin='+encodeURIComponent(key);
+  notify('Nastavení načteno. APRS-IS passcode se nezobrazuje.');
+ }catch(e){notify('Nelze načíst konfiguraci: '+e.message)}
+}
+async function api(action,data={}){
+ try{
+  const r=await fetch('/api/control',{
+    method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key},body:JSON.stringify({action,...data})
+  });const v=await r.json();if(!r.ok||!v.ok)throw Error(v.error||'HTTP '+r.status);
+  notify(typeof v.result==='string'?v.result:JSON.stringify(v.result,null,2));
+ }catch(e){notify('CHYBA: '+e.message)}
+}
+function collect(){const nonempty=id=>$(id).value.trim();
+ const lat=nonempty('lat'),lon=nonempty('lon'),passcode=$('passcode').value;
+ return {config:{
+  serial:{port:nonempty('serial_port'),baud:Number($('serial_baud').value),retry_seconds:Number($('retry').value)},
+  igate:{call:nonempty('igate_call').toUpperCase(),host:nonempty('host'),port:Number($('igate_port').value),autostart:$('is_auto').checked},
+  digi:{call:nonempty('digi_call').toUpperCase(),mode:$('mode').value,trace:$('trace').checked,
+      delay_s:Number($('delay').value),max_per_min:Number($('limit').value),min_gap_s:Number($('gap').value),autostart:$('digi_auto').checked},
+  position:{latitude:lat===''?null:Number(lat.replace(',','.')),longitude:lon===''?null:Number(lon.replace(',','.')),
+      comment:nonempty('comment'),beacon_enabled:$('beacon').checked,beacon_interval:Number($('beacon_interval').value)}
+  },passcode:passcode||null};
+}
+$('save').onclick=()=>{
+ const o=collect();if(o.config.digi.autostart&&!confirm('POZOR: Automatické vysílání DIGI po restartu. Opravdu to povolit?'))return;
+ api('save',{...o,confirm_auto_tx:o.config.digi.autostart});
+};
+$('ison').onclick=()=>{if(confirm('Povolit odesílání skutečně přijatých APRS paketů do veřejné APRS-IS?'))api('igate_on',{confirm:true})};
+$('isoff').onclick=()=>api('igate_off');
+$('dgon').onclick=()=>{if(confirm('POZOR: Povolit automatické retransmise APRS paketů na RF? Interní DIGI je vypnutá a KISS TX povolen?'))api('digi_on',{confirm:true})};
+$('dgoff').onclick=()=>api('digi_off');
+$('test').onclick=()=>{if(confirm('Odeslat JEDEN testovací APRS status přes RF?'))api('tx_test',{confirm:true})};
+async function refresh(){try{const r=await fetch(url('/api/state'),{cache:'no-store'}),v=await r.json();
+ $('rf').textContent=v.rf_status;$('is').textContent=v.igate_status;
+ $('dg').textContent=v.digi.enabled?'Zapnuto':'Vypnuto';$('rx').textContent=v.rx;$('gate').textContent=v.igate_sent;
+ $('dtx').textContent=v.digi.tx_written||0;}catch(e){$('rf').textContent='Nedostupné';}}
+fetchConfig();refresh();setInterval(refresh,3000);
+</script></body></html>

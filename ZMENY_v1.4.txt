@@ -1,0 +1,12 @@
+OK5TVR APRS v1.4
+
++ APRS Zpravy samostatne na /messages (ADMIN)
++ Inbox a Outbox v SQLite
++ KISS RF TX zpravy, ACK/REJ a volitelne automaticke ACK
++ Nastavitelny cil, RF cesta DIRECT/WIDE, interval opakovani, pocet TX
++ Bezpecne zruseni opakovani, stop po restartu/USB odpojeni
++ Administratorska karta Zpravy a API /api/messages
++ Windows BAT pro zobrazeni webovych odkazu
++ Raspberry Pi instalator kopiruje modul a webovou stranku
+
+Neimplementovano: automaticke APRS-IS -> RF smerovani.

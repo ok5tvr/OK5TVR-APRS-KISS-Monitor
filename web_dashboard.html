@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OK5TVR APRS KISS – živá mapa</title>
+<style>
+:root{color-scheme:dark;--bg:#0a1321;--pane:#142236;--edge:#293b54;--fg:#ecf5ff;--muted:#9cb3c8;--mint:#25d8b8;--amber:#ffd08a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,'Segoe UI',sans-serif}
+header{padding:16px clamp(14px,3vw,35px);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--edge)}
+.brand{font-weight:800;font-size:19px;letter-spacing:.2px}.brand b{color:var(--mint)}small,.muted{color:var(--muted)}
+main{padding:20px clamp(12px,3vw,35px);max-width:1850px;margin:0 auto}
+.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.card,.panel{border:1px solid var(--edge);border-radius:12px;background:var(--pane)}.card{padding:14px 15px}
+.metric{font-size:26px;font-weight:750;font-variant-numeric:tabular-nums}.caption{font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(300px,1fr);gap:16px}
+.panel h2{font-size:14px;margin:0;padding:12px 16px;border-bottom:1px solid var(--edge)}
+.scroll{overflow:auto;max-height:610px}table{border-collapse:collapse;width:100%;font-size:13px}
+th{position:sticky;top:0;background:#203149;color:#c5d6e7;text-align:left}th,td{padding:10px 12px;border-bottom:1px solid #2a3b50;white-space:nowrap}tr:hover td{background:#213750}
+button,select{border:1px solid #42596e;border-radius:7px;padding:7px 10px;background:#24384f;color:var(--fg);cursor:pointer;font:inherit}
+button:hover{background:#305572}button:focus-visible,select:focus-visible{outline:2px solid var(--mint)}
+.pill{font-size:12px;padding:3px 9px;border-radius:99px;background:#1d433f;color:#81efd6}.pill.off{background:#4e3734;color:#ffd0b8}
+.stations{max-height:604px}input{padding:9px 12px;color:var(--fg);background:#09192a;border:1px solid var(--edge);border-radius:6px;width:100%;margin:10px 0}
+#events{margin-top:16px}#events td:last-child{white-space:normal;min-width:150px;word-break:break-word}
+.map-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.map-header select,.map-header button{font-size:12px}
+#map{position:relative;height:clamp(330px,55vh,650px);overflow:hidden;touch-action:none;cursor:grab;background:#1b3345;border-radius:0 0 12px 12px;user-select:none}
+#map.dragging{cursor:grabbing}
+#geography,#tiles,#markers{position:absolute;inset:0;overflow:hidden}
+#geography{pointer-events:none}#tiles{pointer-events:none}#markers{pointer-events:none}
+.map-tile{position:absolute;width:256px;height:256px;border:0;max-width:none;image-rendering:auto}
+.map-marker{pointer-events:auto;position:absolute;transform:translate(-50%,-100%);display:flex;align-items:center;gap:5px;white-space:nowrap;
+  background:#083b43;border:1px solid #75ecd7;border-radius:6px;padding:3px 7px;color:#f2fff9;box-shadow:0 2px 9px #0009;font-size:12px;font-weight:750}
+.map-marker:before{content:'';width:8px;height:8px;border-radius:50%;background:#5affcf;border:1px solid #0a6a54}
+.map-marker:after{content:'';position:absolute;top:100%;left:calc(50% - 5px);border:5px solid transparent;border-top-color:#75ecd7}
+.map-marker.active{background:#146b65}
+.map-marker.own{background:#6b491d;border-color:#ffd480;color:#fff3d1}.map-marker.own:before{background:#ffc875;border-color:#fff3d1}
+.map-popup{pointer-events:auto;position:absolute;min-width:195px;max-width:240px;background:#0f2132;color:#e7f4ff;border:1px solid #6b91aa;border-radius:8px;
+  padding:10px 12px;box-shadow:0 6px 28px #0009;z-index:5;transform:translate(-50%,calc(-100% - 28px));font-size:12px}
+.map-popup strong{font-size:14px;color:#76f4dc}.map-popup button{float:right;background:transparent;border:0;padding:0 3px}
+.map-tools{position:absolute;right:11px;top:11px;display:grid;gap:5px;z-index:6;pointer-events:auto}
+.map-tools button{width:37px;height:35px;padding:3px;background:#10283dea;font-size:19px}
+.map-notice{position:absolute;left:12px;top:12px;right:55px;max-width:580px;z-index:5;padding:8px 11px;background:#10283de9;border:1px solid #51758c;
+  border-radius:8px;font-size:12px;pointer-events:none;color:#d8edfc}
+.map-attribution{position:absolute;bottom:4px;right:6px;background:#122534e0;color:#cfe0f0;border-radius:4px;font-size:10px;padding:2px 6px;z-index:5;pointer-events:none}
+.map-help{padding:10px 13px;font-size:12px;color:#adc7d7;border-top:1px solid var(--edge)}
+#maphint{font-size:12px;color:var(--amber);padding:9px 13px;border-top:1px solid #514837}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(3,minmax(0,1fr))}.stations{max-height:330px}}
+@media(max-width:520px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.metric{font-size:23px}header{padding:13px}#map{height:430px}td,th{padding:8px}.map-notice{font-size:11px}}
+</style>
+</head>
+<body>
+<header><div class="brand"><b>OK5TVR</b> APRS KISS <span class="muted">· živá mapa</span></div>
+<div><span id="rf" class="pill off">Rádio: odpojeno</span> &nbsp; <span id="igate" class="pill off">iGate: vypnuto</span> &nbsp; <span id="digi" class="pill off">DIGI: vypnuto</span></div></header>
+<main>
+<div class="cards">
+<div class="card"><div class="caption">Přijaté RF rámce</div><div class="metric" id="rx">0</div></div>
+<div class="card"><div class="caption">Slyšené stanice</div><div class="metric" id="stations">0</div></div>
+<div class="card"><div class="caption">Polohy na mapě</div><div class="metric" id="positions">0</div></div>
+<div class="card"><div class="caption">RF → APRS-IS</div><div class="metric" id="gated">0</div></div>
+<div class="card"><div class="caption">TX předané do USB</div><div class="metric" id="tx">0</div></div>
+<div class="card"><div class="caption">DIGI TX (USB)</div><div class="metric" id="digi_tx">0</div></div>
+<div class="card"><div class="caption">Vlastní APRS-IS majáky</div><div class="metric" id="beacons">0</div></div>
+</div>
+<div class="grid">
+<section class="panel">
+<h2 class="map-header"><span>Mapa přijatých APRS pozic</span><span>
+<select id="mapstyle" aria-label="Mapový podklad"><option value="carto-light">Mapa ulic (CARTO)</option><option value="carto-dark">Tmavá (CARTO)</option><option value="offline" selected>Offline mapa – bez internetu</option></select>
+<button id="reset">Zobrazit všechny</button></span></h2>
+<div id="map" role="region" aria-label="Interaktivní mapa APRS stanic" tabindex="0">
+<canvas id="geography"></canvas><div id="tiles"></div><div id="markers"></div>
+<div id="mapnote" class="map-notice">Načítám lokální geografická data…</div>
+<div class="map-tools"><button id="zoomin" title="Přiblížit" aria-label="Přiblížit">+</button><button id="zoomout" title="Oddálit" aria-label="Oddálit">−</button></div>
+<div id="attribution" class="map-attribution">Offline geografie: GSHHG / WDBII (Basemap)</div>
+</div>
+<div class="map-help">Žlutá značka označuje vlastní nastavenou GPS polohu iGate (není započtena mezi přijaté stanice). Pohyb: tažení myší nebo prstem · Přiblížení: kolečko myši, tlačítka +/− · Kliknutí na stanici zobrazí souřadnice</div>
+<div id="maphint" hidden></div>
+</section>
+<section class="panel"><h2>Poslední slyšené stanice</h2><div style="padding:0 12px"><input id="search" placeholder="Filtrovat podle značky…" autocomplete="off"></div>
+<div class="scroll stations"><table><thead><tr><th>Stanice</th><th>Pakety</th><th>Poslední příjem</th></tr></thead><tbody id="stationrows"></tbody></table></div></section>
+</div>
+<section class="panel" id="events"><h2>Poslední přijaté rámce <small>(DEMO se neodesílají do APRS-IS)</small></h2>
+<div class="scroll"><table><thead><tr><th>Čas</th><th>Zdroj</th><th>Typ</th><th>APRS cesta</th><th>Dekódováno</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+<p class="muted" style="font-size:12px">Web pouze pro čtení · nedovoluje vysílat ani měnit nastavení iGate. <span id="update">—</span> ·
+Mapová data © OpenStreetMap contributors; online dlaždice © <a href="https://carto.com/" target="_blank" rel="noopener" style="color:inherit">CARTO</a>;
+offline geografie: GSHHG / WDBII / basemap_data (LGPL-3.0-or-later).</p>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const token=new URLSearchParams(location.search).get('key')||'';
+const authPath=(path)=>path+(token?(path.includes('?')?'&':'?')+'key='+encodeURIComponent(token):'');
+const TILE=256, MAX_ZOOM=16;
+const templates={
+ 'carto-light':'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+ 'carto-dark':'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+};
+let positions=[], ownPosition=null, chosen=null, firstPosition=true, geo=null;
+let view={lat:49.7384,lon:13.3736,z:8}, effectiveProvider=$('mapstyle').value;
+let tileEpoch=0, mapRedrawTimer=null, pointer=null, tileWatchdog=null, success=0, requested=0, failure=0;
+const mapNode=$('map'), canvas=$('geography'), context=canvas.getContext('2d');
+const MERC=85.05112878;
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const worldSize=z=>TILE*Math.pow(2,z);
+const mercator=(lat,lon,z)=>{
+ const n=worldSize(z),p=clamp(lat,-MERC,MERC)*Math.PI/180;
+ return {x:(lon+180)/360*n,y:(1-Math.log(Math.tan(p)+1/Math.cos(p))/Math.PI)/2*n};
+};
+const unmercator=(x,y,z)=>{
+ const n=worldSize(z),yy=clamp(y/n,0,1),lat=Math.atan(Math.sinh(Math.PI*(1-2*yy)))*180/Math.PI;
+ let lon=x/n*360-180;lon=((lon+180)%360+360)%360-180;
+ return {lat,lon};
+};
+const pixelCenter=()=>mercator(view.lat,view.lon,view.z);
+const pixels=()=>({w:mapNode.clientWidth,h:mapNode.clientHeight});
+function project(lat,lon){
+ const {w,h}=pixels(),c=pixelCenter(),v=mercator(lat,lon,view.z),n=worldSize(view.z);
+ let x=v.x-c.x; if(x>n/2)x-=n;if(x< -n/2)x+=n;
+ return {x:w/2+x,y:h/2+v.y-c.y};
+}
+function centerFromPixel(x,y,z=view.z){const c=pixelCenter(),{w,h}=pixels();return unmercator(c.x+x-w/2,c.y+y-h/2,z);}
+function setNotice(value){$('mapnote').textContent=value;}
+function setHint(msg){$('maphint').textContent=msg;$('maphint').hidden=!msg;}
+function paintPath(points, fill=false){
+ if(points.length<2)return false;
+ context.beginPath();let first=true;
+ for(const coord of points){
+  const p=project(coord[1],coord[0]);
+  if(first){context.moveTo(p.x,p.y);first=false;}else context.lineTo(p.x,p.y);
+ }
+ if(fill){context.closePath();context.fill();}else context.stroke();
+ return true;
+}
+function drawGraticule(w,h){
+ const z=view.z,step=z<=3?30:z<=5?10:z<=7?2:z<=9?0.5:z<=11?0.1:0.02;
+ const sw=mapNode.clientWidth,sh=mapNode.clientHeight;
+ const nw=unmercator(pixelCenter().x-sw/2,pixelCenter().y-sh/2,z);
+ const se=unmercator(pixelCenter().x+sw/2,pixelCenter().y+sh/2,z);
+ context.strokeStyle='#44657b66';context.lineWidth=0.7;
+ const latMin=Math.max(-80,Math.floor(se.lat/step)*step),latMax=Math.min(80,Math.ceil(nw.lat/step)*step);
+ const startLon=Math.floor(Math.min(nw.lon,se.lon)/step)*step;
+ const endLon=Math.ceil(Math.max(nw.lon,se.lon)/step)*step;
+ // Avoid drawing an excessive number of lines when crossing the date line.
+ const countLat=Math.min(150,Math.ceil((latMax-latMin)/step));
+ for(let i=0;i<=countLat;i++){
+  let lat=latMin+i*step;if(lat>latMax)break;
+  context.beginPath();let p0=project(lat,-180),p1=project(lat,180);
+  // A latitude traverses the full world; draw screen-wide at its projected y.
+  context.moveTo(0,p0.y);context.lineTo(w,p0.y);context.stroke();
+ }
+ if(endLon-startLon<80){
+  for(let lon=startLon;lon<=endLon+0.0001;lon+=step){
+   let p=project(0,lon);context.beginPath();context.moveTo(p.x,0);context.lineTo(p.x,h);context.stroke();
+  }
+ }
+}
+function drawGeography(){
+ const {w,h}=pixels();if(!w||!h)return;
+ const dpr=clamp(window.devicePixelRatio||1,1,2);
+ canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
+ canvas.style.width=w+'px';canvas.style.height=h+'px';
+ context.setTransform(dpr,0,0,dpr,0,0);
+ context.fillStyle='#172b3c';context.fillRect(0,0,w,h);
+ drawGraticule(w,h);
+ if(!geo){context.fillStyle='#b2d0df';context.font='14px Segoe UI, sans-serif';context.fillText('Offline geografická data se načítají…',20,h-22);return;}
+ let detail=geo.world;
+ if(view.lon>=-23&&view.lon<=52&&view.lat>=30&&view.lat<=73&&view.z>=5)detail=geo.europe;
+ if(view.lon>=5&&view.lon<=23&&view.lat>=44&&view.lat<=54&&view.z>=8)detail=geo.central;
+ for(const [type,points] of detail.land){
+  context.fillStyle=type===2?'#172b3c':'#33534d';
+  paintPath(points,true);
+ }
+ context.strokeStyle='#9dc5aeaa';context.lineWidth=0.9;
+ for(const points of detail.borders)paintPath(points);
+ if(detail.rivers?.length){
+  context.strokeStyle='#60b3ca89';context.lineWidth=0.7;
+  for(const points of detail.rivers)paintPath(points);
+ }
+ const areas=[];
+ for(const [name,lat,lon,minZoom] of geo.places){
+  if(view.z<minZoom-1)continue;
+  const p=project(lat,lon);
+  if(p.x<10||p.x>w-60||p.y<10||p.y>h-20)continue;
+  if(areas.some(a=>Math.abs(a.x-p.x)<Math.min(105,name.length*7+36)&&Math.abs(a.y-p.y)<17))continue;
+  areas.push(p);
+  context.beginPath();context.arc(p.x,p.y,2.8,0,Math.PI*2);context.fillStyle='#cfdbbb';context.fill();
+  context.font='11px Segoe UI, sans-serif';context.strokeStyle='#102637';context.lineWidth=3;
+  context.strokeText(name,p.x+6,p.y+4);context.fillStyle='#e0eee0';context.fillText(name,p.x+6,p.y+4);
+ }
+}
+function buildUrl(provider,z,x,y){return templates[provider].replace('{z}',String(z)).replace('{x}',String(x)).replace('{y}',String(y));}
+function activateOffline(reason){
+ if(effectiveProvider==='offline')return;
+ effectiveProvider='offline';$('mapstyle').value='offline';
+ $('tiles').replaceChildren();if(tileWatchdog)clearTimeout(tileWatchdog);tileWatchdog=null;
+ tileEpoch++;setNotice('Offline mapa: '+reason);
+ setHint('Podrobný online podklad se nepodařilo načíst. Zobrazení geografických hranic a poloh stanic funguje bez internetu.');
+ $('attribution').textContent='Offline: GSHHG / WDBII (Basemap)';
+}
+function drawTiles(){
+ tileEpoch++;const epoch=tileEpoch;
+ if(tileWatchdog){clearTimeout(tileWatchdog);tileWatchdog=null;}
+ $('tiles').replaceChildren();success=0;failure=0;requested=0;
+ if(effectiveProvider==='offline'){
+  setNotice('Offline mapa · hranice států, pobřeží a řeky · bez internetu');
+  $('attribution').textContent='Offline: GSHHG / WDBII (Basemap)';
+  return;
+ }
+ const {w,h}=pixels();if(!w||!h)return;
+ const n=Math.pow(2,view.z),c=pixelCenter();
+ const startX=Math.floor((c.x-w/2)/TILE),endX=Math.floor((c.x+w/2)/TILE);
+ const startY=Math.max(0,Math.floor((c.y-h/2)/TILE));
+ const endY=Math.min(n-1,Math.floor((c.y+h/2)/TILE));
+ const src=effectiveProvider,root=document.createDocumentFragment();
+ for(let y=startY;y<=endY;y++){
+  for(let x=startX;x<=endX;x++){
+   const modX=((x%n)+n)%n;
+   const img=new Image();img.className='map-tile';img.alt='';img.referrerPolicy='strict-origin-when-cross-origin';
+   img.style.left=Math.round(w/2+x*TILE-c.x)+'px';img.style.top=Math.round(h/2+y*TILE-c.y)+'px';
+   requested++;
+   img.onload=()=>{if(epoch!==tileEpoch)return;success++;
+    if(success===1){setNotice('Online mapa CARTO · podklad načten');setHint('');}
+   };
+   img.onerror=()=>{if(epoch!==tileEpoch)return;failure++;
+    if(failure>=requested&&success===0)activateOffline('online dlaždice byly odmítnuty nebo nejsou dostupné');
+   };
+   img.src=buildUrl(src,view.z,modX,y);
+   root.appendChild(img);
+  }
+ }
+ $('tiles').appendChild(root);
+ $('attribution').textContent='© CARTO · © OpenStreetMap contributors';
+ setNotice('Načítám online mapu CARTO… mezitím je vidět offline geografie.');
+ // Offline background remains drawn even if some or all tile requests are blocked.
+ tileWatchdog=setTimeout(()=>{
+  if(epoch===tileEpoch&&success===0)activateOffline('online mapový server neodpověděl do 8 sekund');
+ },8000);
+}
+function updateMarkers(){
+ const {w,h}=pixels(),holder=$('markers');holder.replaceChildren();
+ let active=null;
+ const visible=ownPosition ? [...positions.filter(s=>s.call!==ownPosition.call),
+   {...ownPosition,own:true,count:'vlastní',last:'nastavená poloha'}] : positions;
+ for(const s of visible){
+  if(!Number.isFinite(s.lat)||!Number.isFinite(s.lon))continue;
+  const p=project(s.lat,s.lon);
+  if(p.x<-120||p.x>w+120||p.y<-60||p.y>h+50)continue;
+  const pin=document.createElement('button');pin.type='button';pin.className='map-marker'+(s.own?' own':'');pin.textContent=s.call+(s.own?' · iGate':'');
+  pin.style.left=p.x+'px';pin.style.top=p.y+'px';pin.title=s.call+' · '+s.lat.toFixed(5)+', '+s.lon.toFixed(5);
+  pin.addEventListener('click',e=>{e.stopPropagation();chosen=chosen===s.call?null:s.call;updateMarkers();});
+  if(s.call===chosen){pin.classList.add('active');active={p,s};}
+  holder.appendChild(pin);
+ }
+ if(active){
+  const {p,s}=active,pop=document.createElement('div');pop.className='map-popup';pop.style.left=clamp(p.x,105,w-105)+'px';
+  pop.style.top=clamp(p.y,120,h-20)+'px';
+  const close=document.createElement('button');close.textContent='×';close.title='Zavřít';close.addEventListener('click',()=>{chosen=null;updateMarkers();});pop.appendChild(close);
+  const strong=document.createElement('strong');strong.textContent=s.call;pop.appendChild(strong);
+  for(const line of [`GPS: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`,`Pakety: ${s.count}`,`Poslední: ${s.last}`]){
+   const row=document.createElement('div');row.textContent=line;pop.appendChild(row);
+  }
+  holder.appendChild(pop);
+ }
+}
+function renderMap(paintTiles=false){drawGeography();updateMarkers();if(paintTiles)drawTiles();}
+function setCenter(lat,lon,z=view.z){view={lat:clamp(lat,-MERC,MERC),lon:((lon+180)%360+360)%360-180,z:clamp(Math.round(z),2,MAX_ZOOM)};renderMap(true);}
+function fitStations(items){
+ const found=items.filter(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon));if(!found.length)return;
+ if(found.length===1){setCenter(found[0].lat,found[0].lon,11);return;}
+ const minLat=Math.min(...found.map(s=>s.lat)),maxLat=Math.max(...found.map(s=>s.lat));
+ const minLon=Math.min(...found.map(s=>s.lon)),maxLon=Math.max(...found.map(s=>s.lon));
+ const lat=(minLat+maxLat)/2,lon=(minLon+maxLon)/2,{w,h}=pixels();
+ let z=3;
+ for(let candidate=14;candidate>=3;candidate--){
+  const a=mercator(maxLat,minLon,candidate),b=mercator(minLat,maxLon,candidate);
+  if(b.x-a.x<w-92&&b.y-a.y<h-92){z=candidate;break;}
+ }
+ setCenter(lat,lon,z);
+}
+function renderStations(){
+ const term=$('search').value.trim().toUpperCase(),out=$('stationrows');out.replaceChildren();
+ for(const s of positions.filter(s=>s.call.toUpperCase().includes(term)).slice(0,180)){
+  const tr=document.createElement('tr');
+  for(const str of [s.call,s.count,s.last?.slice(11,19)||'—']){
+   const td=document.createElement('td');td.textContent=str;tr.appendChild(td);
+  }
+  if(Number.isFinite(s.lat)&&Number.isFinite(s.lon)){
+   tr.style.cursor='pointer';tr.title='Zobrazit stanici na mapě';
+   tr.addEventListener('click',()=>{chosen=s.call;setCenter(s.lat,s.lon,12);});
+  }
+  out.appendChild(tr);
+ }
+}
+$('search').addEventListener('input',renderStations);
+$('reset').addEventListener('click',()=>fitStations(positions));
+$('zoomin').addEventListener('click',()=>setCenter(view.lat,view.lon,view.z+1));
+$('zoomout').addEventListener('click',()=>setCenter(view.lat,view.lon,view.z-1));
+$('mapstyle').addEventListener('change',()=>{
+ effectiveProvider=$('mapstyle').value;setHint('');renderMap(true);
+});
+mapNode.addEventListener('wheel',event=>{
+ if(event.target.closest('select'))return;
+ event.preventDefault();setCenter(view.lat,view.lon,view.z+(event.deltaY<0?1:-1));
+},{passive:false});
+mapNode.addEventListener('pointerdown',event=>{
+ if(event.target.closest('button,select,a'))return;
+ pointer={id:event.pointerId,x:event.clientX,y:event.clientY,c:pixelCenter(),z:view.z};
+ mapNode.setPointerCapture(event.pointerId);mapNode.classList.add('dragging');
+});
+mapNode.addEventListener('pointermove',event=>{
+ if(!pointer||event.pointerId!==pointer.id)return;
+ const dx=event.clientX-pointer.x,dy=event.clientY-pointer.y;
+ const p=unmercator(pointer.c.x-dx,pointer.c.y-dy,pointer.z);
+ view.lat=p.lat;view.lon=p.lon;renderMap(false);
+ if(mapRedrawTimer)clearTimeout(mapRedrawTimer);
+ mapRedrawTimer=setTimeout(()=>{if(!pointer)drawTiles();},140);
+});
+function endDrag(event){
+ if(!pointer||pointer.id!==event.pointerId)return;
+ pointer=null;mapNode.classList.remove('dragging');
+ if(mapRedrawTimer)clearTimeout(mapRedrawTimer);
+ renderMap(true);
+}
+mapNode.addEventListener('pointerup',endDrag);
+mapNode.addEventListener('pointercancel',endDrag);
+mapNode.addEventListener('keydown',event=>{
+ const delta=event.key==='ArrowUp'?[0,70]:event.key==='ArrowDown'?[0,-70]:event.key==='ArrowLeft'?[70,0]:event.key==='ArrowRight'?[-70,0]:null;
+ if(event.key==='+'){setCenter(view.lat,view.lon,view.z+1);event.preventDefault();}
+ else if(event.key==='-'){setCenter(view.lat,view.lon,view.z-1);event.preventDefault();}
+ else if(delta){const p=pixelCenter(),c=unmercator(p.x+delta[0],p.y+delta[1],view.z);setCenter(c.lat,c.lon);event.preventDefault();}
+});
+let observer=new ResizeObserver(()=>renderMap(true));observer.observe(mapNode);
+async function loadLocalGeography(){
+ try{
+  const response=await fetch(authPath('/assets/offline_geography.json'));
+  if(!response.ok)throw new Error('HTTP '+response.status);
+  geo=await response.json();if(!geo.world?.land||!geo.places)throw new Error('Neplatný soubor geografických dat');
+  renderMap(false);
+  if(effectiveProvider==='offline')setNotice('Offline mapa připravena · bez připojení k mapovým serverům');
+ }catch(err){
+  setHint('Chybí soubor offline_geography.json v instalační složce programu: '+err.message);
+  setNotice('Nouzové zobrazení souřadnic · pozice stanic jsou dostupné i bez geografického podkladu');
+ }
+}
+async function refresh(){
+ try{
+  const response=await fetch(authPath('/api/state'),{cache:'no-store'});
+  if(!response.ok)throw new Error('HTTP '+response.status);
+  const st=await response.json();
+  $('rx').textContent=st.rx;$('stations').textContent=st.station_count;
+  $('positions').textContent=st.position_count;$('gated').textContent=st.igate_sent;$('tx').textContent=st.tx_requests;
+  $('digi_tx').textContent=st.digi?.tx_written||0;$('beacons').textContent=st.beacons_sent||0;
+  $('rf').textContent='Rádio: '+st.rf_status;$('igate').textContent='iGate: '+st.igate_status;
+  $('digi').textContent='DIGI: '+(st.digi?.enabled ? ('zapnuto · '+st.digi.call) : 'vypnuto');
+  $('digi').classList.toggle('off',!st.digi?.enabled);
+  $('rf').classList.toggle('off',!st.rf_status.includes('Připojeno'));
+  $('igate').classList.toggle('off',!st.igate_status.startsWith('Online'));
+  positions=st.stations.sort((a,b)=>b.last.localeCompare(a.last));ownPosition=st.own_position||null;
+  renderStations();renderMap(false);
+  if(firstPosition&&(positions.some(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon))||ownPosition)){
+    fitStations([...positions,...(ownPosition?[ownPosition]:[])]);firstPosition=false;}
+  const rows=$('rows');rows.replaceChildren();
+  for(const item of st.history.slice(0,100)){
+   const tr=document.createElement('tr');
+   for(const str of [item.time?.slice(11,19)||'—',item.source+(item.demo?' [DEMO]':''),item.kind,item.path,item.summary]){
+    const td=document.createElement('td');td.textContent=str||'';tr.appendChild(td);
+   }
+   rows.appendChild(tr);
+  }
+  $('update').textContent='Aktualizováno '+new Date().toLocaleTimeString('cs-CZ');
+ }catch(err){$('update').textContent='Spojení s monitorem není dostupné: '+err.message;}
+}
+loadLocalGeography();renderMap(true);refresh();setInterval(refresh,2500);
+</script>
+</body>
+</html>
