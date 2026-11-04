@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-echo OK5TVR APRS v1.4 - headless rezim (web)
+echo OK5TVR APRS v1.7 RC1 - webova sluzba (iGate / DIGI / Zpravy / Objekty)
 where py >nul 2>nul
 if errorlevel 1 (
   echo Chybi Python 3 a py launcher.
