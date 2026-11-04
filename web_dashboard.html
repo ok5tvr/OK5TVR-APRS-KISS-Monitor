@@ -17,17 +17,14 @@ main{padding:20px clamp(12px,3vw,35px);max-width:1850px;margin:0 auto}
 .panel h2{font-size:14px;margin:0;padding:12px 16px;border-bottom:1px solid var(--edge)}
 .scroll{overflow:auto;max-height:610px}table{border-collapse:collapse;width:100%;font-size:13px}
 th{position:sticky;top:0;background:#203149;color:#c5d6e7;text-align:left}th,td{padding:10px 12px;border-bottom:1px solid #2a3b50;white-space:nowrap}tr:hover td{background:#213750}
+tr.station-direct td,tr.packet-direct td{background:#c5ecfb;color:#173148}
+tr.station-direct:hover td,tr.packet-direct:hover td{background:#a9dff7;color:#102a40}
 button,select{border:1px solid #42596e;border-radius:7px;padding:7px 10px;background:#24384f;color:var(--fg);cursor:pointer;font:inherit}
 button:hover{background:#305572}button:focus-visible,select:focus-visible{outline:2px solid var(--mint)}
 .pill{font-size:12px;padding:3px 9px;border-radius:99px;background:#1d433f;color:#81efd6}.pill.off{background:#4e3734;color:#ffd0b8}
 .stations{max-height:604px}input{padding:9px 12px;color:var(--fg);background:#09192a;border:1px solid var(--edge);border-radius:6px;width:100%;margin:10px 0}
 #events{margin-top:16px}#events td:last-child{white-space:normal;min-width:150px;word-break:break-word}
-.app-nav{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px clamp(14px,3vw,35px);border-bottom:1px solid var(--edge);background:#111f31}
-.app-nav a{color:#e6f7ff;text-decoration:none;font-weight:650;padding:8px 13px;border:1px solid #45647f;border-radius:8px;background:#21394f}
-.app-nav a:hover,.app-nav a:focus-visible{background:#26665e;outline:2px solid var(--mint);outline-offset:1px}
-.app-nav .nav-link-primary{background:#15685d;border-color:#399c90}
-#nav-info{margin:0;padding:8px clamp(14px,3vw,35px);background:#283449;color:#ffdf9a;font-size:13px}
-.map-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.map-header select,.map-header button{font-size:12px}
+.app-nav{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px clamp(14px,3vw,35px);border-bottom:1px solid var(--edge);background:#111f31}.app-nav a{color:#e6f7ff;text-decoration:none;font-weight:650;padding:8px 13px;border:1px solid #45647f;border-radius:8px;background:#21394f}.app-nav a:hover,.app-nav a:focus-visible{background:#26665e;outline:2px solid var(--mint);outline-offset:1px}.app-nav .nav-link-primary{background:#15685d;border-color:#399c90}#nav-info{margin:0;padding:8px clamp(14px,3vw,35px);background:#283449;color:#ffdf9a;font-size:13px}.map-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.map-header select,.map-header button{font-size:12px}
 #map{position:relative;height:clamp(330px,55vh,650px);overflow:hidden;touch-action:none;cursor:grab;background:#1b3345;border-radius:0 0 12px 12px;user-select:none}
 #map.dragging{cursor:grabbing}
 #geography,#tiles,#markers{position:absolute;inset:0;overflow:hidden}
@@ -38,6 +35,9 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 .map-marker:before{content:'';width:8px;height:8px;border-radius:50%;background:#5affcf;border:1px solid #0a6a54}
 .map-marker:after{content:'';position:absolute;top:100%;left:calc(50% - 5px);border:5px solid transparent;border-top-color:#75ecd7}
 .map-marker.active{background:#146b65}
+.map-marker.direct{background:#c4edff;border-color:#7dd7ff;color:#12344b}
+.map-marker.direct:before{background:#4ca9ed;border-color:#e7f7ff}
+.map-marker.direct:after{border-top-color:#7dd7ff}
 .map-marker.own{background:#6b491d;border-color:#ffd480;color:#fff3d1}.map-marker.own:before{background:#ffc875;border-color:#fff3d1}
 .aprs-symbol-code{display:inline-block;margin-left:3px;padding:1px 4px;border:1px solid currentColor;border-radius:4px;font-size:11px;opacity:.88;font-family:monospace}
 .map-marker.digi-own{background:#16395f;border-color:#80bfff;color:#e3f3ff}.map-marker.digi-own:before{background:#5faeff;border-color:#f1f9ff}
@@ -101,7 +101,7 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <div id="maphint" hidden></div>
 </section>
 <section class="panel"><h2>Poslední slyšené stanice</h2><div style="padding:0 12px"><input id="search" placeholder="Filtrovat podle značky…" autocomplete="off"></div>
-<div class="scroll stations"><table><thead><tr><th>Stanice</th><th>Pakety</th><th>Poslední příjem</th></tr></thead><tbody id="stationrows"></tbody></table></div></section>
+<div class="scroll stations"><table><thead><tr><th>Stanice</th><th>Cesta</th><th>km</th><th>Azimut</th><th>Pakety</th></tr></thead><tbody id="stationrows"></tbody></table></div></section>
 </div>
 <section class="panel" id="events"><h2>Poslední přijaté rámce <small>(DEMO se neodesílají do APRS-IS)</small></h2>
 <div class="scroll"><table><thead><tr><th>Čas</th><th>Zdroj</th><th>Typ</th><th>APRS cesta</th><th>Dekódováno</th></tr></thead><tbody id="rows"></tbody></table></div></section>
@@ -304,14 +304,16 @@ function updateMarkers(){
   if(!Number.isFinite(s.lat)||!Number.isFinite(s.lon))continue;
   const p=project(s.lat,s.lon);
   if(p.x<-120||p.x>w+120||p.y<-60||p.y>h+50)continue;
-  const pin=document.createElement('button');pin.type='button';pin.className='map-marker'+(s.own?' own':s.digiOwn?' digi-own':'');
+  const pin=document.createElement('button');pin.type='button';pin.className='map-marker'+(s.own?' own':s.digiOwn?' digi-own':s.position_direct===true?' direct':'');
   pin.textContent=s.call+(s.own?' · iGate':s.digiOwn?' · DIGI':'');
   if ((s.own||s.digiOwn) && s.symbol) {
    const sym=document.createElement('span');sym.className='aprs-symbol-code';
    sym.textContent=s.symbol;pin.appendChild(sym);
   }
   pin.style.left=(p.x+(s.digiOwn?18:0))+'px';pin.style.top=(p.y+(s.digiOwn?-20:0))+'px';
-  pin.title=s.call+' · '+s.lat.toFixed(5)+', '+s.lon.toFixed(5)+' · '+(s.symbol||'');
+  pin.title=s.call+' · '+s.lat.toFixed(5)+', '+s.lon.toFixed(5)+' · '+
+            (s.position_direct===true?'DIRECT':s.position_direct===false?'VIA DIGI':'')+' · '+
+            (s.distance_km==null?'':`${s.distance_km} km / ${s.bearing_deg??'—'}°`);
   pin.addEventListener('click',e=>{e.stopPropagation();chosen=chosen===s.call?null:s.call;updateMarkers();});
   if(s.call===chosen){pin.classList.add('active');active={p,s};}
   holder.appendChild(pin);
@@ -321,7 +323,12 @@ function updateMarkers(){
   pop.style.top=clamp(p.y,120,h-20)+'px';
   const close=document.createElement('button');close.textContent='×';close.title=tr('Zavřít');close.addEventListener('click',()=>{chosen=null;updateMarkers();});pop.appendChild(close);
   const strong=document.createElement('strong');strong.textContent=s.call;pop.appendChild(strong);
-  for(const line of [`GPS: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`,`${tr('Pakety')}: ${s.count}`,`${tr('Poslední')}: ${s.last}`,...((s.own||s.digiOwn)&&s.symbol?[`APRS symbol: ${s.symbol}`]:[])]){
+  for(const line of [`GPS: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`,
+      `${tr('Pakety')}: ${s.count}`,
+      ...(s.direct==null?[]:[s.direct?'DIRECT':'VIA DIGI']),
+      ...(s.distance_km==null?[]:[`${s.distance_km.toFixed(1)} km / ${s.bearing_deg==null?'—':s.bearing_deg.toFixed(0)+'°'} ${s.compass_en||''}`]),
+      `${tr('Poslední')}: ${s.last}`,
+      ...((s.own||s.digiOwn)&&s.symbol?[`APRS symbol: ${s.symbol}`]:[])]){
    const row=document.createElement('div');row.textContent=line;pop.appendChild(row);
   }
   holder.appendChild(pop);
@@ -346,7 +353,10 @@ function renderStations(){
  const term=$('search').value.trim().toUpperCase(),out=$('stationrows');out.replaceChildren();
  for(const s of positions.filter(s=>s.call.toUpperCase().includes(term)).slice(0,180)){
   const tr=document.createElement('tr');
-  for(const str of [s.call,s.count,s.last?.slice(11,19)||'—']){
+  if(s.direct===true&&!s.is_object)tr.classList.add('station-direct');
+  const route=s.direct===true?'DIRECT':s.direct===false?'VIA':'—';
+  const az=s.bearing_deg==null?'—':`${s.bearing_deg.toFixed(0)}° ${s.compass_en||''}`;
+  for(const str of [s.call,route,s.distance_km==null?'—':s.distance_km.toFixed(1),az,s.count]){
    const td=document.createElement('td');td.textContent=str;tr.appendChild(td);
   }
   if(Number.isFinite(s.lat)&&Number.isFinite(s.lon)){
@@ -434,6 +444,7 @@ async function refresh(){
   const rows=$('rows');rows.replaceChildren();
   for(const item of st.history.slice(0,100)){
    const tr=document.createElement('tr');
+   if(item.direct===true&&!item.demo)tr.classList.add('packet-direct');
    for(const str of [item.time?.slice(11,19)||'—',item.source+(item.demo?' [DEMO]':''),item.kind,item.path,item.summary]){
     const td=document.createElement('td');td.textContent=str||'';tr.appendChild(td);
    }

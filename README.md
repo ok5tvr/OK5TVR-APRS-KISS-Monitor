@@ -2,9 +2,13 @@
 
 **Windows / Raspberry Pi APRS monitor, one-way iGate, digipeater and messaging over USB KISS TNC**
 
-Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.8.0-rc1**.
+Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.8.1-rc1**.
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
+
+## New in 1.8.1 RC1: Position decoding, distance, bearing, DIRECT/VIA
+
+The native Windows **Map** tab now displays distance (km) and true bearing from the configured iGate/DIGI QTH. Packet rows heard **DIRECT** are highlighted light blue, including on the offline map. DIRECT uses the actual AX.25 digipeater H-bits, not a naïve check for a `WIDE` path. Position decoding includes Mic-E, compressed/uncompressed, objects, items, NMEA GPS and third-party payloads. Invalid or intentionally ambiguous positions are not plotted. See [Czech guide](README_v1.8_CZ.md) and [English guide](README_EN.md).
 
 ## Nově v1.8: všechno v jednom okně Windows
 
@@ -59,12 +63,12 @@ V administraci je odkaz **Diagnostika / objekty**, případně otevři odkaz `op
 
 ## Rychlé spuštění ve Windows
 
-1. Připoj UV-K1(8) přes datový kabel USB-C a spusť v radiostanici `KISS TNC`.
-2. Spusť `spustit_sluzbu_windows.bat` (nová webová služba).
-3. V druhém okně spusť `zobrazit_odkazy_windows.bat` a otevři odkaz **map**, **admin** nebo **messages**.
-4. Ve správě nastav COM port, značku a případně APRS-IS přihlašování. Příjem zkus před zapnutím automatického vysílání.
+1. V radiostanici UV-K1(8) spusť KISS TNC a připoj USB-C.
+2. Spusť **`spustit.bat`** nebo příkaz **`py -3 aprs_kiss_monitor.py`**.
+3. Ve stejném okně vyber COM port, například COM17, klikni na **Připojit** a přejdi na záložku **Mapa**.
+4. V **iGate / DIGI** zadej přesné GPS souřadnice stanice, abys viděl vzdálenost a azimut k přijatým stanicím.
 
-Starší GUI spouští `spustit.bat`; **nespouštěj ho současně s webovou službou na stejném COM portu**.
+Neotevírej současně samostatnou headless službu na stejném COM portu. Všech sedm desktopových modulů je v jednom okně; samostatná služba na Raspberry Pi může nadále běžet s webovou správou.
 
 ## Raspberry Pi OS / Debian
 

@@ -1,3 +1,12 @@
+# Version 1.8.1 RC1 — APRS position decoding and geographic course
+
+- Position decoding covers Mic-E, APRS uncompressed/compressed/timestamped formats, APRS objects/items, NMEA RMC/GGA/GLL (GPS fix and optional checksum verified) and valid third-party encapsulated positions. Other packet types without position are not plotted.
+- AX.25 **H-bit** routing classification: DIRECT when no digipeater address is marked as already used, VIA after repetition; third-party inner stations are not falsely classed as direct.
+- Geographic range (km) and **initial true bearing (degrees, compass point)** computed from configured local iGate/DIGI QTH; absent QTH yields unavailable values.
+- Light-blue rows for DIRECT stations and frames and light-blue position markers in native Tkinter desktop and the optional headless web dashboard.
+- Native map displays course line from own QTH to the selected station; extra Path/km/Bearing columns with live data. Does not add automatic RF transmissions.
+- Added ten hardware-independent routing, GPS decoder and geodesy regression tests and GUI smoke check.
+
 # Version 1.8.0 RC1 — Unified native Windows GUI
 
 - New single-window Tkinter application with seven tabs: Monitor/TX, offline Map, Messages, Objects, iGate/DIGI, Telemetry and Diagnostics/Journal.

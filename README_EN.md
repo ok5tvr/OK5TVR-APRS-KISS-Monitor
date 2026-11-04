@@ -1,3 +1,11 @@
+## New in 1.8.1 RC1 — Position formats, DIRECT reception, range and bearing
+
+The single-window desktop **Map** tab now shows callsign, DIRECT/VIA route, great-circle distance in kilometres, and initial true bearing from the configured iGate/DIGI QTH. **DIRECT** packet rows are highlighted in light blue. Position markers heard directly over RF are also light blue; clicking a station shows a course line from QTH. No web browser is required for desktop operation.
+
+Supported position-bearing packet types include uncompressed and compressed APRS, timestamped positions, **Mic-E**, APRS objects/items, **NMEA RMC/GGA/GLL** and encapsulated **third-party** positions. Not all APRS packet types carry GPS coordinates. Ambiguous/invalid coordinates are never treated as precise positions.
+
+**DIRECT** means no digipeater H-bit was set in the actual AX.25 RF packet. A `WIDE1-1` path *without* the H-bit can still be direct. DIRECT is not independent proof of physical line of sight. The displayed distance and true bearing are geographic calculations, not measured RF range or direction of signal arrival. To enable them, configure the station's own GPS position first. All existing TX safeguards remain in force.
+
 # Windows native tabbed app (v1.8 RC1)
 
 **All Windows modules now run inside one native desktop window**: Monitor/TX, Offline Map, Messages (Inbox/Outbox, ACK/REJ), APRS Objects (LIVE/KILL), iGate/DIGI, Telemetry, Diagnostics and Packet Journal. No Chrome or administration URL is required on Windows; the app uses the same APRS service backend with HTTP **disabled** in desktop mode, so only one process owns the serial port. Use `spustit.bat` or `py -3 aprs_kiss_monitor.py`. Czech [v1.8 guide](README_v1.8_CZ.md).

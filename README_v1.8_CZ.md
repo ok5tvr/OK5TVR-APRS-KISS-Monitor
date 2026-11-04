@@ -1,4 +1,14 @@
-# OK5TVR APRS KISS Monitor 1.8 RC1 — jednotné okno Windows
+# OK5TVR APRS KISS Monitor 1.8.1 RC1 — jednotné okno Windows
+
+## Nově ve v1.8.1 RC1: dekódování GPS, DIRECT/VIA, vzdálenost a azimut
+
+- Přímo v záložce **Mapa** jsou pro stanice sloupce **Značka · Cesta · km · Azimut** a jsou dostupné i v angličtině. GPS se bere z dekódovaných APRS rámců; pro výpočet je nutné v **iGate / DIGI** zadat vlastní souřadnice QTH.
+- Po výběru stanice se vykreslí směr od QTH ke stanici a zobrazí vypočtená **vzdálenost po zemském povrchu v kilometrech a počáteční azimut** ve stupních (0° = sever, 90° = východ).
+- Stanice s posledním rámcem **DIRECT** mají **světle modrý podklad** v seznamu stanic a přijatých paketů. Pozice přijaté přímo mají světle modrý bod na mapě. **VIA** znamená, že některá DIGI adresa v AX.25 měla nastavený H-bit (v monitor formátu symbol `*`).
+- **DIRECT je odvozeno z AX.25 hlavičky, nikoli z toho, zda cesta obsahuje WIDE1-1.** Trasa WIDE1-1 bez H-bitu je přímý příjem. U objektů a zapouzdřených APRS zpráv není „přímý příjem objektu“ považován za přímý příjem vysílací stanice objektu.
+- Rozšířená podpora poloh v paketech: **Mic-E**, běžná nekomprimovaná a Base91 komprimovaná pozice, pozice s časem, **APRS objekt/položka**, **NMEA GPS RMC/GGA/GLL** a poloha uvnitř **third-party** rámce. Nesprávné, neplatné nebo příliš nepřesné pozice nejsou vykresleny jako přesné GPS.
+- Vzdálenost/azimut popisuje geometrii mezi ohlášenými souřadnicemi, **nikoli skutečnou délku RF cesty ani směr příchodu signálu**. U retransmisí jde o polohu původní stanice, ne opakovače.
+- Výchozí ochrany RF TX se nemění a po aktualizaci se žádné nové automatické vysílání nespouští.
 
 ## Co se změnilo
 

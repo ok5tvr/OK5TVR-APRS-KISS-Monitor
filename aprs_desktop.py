@@ -22,7 +22,7 @@ from aprs_service import APRSService
 from aprs_station import load_settings, save_settings
 from service_config import ServiceConfig
 
-VERSION = '1.8.0-rc1'
+VERSION = '1.8.1-rc1'
 BG = '#101925'
 PANEL = '#1a293a'
 INSET = '#203247'
@@ -48,6 +48,7 @@ class NativeMap(tk.Frame):
         self._geo = None
         self._pin_data = []
         self._scheduled = False
+        self.focus_station = None
         self.on_pin = lambda station: None
         self.canvas.bind('<Configure>', lambda _: self.redraw_later())
         self.canvas.bind('<MouseWheel>', self._wheel)
@@ -172,7 +173,18 @@ class NativeMap(tk.Frame):
             c.create_line(x,0,x,h,fill='#294359',dash=(3,9))
         self._pin_data=[]
         for s in self.stations:
-            self._pin(s, '#ffd57f', 4)
+            self._pin(s, '#b9ecff' if s.get('position_direct') is True else '#ffd57f',
+                      5 if s.get('position_direct') is True else 4)
+        # Geographic course line from own QTH to the selected station.
+        if self.focus_station and self.own and self.own.get('lat') is not None:
+            s = next((v for v in self.stations if v.get('call')==self.focus_station),None)
+            if s and s.get('lat') is not None and s.get('distance_km') is not None:
+                ax,ay=self.geo_to_screen(self.own['lat'],self.own['lon'])
+                bx,by=self.geo_to_screen(s['lat'],s['lon'])
+                c.create_line(ax,ay,bx,by,fill='#b8e9ff',width=2,dash=(6,4),arrow='last')
+                c.create_text((ax+bx)/2,(ay+by)/2-12,
+                              text=f"{s['distance_km']:.1f} km · {s['bearing_deg'] if s['bearing_deg'] is not None else '—'}°",
+                              fill='#c9f1ff',font=('Segoe UI Semibold',9))
         if self.own:
             self._pin({**self.own,'call':self.own.get('call','iGate')}, GREEN, 8)
         if self.digi and self.digi.get('active'):
@@ -320,8 +332,8 @@ class DesktopApp:
         header=tk.Frame(self.root,bg=BG)
         header.pack(fill='x',padx=17,pady=(11,3))
         self.label(header,'OK5TVR','OK5TVR',fg=GREEN,font=('Segoe UI Semibold',14)).pack(side='left')
-        self.label(header,'  APRS KISS Monitor  ·  USB TNC  ·  v1.8 RC1',
-                   '  APRS KISS Monitor  ·  USB TNC  ·  v1.8 RC1',font=('Segoe UI',14)).pack(side='left')
+        self.label(header,'  APRS KISS Monitor  ·  USB TNC  ·  v1.8.1 RC1',
+                   '  APRS KISS Monitor  ·  USB TNC  ·  v1.8.1 RC1',font=('Segoe UI',14)).pack(side='left')
         self.language=tk.StringVar(value='EN' if self.lang=='en' else 'CZ')
         pick=ttk.Combobox(header,textvariable=self.language,values=('CZ','EN'),width=4,
                           state='readonly',style='APRS.TCombobox')
@@ -363,6 +375,8 @@ class DesktopApp:
             except tk.TclError:pass
         for frame,cs,en in self.tabs:
             self.notebook.tab(frame,text=self.t(cs,en))
+        self.station_tree.heading('Cesta', text=self.t('Cesta', 'Path'))
+        self.station_tree.heading('Azimut', text=self.t('Azimut', 'Bearing'))
         self._refresh(force=True)
 
     def _build_monitor(self):
@@ -384,6 +398,7 @@ class DesktopApp:
                    font=('Segoe UI Semibold',11)).pack(anchor='w',padx=18,pady=(7,2))
         grid, self.rx_tree=self._tree(self.monitor,
                      ('Čas','Značka','Cíl','Cesta','Typ','Obsah'),(165,112,100,165,95,550),height=16)
+        self.rx_tree.tag_configure('direct',background='#bdeafb',foreground='#183247')
         grid.pack(fill='both',expand=True,padx=8,pady=8)
         self.rx_tree.bind('<<TreeviewSelect>>',self.select_rx)
         self.rx_details=tk.Text(self.monitor,height=5,bg=PANEL,fg=FG,wrap='word',
@@ -404,10 +419,14 @@ class DesktopApp:
         self.native_map=NativeMap(body)
         body.add(self.native_map,stretch='always',minsize=480)
         side=tk.Frame(body,bg=PANEL)
-        body.add(side,minsize=235,width=300)
+        body.add(side,minsize=350,width=390)
         self.label(side,'Slyšené stanice','Heard stations',bg=PANEL,
                    font=('Segoe UI Semibold',12),fg=GREEN).pack(anchor='w',padx=10,pady=12)
-        grid,self.station_tree=self._tree(side,('Značka','Rámců','Pozice'),(115,65,85),height=18)
+        grid,self.station_tree=self._tree(side,('Značka','Cesta','km','Azimut'),
+                                          (108,75,65,90),height=18)
+        self.station_tree.tag_configure('direct',background='#bdeafb',foreground='#183247')
+        self.station_tree.heading('Cesta', text=self.t('Cesta', 'Path'))
+        self.station_tree.heading('Azimut', text=self.t('Azimut', 'Bearing'))
         grid.pack(fill='both',expand=True,padx=6,pady=3)
         self.station_tree.bind('<<TreeviewSelect>>',self.select_station)
         self.map_selected=tk.StringVar(value='')
@@ -715,7 +734,8 @@ class DesktopApp:
         for n,row in enumerate(history):
             self.rx_tree.insert('', 'end', iid=str(n),values=(
                 row['time'],row['source'],row['destination'],row['path'],
-                row['kind'],row['summary'][:170]))
+                row['kind'],row['summary'][:170]),
+                tags=('direct',) if row.get('direct') is True and not row.get('demo') else ())
         self._rx_current=history
         if old in self.rx_tree.get_children():
             self.rx_tree.selection_set(old)
@@ -724,7 +744,9 @@ class DesktopApp:
         selected=self.rx_tree.selection()
         if not selected:return
         row=self._rx_current[int(selected[0])]
-        content=(f"{row['time']}  {row['source']} > {row['destination']}  {row['path']}\n"
+        route=('DIRECT' if row.get('direct') is True else
+               'VIA DIGI' if row.get('direct') is False else '?')
+        content=(f"{row['time']}  {row['source']} > {row['destination']}  {row['path']}  [{route}]\n"
                  f"{row['kind']}: {row['summary']}\n"
                  f"{row.get('payload','')}\nHEX: {row.get('hex_data','')}")
         self.rx_details.configure(state='normal')
@@ -734,17 +756,28 @@ class DesktopApp:
 
     def _refresh_map(self,state,force):
         stations=state['stations']
-        stamp=(state['rx'],len(stations),state.get('position_count'))
+        stamp=(state['rx'],len(stations),state.get('position_count'),
+               state.get('own_position',{}).get('lat') if state.get('own_position') else None,
+               state.get('own_position',{}).get('lon') if state.get('own_position') else None)
         if not force and getattr(self,'_map_stamp',None)==stamp:return
         self._map_stamp=stamp
         self.native_map.set_data(stations,state.get('own_position'),state.get('digi_position'))
         self.map_description.set(self.t('Stanice: ','Stations: ')+str(len(stations))+
-                                 self.t(' · s GPS: ',' · with GPS: ')+str(state['position_count']))
+                                 self.t(' · s GPS: ',' · with GPS: ')+str(state['position_count'])+
+                                 self.t(' · DIRECT: ',' · DIRECT: ')+str(state.get('direct_count',0)))
         self.station_tree.delete(*self.station_tree.get_children())
         self._map_rows=sorted(stations,key=lambda s:s['last'],reverse=True)
         for n,station in enumerate(self._map_rows[:240]):
-            coords='GPS' if station['lat'] is not None else '—'
-            self.station_tree.insert('','end',iid=str(n),values=(station['call'],station['count'],coords))
+            direct=station.get('direct')
+            route=('DIRECT' if direct is True else 'VIA' if direct is False else '—')
+            km=station.get('distance_km')
+            bearing=station.get('bearing_deg')
+            compass=station.get('compass_en' if self.lang=='en' else 'compass_cs','')
+            course=(f"{bearing:.0f}° {compass}" if bearing is not None else '—')
+            self.station_tree.insert('','end',iid=str(n),
+                                     values=(station['call'],route,
+                                             f'{km:.1f}' if km is not None else '—',course),
+                                     tags=('direct',) if direct is True and not station.get('is_object') else ())
 
     def center_map(self):
         p=self.config.data['position']
@@ -755,8 +788,13 @@ class DesktopApp:
 
     def _display_station(self,s):
         lat,lon=s.get('lat'),s.get('lon')
-        self.map_selected.set(f"{s.get('call','')} · {s.get('kind','')}\n"
-                              f"{lat}, {lon}\n{s.get('summary','')}")
+        km=s.get('distance_km');deg=s.get('bearing_deg')
+        bearing=(f"{km:.1f} km · {deg:.0f}° " +
+                 s.get('compass_en' if self.lang=='en' else 'compass_cs','')) if km is not None and deg is not None else '—'
+        route='DIRECT' if s.get('direct') is True else ('VIA DIGI' if s.get('direct') is False else '—')
+        self.map_selected.set(f"{s.get('call','')} · {s.get('kind','')} · {route}\n"
+                              f"{lat}, {lon}\n{bearing}\n{s.get('summary','')}")
+        self.native_map.focus_station=s.get('call')
         if lat is not None and lon is not None:
             self.native_map.center_lat=float(lat)
             self.native_map.center_lon=float(lon)
