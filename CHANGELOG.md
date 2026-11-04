@@ -1,3 +1,12 @@
+## v1.7.0-rc1 – oprava Inbox RX (2026-11-04)
+- APRS Inbox přijímá zprávy pro přesnou značku iGate (např. OK5TVR-10) **i základní značku bez SSID** (OK5TVR).
+- Další vlastní značky se nastavují na stránce Zprávy → Další přijímané značky / SSID (např. OK5TVR-7,OK5TVR-3); jen stejná základní volací značka.
+- Nový diagnostický panel posledních přijatých adresovaných APRS rámců rozlišuje uložené zprávy, jiné adresáty, ACK/REJ a neplatný formát. Panel nezpřístupňuje žádnou možnost RF TX.
+- Ruční i automatické ACK používá zdrojovou značku, které byla zpráva skutečně adresována.
+- Poslední přijatý RF rámec je vidět také na stránce zpráv; otevřené USB samo o sobě nepotvrzuje příjem.
+- Regresní testy pro skutečný KISS tok po USB a pro správu zpráv na webu; automatické RF TX i ACK jsou nadále výchozím stavem vypnuté.
+- APRS zprávy přicházející pouze z internetu nejsou přijímány: tato verze používá pro Inbox pouze fyzický RF RX přes UV-K1(8); APRS-IS→RF není implementováno.
+
 ## v1.7.0-rc1 (2026-11-04)
 - Independent APRS symbol table/icon/overlay settings for iGate and software DIGI; map markers and APRS-IS station beacons use the chosen symbols.
 - Standard APRS 1.0 telemetry `T#` with `PARM`, `UNIT`, `EQNS`, `BITS`; rolling 15-minute counters and report intervals 15/30/60 minutes.

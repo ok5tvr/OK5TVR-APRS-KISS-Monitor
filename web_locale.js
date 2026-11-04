@@ -2,6 +2,25 @@
 "use strict";
 (() => {
 const english = {
+  "Poslední RF rámec": "Last RF frame",
+  "Zatím žádný RF rámec": "No RF frame yet",
+  "Další přijímané značky / SSID": "Additional receive callsigns / SSIDs",
+  "Automaticky přijímáme značku iGate i základní značku bez SSID. Sem přidej pouze další vlastní SSID (oddělené čárkami). Změna zapíše příchozí zprávy do stejného Inboxu.": "The iGate callsign and its base callsign (without SSID) are always accepted. Enter other SSIDs you own, separated by commas. Messages arrive in the same Inbox.",
+  "Diagnostika příjmu zpráv": "Message reception diagnostics",
+  "Zobrazují se také APRS zprávy pro jiné adresáty, které TNC skutečně přijalo, ale Inbox je správně ignoruje. Pokud zde zprávy nejsou a v mapě přibývají pozice, otestuj zprávu cílenou na některou z přijímaných značek.": "Also shows APRS messages heard on RF for other recipients; these are intentionally excluded from Inbox. If this stays empty while the map receives positions, send a test message to one of your accepted callsigns.",
+  "Přijímáme pro:": "Receiving for:",
+  "Jiný adresát": "Other addressee",
+  "Chybný formát": "Invalid format",
+  "Vlastní rámec": "Self-originated frame",
+  "Dosud nebyla přijata žádná APRS zpráva.": "No APRS message has been heard yet.",
+  "Neplatný formát APRS zprávy / bulletin": "Invalid APRS message format / bulletin",
+  "Zpráva jiné stanici": "Message addressed to another station",
+  "Neplatná zdrojová značka": "Invalid source callsign",
+  "Přijato do Inboxu": "Received in Inbox",
+  "Přijato do Inboxu (duplicita)": "Received in Inbox (duplicate)",
+  "ACK/REJ bez čekající zprávy": "ACK/REJ not matched to a pending message",
+  "Potvrzeno v Outboxu": "Acknowledged in Outbox",
+
   "Mapa / Map": "Map / Mapa",
   "APRS objekty": "APRS objects",
   "Diagnostika": "Diagnostics",

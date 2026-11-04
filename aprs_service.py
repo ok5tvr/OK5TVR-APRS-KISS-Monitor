@@ -80,7 +80,8 @@ class APRSService:
         m = config.data['messages']
         self.messages = MessageManager(config.path.with_name('messages.sqlite3'),
                                       config.data['igate']['call'], m['path'],
-                                      m['auto_ack'], m['retry_seconds'], m['max_attempts'])
+                                      m['auto_ack'], m['retry_seconds'], m['max_attempts'],
+                                      m.get('receive_aliases', []))
         self.digi = self._make_digi()
         self.state.update_digi(self.digi.snapshot())
         self._update_position()
@@ -155,6 +156,7 @@ class APRSService:
         result = self.messages.snapshot()
         result['default_target'] = self.config.data['messages']['target']
         result['radio_ready'] = self.radio_ready
+        result['last_rf_frame_utc'] = self.last_rx_utc
         return result
 
     def diagnostics_snapshot(self):
@@ -250,7 +252,8 @@ class APRSService:
             self.messages.configure(self.config.data['igate']['call'],
                     self.config.data['messages']['path'],False,
                     self.config.data['messages']['retry_seconds'],
-                    self.config.data['messages']['max_attempts'])
+                    self.config.data['messages']['max_attempts'],
+                    self.config.data['messages'].get('receive_aliases', []))
             self._update_position()
             self.telemetry_epoch = -1
             self.rf_telemetry_pending.clear()
@@ -350,7 +353,7 @@ class APRSService:
                 self.messages.usb_closed()
             m = self.config.data['messages']
             self.messages.configure(self.config.data['igate']['call'], m['path'], m['auto_ack'],
-                                    m['retry_seconds'], m['max_attempts'])
+                                    m['retry_seconds'], m['max_attempts'], m.get('receive_aliases', []))
             self._update_position()
             self.telemetry_epoch = -1
             self.telemetry_next = time.monotonic() + self.config.data['telemetry']['interval_minutes'] * 60

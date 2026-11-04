@@ -86,3 +86,13 @@ Open the **Operations / Diagnostics** page via the `operations` link printed by 
 - Manually transmitted live/killed APRS RF objects, own RF position and status text; one packet per confirmation, 30 s cooldown.
 
 These features operate via the headless web service on Windows or Raspberry Pi. The legacy Tkinter window remains available, but does not expose the new management pages itself. APRS-IS→RF gating remains unsupported. Do not expose the administrative HTTP interface to the public Internet.
+
+## APRS Inbox RX fix – troubleshooting
+
+The web Inbox now accepts packets addressed to the configured iGate callsign (e.g. `OK5TVR-10`) **and the base callsign** (`OK5TVR`). Add any other SSIDs you operate, e.g. `OK5TVR-7,OK5TVR-3`, in the **Additional receive callsigns / SSIDs** field on the Messages administration page. All aliases must share your own base callsign.
+
+The **Message reception diagnostics** panel displays both stored messages and received messages addressed to other stations, with reasons for not entering Inbox. The last RF frame timestamp helps distinguish a silent TNC from a wrong message addressee. Manual/automatic ACKs use the destination callsign of the received message as their own RF source. Auto ACK and automatic RF TX remain off by default.
+
+Send a test **on-air** addressed message to one of the configured receive callsigns. The KISS TNC key `2` injects a USB test packet but does not create an addressed APRS message. APRS-IS-only Internet messages do not reach the RF-only Inbox, and there is no APRS-IS→RF gateway in this release.
+
+If the radio resets its USB connection when keying up, try a short USB cable with a VHF ferrite near the radio and keep the antenna away from the cable. KISS TNC is half-duplex.

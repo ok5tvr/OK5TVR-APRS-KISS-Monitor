@@ -31,7 +31,7 @@ DEFAULT_CONFIG = {
              'overlay': '1', 'beacon_enabled': False, 'beacon_interval': 30,
              'beacon_comment': 'OK5TVR APRS DIGI', 'telemetry_enabled': False,
              'telemetry_transport': 'is', 'telemetry_rf_path': ''},
-    'messages': {'target': '', 'path': 'WIDE1-1', 'auto_ack': False,
+    'messages': {'target': '', 'path': 'WIDE1-1', 'receive_aliases': [], 'auto_ack': False,
                  'retry_seconds': 45, 'max_attempts': 3},
     'telemetry': {'interval_minutes': 15},
     'position': {'latitude': None, 'longitude': None,
@@ -140,6 +140,13 @@ def validate_config(candidate):
     if m['target'] == i['call']:
         raise ValueError('Cílová značka zpráv se nesmí rovnat vlastní značce.')
     m['path'] = normalize_path(m['path'])
+    aliases = m['receive_aliases']
+    if not isinstance(aliases, list) or len(aliases) > 6:
+        raise ValueError('Zprávy: nejvýše 6 dalších přijímaných SSID.')
+    aliases = [normalize_call(value) for value in aliases]
+    if any(alias.split('-')[0] != i['call'].split('-')[0] for alias in aliases):
+        raise ValueError('Přijímané značky musejí patřit ke stejné základní značce jako iGate.')
+    m['receive_aliases'] = list(dict.fromkeys(aliases))
     m['auto_ack'] = _bool(m['auto_ack'], 'Automatické potvrzování APRS zpráv (RF TX)')
     m['retry_seconds'] = _int(m['retry_seconds'], 'Opakování zprávy (s)', 30, 180)
     m['max_attempts'] = _int(m['max_attempts'], 'Počet odeslání', 1, 5)

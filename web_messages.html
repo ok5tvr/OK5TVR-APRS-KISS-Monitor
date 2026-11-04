@@ -41,6 +41,7 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
 <div class="statrow">
  <div class="stat"><span class="muted">USB TNC</span><b id="radio" style="font-size:15px">…</b></div>
  <div class="stat"><span class="muted">Moje značka</span><b id="mycall" style="font-size:18px">…</b></div>
+ <div class="stat"><span class="muted">Poslední RF rámec</span><b id="lastrx" style="font-size:13px">…</b></div>
  <div class="stat"><span class="muted">Inbox</span><b id="numin">0</b></div>
  <div class="stat"><span class="muted">Outbox</span><b id="numout">0</b></div>
  <div class="stat"><span class="muted">Čeká na ACK</span><b id="pending">0</b></div>
@@ -70,6 +71,9 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
  <section>
   <h2>Nastavení APRS zpráv</h2>
   <label for="default_target">Výchozí cílová značka</label><input id="default_target" maxlength="9" spellcheck="false" placeholder="např. OK1ABC-9">
+  <label for="aliases">Další přijímané značky / SSID</label>
+  <input id="aliases" maxlength="90" spellcheck="false" placeholder="OK5TVR-7,OK5TVR-3">
+  <p class="hint">Automaticky přijímáme značku iGate i základní značku bez SSID. Sem přidej pouze další vlastní SSID (oddělené čárkami). Změna zapíše příchozí zprávy do stejného Inboxu.</p>
   <label for="default_path">Výchozí RF cesta</label><input id="default_path" maxlength="27" spellcheck="false" placeholder="WIDE1-1 (DIRECT = bez cesty)">
   <div class="inline"><div><label for="retry">Čas prvního opakování (s)</label><input id="retry" type="number" min="30" max="180" step="1"></div>
   <div><label for="attempts">Maximální počet TX</label><input id="attempts" type="number" min="1" max="5" step="1"></div></div>
@@ -85,6 +89,12 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
   <p class="hint" style="margin-top:15px">Stav „Čeká ACK“ znamená, že byl rámec zapsán do USB TNC; skutečný RF přenos je nutné ověřit rádiem. „ACK přijato“ znamená protokolové potvrzení, nikoli přečtení člověkem.</p>
  </section>
 </div>
+<section id="receive_diagnostics">
+ <h2>Diagnostika příjmu zpráv</h2>
+ <p class="hint">Zobrazují se také APRS zprávy pro jiné adresáty, které TNC skutečně přijalo, ale Inbox je správně ignoruje. Pokud zde zprávy nejsou a v mapě přibývají pozice, otestuj zprávu cílenou na některou z přijímaných značek.</p>
+ <p><strong>Přijímáme pro:</strong> <span id="rxaddr">…</span></p>
+ <div id="heard" class="list" aria-live="polite"></div>
+</section>
 <div id="toast" role="status" aria-live="polite">Inicializuji…</div>
 <p><a href="/operations?admin=" id="operations">Diagnostika / objekty</a></p></main>
 <script src="/assets/web_locale.js"></script>
@@ -109,7 +119,25 @@ $('body').oninput=()=>{$('counter').textContent=Array.from($('body').value).leng
 async function request(action,data){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key},body:JSON.stringify({action,...data})});
  const result=await r.json();if(!r.ok||!result.ok)throw new Error(result.error||'HTTP '+r.status);return result.result;}
 function appendButton(node,name,fn){const button=elem('button','',tr(name));button.onclick=fn;node.append(button);}
+function renderHeard(){
+ const wrap=$('heard');wrap.replaceChildren();
+ const list=(last&&last.heard_messages)||[];
+ if(!list.length){wrap.append(elem('div','empty',tr('Dosud nebyla přijata žádná APRS zpráva.')));return;}
+ for(const item of list.slice(0,25)){
+  const entry=elem('div','entry');
+  const head=elem('div','entry-header');
+  head.append(elem('strong','',item.sender+' → '+item.recipient));
+  const kind=({inbox:tr('Inbox'),other:tr('Jiný adresát'),ack:'ACK',rej:'REJ',invalid:tr('Chybný formát'),self:tr('Vlastní rámec')})[item.result]||item.result;
+  head.append(elem('span','badge '+(item.result==='inbox'?'good':item.result==='invalid'?'bad':''),kind));
+  entry.append(head);
+  entry.append(elem('div','hint',item.time+' · '+tr(item.note)));
+  wrap.append(entry);
+ }
+}
 function render(){if(!last)return;
+ $('lastrx').textContent=last.last_rf_frame_utc||tr('Zatím žádný RF rámec');
+ $('rxaddr').textContent=(last.receive_calls||[last.call]).join(', ');
+ renderHeard();
  $('mycall').textContent=last.call;$('radio').textContent=last.radio_ready?tr('Připojeno'):tr('Odpojeno');
  $('radio').className=last.radio_ready?'good':'bad';
  $('numin').textContent=last.stats.inbox;$('numout').textContent=last.stats.outbox;$('pending').textContent=last.stats.pending;
@@ -123,7 +151,7 @@ function render(){if(!last)return;
   header.append(elem('span','badge '+(msg.status==='ack'?'good':msg.status==='rej'||msg.status==='failed'?'bad':''),status));card.append(header);
   card.append(elem('div','entry-body',msg.text));
   const footer=elem('div','entry-footer');
-  const info=pane==='inbox'?msg.arrived_at+' · ID '+(msg.message_id||tr('bez ID'))+' · '+tr('cesta')+' '+(msg.path||'DIRECT')+(msg.duplicates?' · '+tr('opakování')+' '+msg.duplicates:'')
+  const info=pane==='inbox'?msg.arrived_at+' · '+tr('Komu')+' '+msg.recipient+' · ID +(msg.message_id||tr('bez ID'))+' · '+tr('cesta')+' '+(msg.path||'DIRECT')+(msg.duplicates?' · '+tr('opakování')+' '+msg.duplicates:'')
    :msg.created_at+' · ID '+msg.message_id+' · '+(msg.path||'DIRECT')+' · TX '+msg.attempts+'/'+msg.max_attempts;
   footer.append(elem('span','',info));
   const buttons=elem('div','');
@@ -146,7 +174,8 @@ async function refresh(){try{const r=await fetch(authUrl('/api/messages'),{cache
  if(!r.ok)throw new Error('HTTP '+r.status);last=await r.json();
  if(!configured){$('target').value=last.default_target;$('default_target').value=last.default_target;
    $('default_path').value=last.default_path||'DIRECT';setPath(last.default_path);
-   $('retry').value=last.retry_seconds;$('attempts').value=last.max_attempts;$('autoack').checked=last.auto_ack;configured=true;
+   $('retry').value=last.retry_seconds;$('attempts').value=last.max_attempts;$('autoack').checked=last.auto_ack;
+   $('aliases').value=(last.receive_aliases||[]).join(',');configured=true;
    toast('Připraveno. Odeslání přes RF vyžaduje potvrzení.');}
  render();}catch(e){toast(tr('Nelze načíst zprávy: ')+e.message,true);}}
 $('send').onclick=async()=>{const target=$('target').value.trim().toUpperCase(),text=$('body').value,path=$('path_preset').value==='custom' ? $('custom_path').value : $('path_preset').value;
@@ -158,7 +187,8 @@ $('send').onclick=async()=>{const target=$('target').value.trim().toUpperCase(),
  catch(e){toast(tr('TX zpráva: ')+e.message,true);}finally{$('send').disabled=false;}};
 $('save').onclick=async()=>{const target=$('default_target').value.trim().toUpperCase(),path=$('default_path').value.trim(),auto=$('autoack').checked;
  if(auto&&!confirm(tr('Povolit automatické RF vysílání ACK při každé příchozí zprávě s ID? Bude pokračovat i po restartu.')))return;
- try{toast(await request('save',{config:{messages:{target,path,auto_ack:auto,retry_seconds:Number($('retry').value),max_attempts:Number($('attempts').value)}},confirm_auto_ack:auto}));
+ try{const aliases=$('aliases').value.split(',').map(v=>v.trim().toUpperCase()).filter(Boolean);
+  toast(await request('save',{config:{messages:{target,path,receive_aliases:aliases,auto_ack:auto,retry_seconds:Number($('retry').value),max_attempts:Number($('attempts').value)}},confirm_auto_ack:auto}));
   configured=false;await refresh();}catch(e){toast(e.message,true);}};
 $('tabin').onclick=()=>{pane='inbox';render();};$('tabout').onclick=()=>{pane='outbox';render();};$('refresh').onclick=refresh;
 window.addEventListener('ok5tvr:language',()=>{if(last)render();$('body').oninput();});

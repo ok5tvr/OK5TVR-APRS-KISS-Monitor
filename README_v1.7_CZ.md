@@ -102,3 +102,18 @@ Původní `spustit.bat` zobrazuje pouze klasický monitor, jeho web je read-only
 Tlačítka **APRS zprávy** a **APRS objekty** nabídnou přepnutí na
 `aprs_service.py`, přičemž před spuštěním musí být uvolněný USB COM port.
 Dva programy nesmí souběžně používat tentýž KISS TNC.
+
+## APRS Inbox – diagnostika a nastavení příjmu (oprava RC1)
+
+Otevři webovou službu (`spustit_sluzbu_windows.bat`) a přes administrátorský odkaz stránku **APRS zprávy**.
+Přijímány jsou zprávy na značku iGate (např. `OK5TVR-10`) i na základní značku (`OK5TVR`).
+Další vlastní SSID (`OK5TVR-7`, `OK5TVR-3`) lze uvést do pole **Další přijímané značky / SSID** oddělené čárkou a kliknout na **Uložit nastavení zpráv**.
+Panel **Diagnostika příjmu zpráv** ukazuje i rámce cílené na jiné adresáty, které se v Inboxu správně nezobrazí.
+
+Zkus odeslat testovací APRS zprávu přes **144,800 MHz FM** z jiné rádiové stanice (nikoliv pouze přes APRS-IS) na jednu z uvedených adres.
+Pokud se ve webové mapě objevují obecné RX rámce, ale na stránce zpráv nejsou žádné zprávy, je pravděpodobné, že test není adresovanou zprávou, nebo do UV-K1 neprošel.
+Samotná funkce tlačítka `2` v aplikaci KISS TNC testuje USB přenos, nevytváří APRS zprávu pro Inbox.
+
+Pokud se rádio při vlastním vysílání z PC odpojuje, použij krátký USB kabel s ferritem u radiostanice (2–4 závity přes ferit vhodný pro VHF) a anténu dále od kabelu.
+F4HWN KISS TNC je poloduplexní, proto při vysílání současně nepřijímá.
+Příjem zpráv výhradně přes APRS-IS z internetu v této verzi není implementovaný.
