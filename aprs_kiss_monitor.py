@@ -9,6 +9,9 @@ Requires: Python 3.9+, tkinter, pyserial. DIGI, IGate and TX OFF by default.
 from __future__ import annotations
 
 import csv
+import subprocess
+import sys
+from urllib.request import urlopen
 import queue
 import re
 import threading
@@ -37,7 +40,7 @@ except ImportError:
     list_ports = None
 
 APP_TITLE = "OK5TVR APRS KISS Monitor"
-VERSION = "1.5.0-rc1"
+VERSION = "1.7.0-rc1"
 FEND, FESC, TFEND, TFESC = 0xC0, 0xDB, 0xDC, 0xDD
 MAX_KISS_FRAME = 4096
 
@@ -225,9 +228,12 @@ class App:
         self._btn(first, "Otestovat TX...", self.tx_dialog).pack(side="left", padx=(0, 8))
         self._btn(first, "iGate APRS-IS...", self.igate_dialog).pack(side="left", padx=(0, 8))
         self._btn(first, "APRS DIGI...", self.digi_dialog).pack(side="left", padx=(0, 8))
+        self._btn(first, "APRS zprávy", lambda: self.open_service_page("messages")).pack(side="left", padx=(0, 8))
+        self._btn(first, "APRS objekty", lambda: self.open_service_page("operations", "objects")).pack(side="left", padx=(0, 8))
         second = tk.Frame(actions,bg=self.BG); second.pack(fill='x')
         self._btn(second, "Pozice iGate / GPS...", self.position_dialog).pack(side="left", padx=(0,8))
-        self._btn(second, "Web v LAN...", self.lan_dialog).pack(side="left")
+        self._btn(second, "Web v LAN...", self.lan_dialog).pack(side="left", padx=(0, 8))
+        self._btn(second, "Diagnostika", lambda: self.open_service_page("operations", "diagnostics")).pack(side="left")
         self.web_var = tk.StringVar(value="Web: startuje...")
         self._label(second,"", 9, self.SUB, textvariable=self.web_var).pack(side="right")
 
@@ -538,6 +544,87 @@ class App:
             self._message_box(messagebox.showerror, APP_TITLE,"Webové rozhraní neběží.")
             return
         webbrowser.open(self.web.local_url())
+
+    @staticmethod
+    def _full_service_ready(conf):
+        """Verify the authenticated headless service, never the read-only GUI server."""
+        url = conf.links('127.0.0.1')['admin'].replace('/control?admin=', '/api/config?admin=', 1)
+        try:
+            with urlopen(url, timeout=0.6) as resp:
+                return resp.status == 200
+        except (OSError, ValueError):
+            return False
+
+    def open_service_page(self, page, section=''):
+        """Switch safely to the full web app; only one process owns the USB COM port."""
+        from service_config import ServiceConfig
+        try:
+            conf = ServiceConfig().load_or_create()
+        except (OSError, ValueError) as exc:
+            self._message_box(messagebox.showerror, APP_TITLE,
+                              'Nelze načíst konfiguraci webové služby: ' + str(exc))
+            return
+        url = conf.links('127.0.0.1')[page] + ('#' + section if section else '')
+        if self._full_service_ready(conf):
+            webbrowser.open(url)
+            return
+        if not self._message_box(messagebox.askyesno, 'Spustit plnou APRS webovou službu',
+                'Zprávy, objekty a diagnostika běží v plné webové službě.\n\n'
+                'Přejít do ní? Klasický monitor ukončí příjem, vypne své DIGI/iGate, '
+                'uvolní USB COM a spustí samostatnou webovou službu.\n\n'
+                'Současný stav rádia není možné sdílet mezi oběma procesy.'):
+            return
+        chosen = self.port_choice.get().split(' | ', 1)[0].strip()
+        if chosen:
+            try:
+                conf.update({'serial': {'port': chosen}})
+            except (ValueError, OSError) as exc:
+                self._message_box(messagebox.showerror, APP_TITLE, str(exc))
+                return
+
+        # Stop the old radio owner before starting the new one.
+        self.digi.stop()
+        if self.reader:
+            self.reader.digi_allowed.clear()
+        if self.stop_event:
+            self.stop_event.set()
+        if self.reader and self.reader.is_alive():
+            self.reader.join(timeout=4.0)
+        if self.reader and self.reader.is_alive():
+            self._message_box(messagebox.showerror, APP_TITLE,
+                              'Sériový port se nepodařilo uvolnit. Zkus nejprve Odpojit.')
+            return
+        if self.igate_client is not None:
+            self.igate_client.stop.set()
+        self.active = False
+        self.connecting = False
+        self.web.close()
+        try:
+            flags = getattr(subprocess, 'CREATE_NEW_CONSOLE', 0) if sys.platform == 'win32' else 0
+            process = subprocess.Popen([sys.executable, str(Path(__file__).resolve().with_name('aprs_service.py'))],
+                                       cwd=str(Path(__file__).resolve().parent), creationflags=flags)
+        except OSError as exc:
+            self._message_box(messagebox.showerror, APP_TITLE, 'Webovou službu nelze spustit: ' + str(exc))
+            try:
+                self.web.start(lan=False)
+            except OSError:
+                pass
+            return
+
+        def check_start(attempt=0):
+            if self._full_service_ready(conf):
+                webbrowser.open(url)
+                self.root.destroy()
+            elif process.poll() is not None or attempt >= 40:
+                self._message_box(messagebox.showerror, APP_TITLE,
+                                  'Webová služba se nespustila. Zkontroluj okno konzole a nastavení portu.')
+                try:
+                    self.web.start(lan=False)
+                except OSError:
+                    pass
+            else:
+                self.root.after(250, lambda: check_start(attempt + 1))
+        self.root.after(350, check_start)
 
     def tx_dialog(self):
         win = tk.Toplevel(self.root)

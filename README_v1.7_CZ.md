@@ -90,3 +90,15 @@ python3 -m unittest discover -p 'test*.py' -q
 Průvodce: [README.md](README.md), [README_EN.md](README_EN.md). APRS reference: <https://www.aprs.org/doc/APRS101.PDF>.
 
 73, **OK5TVR**
+
+## Navigace mezi stránkami (oprava 1.7 RC1)
+
+Mapa nyní obsahuje viditelné odkazy **Nastavení**, **APRS zprávy**,
+**APRS objekty** a **Diagnostika**. Pro zásahy a RF TX je nutný administrátorský
+klíč z `zobrazit_odkazy_windows.bat` nebo `aprs_service.py --links`.
+Veřejný odkaz na mapu nedává automaticky oprávnění k vysílání.
+
+Původní `spustit.bat` zobrazuje pouze klasický monitor, jeho web je read-only.
+Tlačítka **APRS zprávy** a **APRS objekty** nabídnou přepnutí na
+`aprs_service.py`, přičemž před spuštěním musí být uvolněný USB COM port.
+Dva programy nesmí souběžně používat tentýž KISS TNC.
