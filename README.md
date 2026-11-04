@@ -1,49 +1,98 @@
 # OK5TVR APRS KISS Monitor
 
-**Release candidate 1.6.0-rc1 · CZ / EN · Windows / Raspberry Pi**
+**Windows / Raspberry Pi APRS monitor, one-way iGate, digipeater and messaging over USB KISS TNC**
 
-Software for **Quansheng UV-K1(8)** running F4HWN Labs KISS TNC over USB-C, and compatible USB KISS TNC devices. It monitors AX.25/APRS traffic, runs one-way RF → APRS-IS iGate and an opt-in RF digipeater, sends messages and APRS objects, and provides a local web dashboard.
+Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.7.0-rc1**.
 
-**Status:** Basic RF KISS RX and TX were verified with UV-K1(8). The newest functions and full unattended operation were verified by automated/simulated tests; actual RF transmission, APRS-IS interoperability and long-term Pi operation still need field testing.
+> **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
 
-## Features / Funkce
+## Jazyk / Language
 
-- APRS live receiver, decoder, station list, offline map, statistics.
-- RF → APRS-IS iGate (no automatic Internet → RF routing).
-- Software DIGI with WIDE1-1, opt-in WIDEn-N/TRACE and duplicate/loop safeguards.
-- APRS messaging: Inbox / Outbox, ACK/REJ, SQLite persistence.
-- **RF APRS Objects/Items:** live/kill, symbol, GPS, path, opt-in scheduled repetition.
-- **One-shot station status and position** over RF KISS.
-- **Diagnostics & alerts:** USB reconnects, APRS-IS/DIGI status, prolonged silence and dropped packet reasons.
-- **Persistent journal:** RX/TX/IS/DROP/SYSTEM, CSV export; **configuration JSON backup / safe restore**.
-- CZ/EN switching in Windows GUI and all web pages; Raspberry Pi `systemd` headless service.
+**CZ / EN**: přepínač na webové mapě, v administraci, APRS zprávách a ve Windows GUI. Anglický návod: [README_EN.md](README_EN.md); české poznámky k v1.5: [README_v1.5_CZ.md](README_v1.5_CZ.md).
 
-## Documentation
 
-- **[Čeština – návod k verzi 1.6](README_v1.6_CZ.md)**
-- **[English – installation and usage](README_EN.md)**
-- [Changelog](CHANGELOG.md)
+## Nově v1.7: Symboly, overlay a telemetrie
 
-## Quick start / Rychlé spuštění
+- **iGate a DIGI** mají oddělené APRS symboly (tabulka `/` nebo `\\`, znak ikony, overlay A–Z / 0–9). Zobrazení na APRS mapě a volitelné APRS-IS poziční majáky používají tato nastavení.
+- **Standardní telemetrie APRS `T#`, `PARM`, `UNIT`, `EQNS`, `BITS`** za klouzavých 15 minut: RX, TX, průměr vzdáleností z reportovaných GPS, unikátní značky, úspěšně předané/opakované pakety. Interval odesílání 15/30/60 minut.
+- Telemetrie iGate se posílá **jen na APRS-IS**; DIGI také standardně na APRS-IS, nebo volitelně na **RF (KISS)** s výslovným potvrzením a odstupem 12 s na rámec. Všechny automatické výstupy jsou po nové instalaci vypnuté.
+- Web navíc zobrazuje maximum vzdálenosti, DX značku, RX/TX za minutu, USB chyby a podíl RX předaných na APRS-IS. Úspěšný zápis do USB neprokazuje fyzické RF odvysílání.
 
-Raspberry Pi OS / Debian:
+Podrobný nový návod: [README_v1.7_CZ.md](README_v1.7_CZ.md).
+
+## Nově v1.6: Diagnostika a APRS objekty
+
+V administraci je odkaz **Diagnostika / objekty**, případně otevři odkaz `operations` z příkazu `python3 aprs_service.py --links`.
+
+- **Diagnostika:** USB KISS port, počet připojení, čas posledního skutečně přijatého RF rámce, poslední chyba USB a APRS-IS, stav DIGI. USB odpojení déle než 45 s vyvolá varování na stránce (ne odeslání e-mailu). Chybějící APRS pakety **nemusí** znamenat poruchu.
+- **Provozní deník:** SQLite `operations.sqlite3`, události RX/TX/USB/DIGI/APRS-IS, důvody filtrování a CSV export (posledních 200 záznamů na stránce, max. 20 000 uchovávaných řádků).
+- **Záloha/obnova:** JSON soubor konfigurace bez APRS-IS passcode a webových klíčů. Po obnově jsou vždy deaktivované autostarty iGate/DIGI a automatické ACK. Tajné údaje se při obnově **nepřenášejí**.
+- **APRS RF objekty:** živý (LIVE) nebo ukončený (KILL) objekt, jméno až 9 znaků, GPS, symbol, komentář a RF cesta. Pouze ruční jednorázové vysílání s potvrzením.
+- **Ruční RF status a pozice:** status s volitelnou cestou a vlastní poloha podle GPS nastavení. Limit 1 provozní TX každých 30 sekund; neautomatizováno.
+
+**Pozor:** Zápis do USB fronty nepotvrzuje fyzické odvysílání. U veřejných APRS objektů i u DIGI ověř skutečný RF provoz druhým přijímačem.
+
+## Funkce
+
+- Příjem a dekódování AX.25/APRS rámců přes USB KISS; testovací TX.
+- Mapa slyšených stanic (offline podklad / volitelný CARTO) a provozní statistiky.
+- Jednosměrná iGate **RF → APRS-IS** s filtrováním duplicit.
+- Softwarový digipeater (fill-in `WIDE1-1`, volitelně regionální `WIDEn-N` / `TRACE`).
+- Vlastní GPS poloha iGate a volitelný APRS-IS poziční maják.
+- APRS zprávy: **Inbox / Outbox**, RF cesty, ACK/REJ, omezené opakování, SQLite historie.
+- Webové rozhraní z PC a telefonu; administrátorský a prohlížecí přístup.
+- Headless služba pro Raspberry Pi / Debian s automatickým znovupřipojením USB.
+- Původní samostatné okno Windows (`aprs_kiss_monitor.py`).
+
+## Požadavky
+
+- Radiostanice s firmwarem F4HWN Labs a aktivní aplikací **KISS TNC**; typicky UV-K1(8).
+- APRS v ČR: **144,800 MHz FM**, bez CTCSS/DCS, správná anténa.
+- Python 3.10 nebo novější a knihovna `pyserial`.
+- Pro grafické okno na desktopu je potřebný Tkinter; pro webovou službu nikoli.
+
+## Rychlé spuštění ve Windows
+
+1. Připoj UV-K1(8) přes datový kabel USB-C a spusť v radiostanici `KISS TNC`.
+2. Spusť `spustit_sluzbu_windows.bat` (nová webová služba).
+3. V druhém okně spusť `zobrazit_odkazy_windows.bat` a otevři odkaz **map**, **admin** nebo **messages**.
+4. Ve správě nastav COM port, značku a případně APRS-IS přihlašování. Příjem zkus před zapnutím automatického vysílání.
+
+Starší GUI spouští `spustit.bat`; **nespouštěj ho současně s webovou službou na stejném COM portu**.
+
+## Raspberry Pi OS / Debian
 
 ```sh
-git clone https://github.com/ok5tvr/OK5TVR-APRS-KISS-Monitor.git
-cd OK5TVR-APRS-KISS-Monitor
 sh install_raspberry.sh --lan
+sudo systemctl status ok5tvr-aprs
 python3 /opt/ok5tvr-aprs/aprs_service.py --links
 ```
 
-Windows web service: `spustit_sluzbu_windows.bat` → `zobrazit_odkazy_windows.bat`. Desktop monitor: `spustit.bat` (do not use the same COM port in two programs).
+`--lan` zpřístupní web ostatním zařízením v **důvěryhodné** lokální síti. Pro místní provoz bez sdílení použij `sh install_raspberry.sh` bez přepínače.
 
-**Important:** Automatic RF TX and iGate are off by default. Web admin uses token-based HTTP; never expose it to the public Internet. USB serial write does **not** prove an on-air transmission. Keep `config.json`, `secrets.json` and SQLite databases out of public commits. APRS objects and other transmitted data are public.
+## Bezpečnost a provozní upozornění
 
-## Tests
+- **Automatický DIGI TX, iGate a automatické ACK jsou při nové instalaci vypnuté.** Vysílání zapínej až po ověření lokálních pravidel APRS.
+- Web používá HTTP s přístupovými klíči v URL. **Nevystavuj jej přímo do internetu.** Vzdálený přístup řeš VPN a oddělenou domácí síť.
+- Data zpráv na APRS nejsou důvěrná. Nezveřejňuj `config.json`, `secrets.json`, `messages.sqlite3` ani přístupové tokeny.
+- Pro přímé TX přes KISS musí mít radiostanice povolený TX (nikoliv `RX ONLY`).
+- Tato verze **neobsahuje** automatické předávání APRS-IS → RF.
+
+## Dokumentace
+
+Pro přepínání CZ/EN a aktualizaci viz [README_v1.5_CZ.md](README_v1.5_CZ.md). Podrobný popis v1.4: [README_v1.4_CZ.md](README_v1.4_CZ.md). English: [README_EN.md](README_EN.md).
+
+## Testy
 
 ```sh
 python3 -m pip install -r requirements.txt
 python3 -m unittest discover -p 'test*.py' -q
 ```
 
-73, **OK5TVR**
+## Poděkování / odkazy
+
+- [F4HWN firmware pro Quansheng UV-K1 / K5 V3](https://github.com/armel/uv-k1-k5v3-firmware-custom)
+- [APRS Protocol Reference](https://www.aprs.org/doc/APRS101.PDF)
+- [APRS-IS IGate Details](https://www.aprs-is.net/IGateDetails.aspx)
+
+**73, OK5TVR**

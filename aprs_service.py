@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""OK5TVR APRS v1.6: headless Windows/Linux KISS receiver, RF->IS iGate and DIGI.
+"""OK5TVR APRS v1.7: headless Windows/Linux KISS receiver, RF->IS iGate and DIGI.
 
 Shared protocol, serial, APRS-IS and digipeater modules are also used by the GUI.
 Safe defaults: no automatic RF TX and no APRS-IS forwarding on fresh install.
@@ -12,7 +12,6 @@ Usage: python3 aprs_service.py --init
 from __future__ import annotations
 import argparse
 import collections
-from datetime import datetime, timezone
 import logging
 import queue
 import signal
@@ -22,12 +21,13 @@ from pathlib import Path
 
 from aprs_digi import DigiConfig, DigiRepeater
 from aprs_messages import MessageManager
-from aprs_operations import (validate_object, object_info, status_info, position_info, make_rf_frame, MAX_OBJECTS)
-from aprs_journal import OperationsJournal
 from aprs_features import (APRSISClient, MonitorState, encode_ui_packet,
                            encode_kiss_data, igate_tnc2)
 from aprs_serial import SerialReader
 from aprs_station import aprsis_position
+from aprs_telemetry import RadioWindow, symbol_code, aprsis_telemetry_lines
+from aprs_operations import Journal, backup_document, validate_restore_document, validate_object_request, object_payload
+from aprs_messages import normalize_path
 from service_config import ServiceConfig, DEFAULT_PATH
 from web_panel import WebPanel, local_ipv4
 
@@ -89,19 +89,26 @@ class APRSService:
                             admin_token=config.secrets['admin_token'])
         self.force_lan = force_lan
         self.stats = collections.Counter()
-        self.journal = OperationsJournal(config.path.with_name('events.sqlite3'))
-        self.started_monotonic = time.monotonic()
-        self.usb_connected_at = None
-        self.usb_disconnected_at = self.started_monotonic
-        self.last_valid_rx_at = None
-        self.last_valid_rx_utc = None
+        self.started_at = time.monotonic()
+        self.last_frame_at = None
+        self.last_rx_utc = None
         self.last_usb_error = ''
-        self.usb_connect_count = 0
-        self._last_health_alert = None
-        self.object_schedule_enabled = False  # never auto-start scheduled RF after a reboot
-        self.object_next_due = {}
+        self.last_igate_error = ''
+        self.serial_connections = 0
+        self.journal = Journal(config.path.with_name('operations.sqlite3'))
         self.last_object_tx = float('-inf')
-        self._journal('SYSTEM', 'SERVICE', detail='APRS headless service initialized', outcome='RX only')
+        self.object_history = collections.deque(maxlen=40)
+        self.telemetry = RadioWindow()
+        self.telemetry_seq = {'igate': 0, 'digi': 0}
+        self.telemetry_next = time.monotonic() + config.data['telemetry']['interval_minutes'] * 60
+        self.telemetry_epoch = -1
+        self.telemetry_metadata_at = {}
+        self.telemetry_last_sent = {}
+        self.last_manual_telemetry = float('-inf')
+        self.digi_last_position = float('-inf')
+        self.rf_telemetry_pending = collections.deque(maxlen=8)
+        self.rf_telemetry_next_tx = 0.0
+        self.next_telemetry_ui = 0.0
         self.running = False
 
     def _make_digi(self):
@@ -114,7 +121,17 @@ class APRSService:
         self.state.set_own_position({
             'call': self.config.data['igate']['call'],
             'lat': p['latitude'], 'lon': p['longitude'],
-            'beacon': p['beacon_enabled'], 'comment': p['comment']
+            'beacon': p['beacon_enabled'], 'comment': p['comment'],
+            'symbol': symbol_code(self.config.data['igate']['symbol_table'],
+                                  self.config.data['igate']['symbol'],
+                                  self.config.data['igate']['overlay'])
+        } if p['latitude'] is not None else None)
+
+        d=self.config.data['digi']
+        self.state.set_digi_position({
+            'call':d['call'], 'lat':p['latitude'], 'lon':p['longitude'],
+            'active':self.digi.enabled,
+            'symbol':symbol_code(d['symbol_table'], d['symbol'], d['overlay'])
         } if p['latitude'] is not None else None)
 
     def _beacon_line(self):
@@ -122,7 +139,10 @@ class APRSService:
         if not p['beacon_enabled']:
             return None
         return aprsis_position(self.config.data['igate']['call'], p['latitude'],
-                               p['longitude'], p['comment'], 'R&')
+                               p['longitude'], p['comment'],
+                               symbol_code(self.config.data['igate']['symbol_table'],
+                                           self.config.data['igate']['symbol'],
+                                           self.config.data['igate']['overlay']))
 
     # Methods invoked by local web request handlers; perform changes on the
     # service thread. Never directly mutate running RF/IGate state from HTTP.
@@ -137,55 +157,41 @@ class APRSService:
         result['radio_ready'] = self.radio_ready
         return result
 
-    def _journal(self, direction, subsystem, source='', destination='', path='', detail='', outcome=''):
-        try:
-            self.journal.add(direction, subsystem, source, destination, path, detail, outcome)
-        except Exception as exc:
-            LOG.error('Provozní deník: %s', exc)
-
     def diagnostics_snapshot(self):
-        now = time.monotonic()
-        idle = (now - self.last_valid_rx_at if self.last_valid_rx_at is not None
-                else (now - self.usb_connected_at if self.usb_connected_at is not None else None))
-        h = self.config.data['health']
-        age = round(idle, 1) if idle is not None else None
-        if not self.radio_ready:
-            health = 'disconnected'
-        elif idle is not None and idle >= h['quiet_warning_minutes'] * 60:
-            health = 'quiet'  # traffic silence is not proof of broken radio firmware
-        else:
-            health = 'connected_unverified'
-        return {'health': health, 'usb_connected': self.radio_ready,
-                'radio_activity_confirmed': self.last_valid_rx_at is not None,
-                'last_rx_utc': self.last_valid_rx_utc, 'seconds_without_aprs': age,
-                'reconnects': max(0, self.usb_connect_count - 1),
-                'port': self.reader.port if self.reader else self.config.data['serial']['port'],
-                'last_usb_error': self.last_usb_error,
-                'next_retry_seconds': max(0, round(self.next_serial_attempt - now)) if not self.radio_ready else 0,
-                'aprsis_connected': bool(self.igate_client and self.igate_client.connected.is_set()),
-                'aprsis_status': self.state.igate_status,
-                'digi': self.digi.snapshot(),
-                'messages_pending': self.messages.snapshot()['stats']['pending'],
-                'object_schedule_enabled': self.object_schedule_enabled,
-                'objects_saved': len(self.config.data['objects']['entries']),
-                'log_entries': self.journal.count(), 'uptime_seconds': round(now - self.started_monotonic),
-                'counters': dict(self.stats),
-                'warning': ('USB KISS odpojeno; probíhá opakované připojování.' if health == 'disconnected' else
-                            'Dlouho nebyl přijat žádný platný APRS rámec. Neznamená to jistou poruchu TNC.' if health == 'quiet' else '')}
+        now=time.monotonic()
+        return {
+            'uptime_s':round(now-self.started_at), 'radio_connected':self.radio_ready,
+            'usb_alert': bool(not self.radio_ready and now-self.started_at>45),
+            'usb_port':str(self.reader.port) if self.reader else '',
+            'usb_connections':self.serial_connections,
+            'last_rf_frame_utc':self.last_rx_utc,
+            'seconds_since_rf':None if self.last_frame_at is None else round(now-self.last_frame_at),
+            'radio_activity':'USB connected; RF activity not confirmed' if self.radio_ready and self.last_frame_at is None else
+                 ('RF packet recently received' if self.last_frame_at is not None and now-self.last_frame_at<300 else 'No recent RF packets (may be normal)'),
+            'last_usb_error':self.last_usb_error,
+            'igate_connected':bool(self.igate_client and self.igate_client.connected.is_set()),
+            'igate_last_error':self.last_igate_error,
+            'igate_enabled':self.igate_client is not None,
+            'digi':self.digi.snapshot(),
+            'counters':dict(self.stats),
+            'recent_objects':list(self.object_history),
+            'telemetry': self.telemetry_snapshot(),
+            'last_telemetry_utc':dict(self.telemetry_last_sent),
+        }
 
-    def journal_snapshot(self, limit=250, direction=''):
-        return {'entries': self.journal.recent(limit, direction),
-                'diagnostics': self.diagnostics_snapshot()}
+    def telemetry_snapshot(self):
+        m=self.telemetry.snapshot()
+        m['igate_enabled'] = self.config.data['igate']['telemetry_enabled']
+        m['digi_enabled'] = self.config.data['digi']['telemetry_enabled']
+        m['interval_minutes'] = self.config.data['telemetry']['interval_minutes']
+        m['digi_beacon_enabled'] = self.config.data['digi']['beacon_enabled']
+        return m
 
-    def objects_snapshot(self):
-        return {'objects': list(self.config.data['objects']['entries']),
-                'path': self.config.data['objects']['path'],
-                'source': self.config.data['igate']['call'],
-                'enabled': self.object_schedule_enabled,
-                'radio_ready': self.radio_ready}
+    def journal_snapshot(self, limit=100, category=''):
+        return self.journal.read(limit,category)
 
     def config_backup(self):
-        return self.config.export_backup()
+        return backup_document(self.config)
 
     def command(self, action, payload):
         if not self.running or self.stop.is_set():
@@ -214,159 +220,120 @@ class APRSService:
             except (ValueError, TypeError, OSError, RuntimeError) as exc:
                 response.put_nowait((False, str(exc)))
 
-    def _send_rf_operation(self, info, category, path=None):
-        if not self.radio_ready or self.reader is None:
-            raise ValueError('USB KISS TNC není připojeno.')
-        source = self.config.data['igate']['call']
-        path = self.config.data['objects']['path'] if path is None else path
-        raw = make_rf_frame(source, path, info)
-        if not self.reader.send(encode_kiss_data(raw), category=category):
-            self._journal('DROP', 'KISS', source, 'APZKIS', path, info, 'TX queue full')
-            raise ValueError('USB TX fronta je obsazená; zkus to později.')
-        self._journal('TX', 'KISS', source, 'APZKIS', path, info, 'Queued for USB (not RF confirmed)')
-        return 'APRS rámec zařazen do USB KISS fronty. Skutečný RF přenos nelze z PC potvrdit.'
-
-    def _find_object(self, name, kind):
-        for entry in self.config.data['objects']['entries']:
-            if entry['name'] == name and entry['kind'] == kind:
-                return entry
-        raise ValueError('Objekt/položka nebyla nalezena.')
-
     def _execute(self, action, data):
-        if action == 'health_save':
-            changes = data.get('health')
-            if not isinstance(changes, dict):
-                raise ValueError('Neplatné prahy diagnostiky.')
-            self.config.update({'health': changes})
-            self._journal('SYSTEM','HEALTH',outcome='Monitoring thresholds updated')
-            return 'Prahy diagnostiky uloženy; ostatní provozní funkce zůstávají beze změny.'
-        if action == 'objects_path':
-            path = data.get('path')
-            self.config.update({'objects': {'path': path}})
-            self.object_schedule_enabled = False
-            self.object_next_due.clear()
-            self._journal('SYSTEM','OBJECT',detail=self.config.data['objects']['path'],outcome='RF path updated; schedule stopped')
-            return 'RF cesta uložena. Automatické opakování objektů zastaveno.'
-        if action == 'object_save':
-            entry = validate_object(data.get('entry'))
-            existing = list(self.config.data['objects']['entries'])
-            key = (entry['name'], entry['kind'])
-            for n, old in enumerate(existing):
-                if (old['name'], old['kind']) == key:
-                    existing[n] = entry
-                    break
-            else:
-                if len(existing) >= MAX_OBJECTS:
-                    raise ValueError('Dosažen limit 20 objektů.')
-                existing.append(entry)
-            self.object_schedule_enabled = False
-            self.object_next_due.clear()
-            self.config.update({'objects': {'entries': existing}})
-            self._journal('SYSTEM', 'OBJECT', detail=entry['name'], outcome='Saved, scheduler off')
-            return 'Objekt uložen bez vysílání. Automatické opakování zastaveno.'
-        if action == 'object_remove':
-            name, kind = data.get('name'), data.get('kind', 'object')
-            self._find_object(name, kind)
-            self.object_schedule_enabled = False
-            self.object_next_due.clear()
-            entries = [x for x in self.config.data['objects']['entries'] if (x['name'], x['kind']) != (name, kind)]
-            self.config.update({'objects': {'entries': entries}})
-            self._journal('SYSTEM', 'OBJECT', detail=name, outcome='Deleted locally; no kill packet transmitted')
-            return 'Objekt odebrán z konfigurace. Pro ukončení veřejného objektu je nutné nejprve odeslat KILL.'
-        if action in ('object_send', 'object_kill'):
+        if action == 'telemetry_send_now':
             if data.get('confirm') is not True:
-                raise ValueError('Jednotlivé RF vysílání vyžaduje potvrzení.')
-            now = time.monotonic()
-            if now - self.last_object_tx < 10:
-                raise ValueError('Počkej alespoň 10 sekund mezi objektovými RF rámci.')
-            entry = self._find_object(data.get('name'), data.get('kind', 'object'))
-            payload = object_info(entry, alive=(action == 'object_send'))
-            result = self._send_rf_operation(payload, 'obj:'+entry['name'])
-            if action == 'object_kill':
-                # Do not resurrect a killed object via a previously enabled timer.
-                self.object_schedule_enabled = False
-                self.object_next_due.clear()
-                entries = list(self.config.data['objects']['entries'])
-                for e in entries:
-                    if e['name'] == entry['name'] and e['kind'] == entry['kind']:
-                        e['repeat'] = False
-                self.config.update({'objects': {'entries': entries}})
-            self.last_object_tx = now
-            self.object_next_due[(entry['kind'], entry['name'])] = now + entry['interval_minutes'] * 60
-            return result
-        if action == 'objects_on':
+                raise ValueError('APRS telemetry send requires confirmation.')
+            if time.monotonic() - self.last_manual_telemetry < 60:
+                raise ValueError('Manual APRS telemetry is limited to once per minute.')
+            is_online = bool(self.igate_client and self.igate_client.connected.is_set())
+            digi_rf = bool(self.config.data['digi']['telemetry_enabled'] and
+                           self.config.data['digi']['telemetry_transport'] == 'rf' and
+                           self.digi.enabled and self.radio_ready)
+            if not is_online and not digi_rf:
+                raise ValueError('Enable APRS-IS or an explicitly configured RF DIGI telemetry output first.')
+            count = self._telemetry_send(force_metadata=True)
+            if count == 0:
+                raise ValueError('Enable iGate or DIGI telemetry first.')
+            self.last_manual_telemetry = time.monotonic()
+            return f'Telemetry packets scheduled/submitted: {count}; route(s) per configured transport. RF requires DIGI active and uses spaced KISS frames.'
+        if action == 'restore_config':
             if data.get('confirm') is not True:
-                raise ValueError('Potvrď automatické vysílání APRS objektů.')
-            if not self.radio_ready or self.reader is None:
-                raise ValueError('TNC není připojeno.')
-            repeat = [x for x in self.config.data['objects']['entries'] if x['repeat']]
-            if not repeat:
-                raise ValueError('Žádné uložené objekty nemají povolené opakování.')
-            self.object_schedule_enabled = True
-            now = time.monotonic()
-            self.object_next_due = {(x['kind'],x['name']):now + 15 + index*60 for index,x in enumerate(repeat)}
-            self._journal('SYSTEM','OBJECT',detail=str(len(repeat))+' repeat enabled',outcome='Session only')
-            return 'Automatické opakování objektů spuštěno. Po restartu služby se samo nezapne.'
-        if action == 'objects_off':
-            self.object_schedule_enabled = False
-            self.object_next_due.clear()
-            self._journal('SYSTEM','OBJECT',outcome='Repeater stopped')
-            return 'Automatické vysílání APRS objektů zastaveno.'
-        if action in ('station_status', 'station_position'):
-            if data.get('confirm') is not True:
-                raise ValueError('RF vysílání vyžaduje potvrzení.')
-            now = time.monotonic()
-            if now - self.last_object_tx < 10:
-                raise ValueError('Omezujeme RF vysílání na jeden rámec za 10 s.')
-            if action == 'station_status':
-                payload = status_info(data.get('text'))
-            else:
-                pos = self.config.data['position']
-                if pos['latitude'] is None:
-                    raise ValueError('Nejdřív nastav vlastní GPS polohu.')
-                payload = position_info(pos['latitude'], pos['longitude'], '/', '&', pos['comment'])
-            result = self._send_rf_operation(payload, 'station')
-            self.last_object_tx = now
-            return result
-        if action == 'journal_clear':
-            if data.get('confirm') is not True:
-                raise ValueError('Potvrď smazání provozního deníku.')
-            self.journal.clear()
-            self._journal('SYSTEM', 'JOURNAL', outcome='Journal cleared by operator')
-            return 'Provozní deník vymazán.'
-        if action == 'backup_restore':
-            if data.get('confirm') is not True:
-                raise ValueError('Potvrď obnovení nastavení a zastavení provozních funkcí.')
-            backup = data.get('backup')
-            # Validate before disabling existing services or modifying the config.
-            from service_config import validate_config
-            if not isinstance(backup, dict) or backup.get('format') != 'ok5tvr-config-v1':
-                raise ValueError('Neplatný formát zálohy.')
-            validate_config(backup.get('config'))
+                raise ValueError('Obnovení nastavení vyžaduje potvrzení.')
+            restored=validate_restore_document(data.get('backup'))
+            # Always disable transmit before applying restored settings.
             self._disable_digi()
             self._disable_igate()
-            self.object_schedule_enabled = False
-            self.object_next_due.clear()
             self.messages.usb_closed()
-            previous_port = self.config.data['serial']['port']
-            self.config.restore_backup(backup)
-            m=self.config.data['messages']
-            self.messages.configure(self.config.data['igate']['call'], m['path'], m['auto_ack'],m['retry_seconds'],m['max_attempts'])
-            self.digi = self._make_digi()
-            self.state.update_digi(self.digi.snapshot())
+            old_port=self.config.data['serial']['port']
+            self.config.update(restored)
+            self.messages.configure(self.config.data['igate']['call'],
+                    self.config.data['messages']['path'],False,
+                    self.config.data['messages']['retry_seconds'],
+                    self.config.data['messages']['max_attempts'])
             self._update_position()
-            if previous_port != self.config.data['serial']['port']:
+            self.telemetry_epoch = -1
+            self.rf_telemetry_pending.clear()
+            self.digi_last_position = float('-inf')
+            self.digi=self._make_digi()
+            self.state.update_digi(self.digi.snapshot())
+            if old_port!=self.config.data['serial']['port']:
                 self._disconnect_reader()
-                self.next_serial_attempt = 0
-            self._journal('SYSTEM','BACKUP',outcome='Imported; all automatic TX disabled')
-            return 'Záloha načtena; iGate, DIGI, ACK a plánované objekty jsou vypnuté. APRS-IS heslo a webové klíče se neimportují.'
+                self.next_serial_attempt=0
+            self.journal.log('CONFIG','restore',detail='Credentials preserved; RF/IS autostart off')
+            return 'Konfigurace obnovena. RF/IS autostart a automatické ACK jsou vypnuté; případné další nastavení ověř.'
+        if action == 'status_send':
+            if data.get('confirm') is not True:
+                raise ValueError('RF status vyžaduje potvrzení.')
+            if not self.radio_ready or self.reader is None:
+                raise ValueError('USB KISS TNC není připojeno.')
+            if time.monotonic()-self.last_object_tx<30:
+                raise ValueError('Mezi dvěma ručními APRS majáky vyčkej 30 sekund.')
+            message=data.get('text','')
+            if (not isinstance(message,str) or not 1<=len(message)<=67
+                    or any(ord(c)<32 or ord(c)>126 for c in message)):
+                raise ValueError('Status: 1–67 tisknutelných ASCII znaků.')
+            path=normalize_path(data.get('path','DIRECT'))
+            raw=encode_ui_packet(self.config.data['igate']['call'],'APRS',path,'>'+message)
+            if not self.reader.send(encode_kiss_data(raw),category='status'):
+                raise ValueError('TX fronta obsazená.')
+            self.last_object_tx=time.monotonic()
+            self.journal.log('STATUS','queued',self.config.data['igate']['call'],detail=message)
+            return 'Jednorázový APRS status předán do KISS fronty.'
+        if action == 'position_send':
+            if data.get('confirm') is not True:
+                raise ValueError('RF poziční maják vyžaduje potvrzení.')
+            if not self.radio_ready or self.reader is None:
+                raise ValueError('USB KISS TNC není připojeno.')
+            p=self.config.data['position']
+            if p['latitude'] is None or p['longitude'] is None:
+                raise ValueError('Nejprve nastav GPS polohu iGate.')
+            if time.monotonic()-self.last_object_tx<30:
+                raise ValueError('Vyčkej 30 sekund mezi RF objekty/majáky.')
+            from aprs_station import aprs_coord
+            path=normalize_path(data.get('path','DIRECT'))
+            icon=symbol_code(self.config.data['igate']['symbol_table'],
+                             self.config.data['igate']['symbol'],
+                             self.config.data['igate']['overlay'])
+            info='!'+aprs_coord(p['latitude'],True)+icon[0]+aprs_coord(p['longitude'],False)+icon[1]+p['comment']
+            raw=encode_ui_packet(self.config.data['igate']['call'],'APRS',path,info)
+            if not self.reader.send(encode_kiss_data(raw),category='position'):
+                raise ValueError('TX fronta obsazená.')
+            self.last_object_tx=time.monotonic()
+            self.journal.log('POSITION','queued',self.config.data['igate']['call'],detail=path)
+            return 'Ruční RF poloha předána do USB KISS fronty.'
+        if action == 'object_send':
+            if data.get('confirm') is not True:
+                raise ValueError('APRS object TX vyžaduje výslovné potvrzení.')
+            if not self.radio_ready or self.reader is None:
+                raise ValueError('USB KISS TNC není připojeno.')
+            if time.monotonic()-self.last_object_tx<30:
+                raise ValueError('Mezi dvěma objektovými TX vyčkej 30 sekund.')
+            obj=validate_object_request(data)
+            raw=encode_ui_packet(self.config.data['igate']['call'],'APRS',obj['path'],
+                   object_payload(obj['name'],obj['lat'],obj['lon'],obj['comment'],
+                                  obj['alive'],obj['symbol_table'],obj['symbol']))
+            if not self.reader.send(encode_kiss_data(raw),category='object'):
+                raise ValueError('TX fronta obsazená.')
+            self.last_object_tx=time.monotonic()
+            item={'name':obj['name'],'alive':obj['alive'],'lat':obj['lat'],'lon':obj['lon'],
+                  'path':obj['path'],'queued_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+            self.object_history.appendleft(item)
+            self.journal.log('OBJECT','queued',self.config.data['igate']['call'],obj['name'],
+                             ('live' if obj['alive'] else 'kill')+' '+obj['path'])
+            return 'APRS objekt předán do USB KISS TX fronty; fyzické RF vysílání ověř druhým přijímačem.'
         if action == 'save':
             changes = data.get('config', {})
             if not isinstance(changes, dict):
                 raise ValueError('Nastavení musí být objekt.')
-            if any(not isinstance(changes.get(section, {}), dict) for section in ('digi','messages','objects','health')):
+            if any(not isinstance(changes.get(section, {}), dict) for section in ('digi','messages')):
                 raise ValueError('Nastavení DIGI a zpráv musí být objekt.')
-            requested_digi_autostart = changes.get('digi', {}).get('autostart', False)
+            updated_digi = changes.get('digi', {})
+            requested_digi_autostart = updated_digi.get('autostart', False)
+            rf_telem_enabled = (updated_digi.get('telemetry_enabled',self.config.data['digi']['telemetry_enabled']) and
+                                updated_digi.get('telemetry_transport',self.config.data['digi']['telemetry_transport']) == 'rf')
+            if rf_telem_enabled and data.get('confirm_rf_telemetry') is not True:
+                raise ValueError('Automatic DIGI RF telemetry requires explicit confirmation.')
             if requested_digi_autostart and data.get('confirm_auto_tx') is not True:
                 raise ValueError('Automatický RF TX po startu vyžaduje výslovné potvrzení.')
             if changes.get('messages', {}).get('auto_ack') is True and data.get('confirm_auto_ack') is not True:
@@ -385,8 +352,11 @@ class APRSService:
             self.messages.configure(self.config.data['igate']['call'], m['path'], m['auto_ack'],
                                     m['retry_seconds'], m['max_attempts'])
             self._update_position()
-            self.object_schedule_enabled = False
-            self.object_next_due.clear()
+            self.telemetry_epoch = -1
+            self.telemetry_next = time.monotonic() + self.config.data['telemetry']['interval_minutes'] * 60
+            self.telemetry_metadata_at.clear()
+            self.rf_telemetry_pending.clear()
+            self.digi_last_position = float('-inf')
             # No silent change to an already-running RF DIGI configuration.
             if self.want_digi:
                 self._disable_digi()
@@ -442,7 +412,7 @@ class APRSService:
             if time.monotonic() - self.last_manual_tx < 30:
                 raise ValueError('Mezi testy TX vyčkej alespoň 30 sekund.')
             call = self.config.data['igate']['call']
-            raw = encode_ui_packet(call, 'APRS', '', '>OK5TVR APRS KISS v1.6 test')
+            raw = encode_ui_packet(call, 'APRS', '', '>OK5TVR APRS KISS v1.7 test')
             if not self.reader.send(encode_kiss_data(raw), category='manual'):
                 raise ValueError('TX fronta je obsazená. Zkus to později.')
             self.last_manual_tx = time.monotonic()
@@ -473,24 +443,27 @@ class APRSService:
         if old:
             old.stop.set()
             old.join(timeout=2.5)
+        self.telemetry_epoch = -1
         self.state.update_status(igate='Vypnuto')
 
     def _enable_digi(self):
         if not self.radio_ready or self.reader is None:
             return
         self.digi.start()
-        self._journal('SYSTEM','DIGI',outcome='Enabled by operator/config')
         self.reader.digi_allowed.set()
         self.state.update_digi(self.digi.snapshot())
+        self.digi_last_position=float('-inf')
+        self._update_position()
         LOG.warning('RF DIGI ZAPNUTO: %s %s', self.digi.config.call, self.digi.config.mode)
 
     def _disable_digi(self):
         self.want_digi = False
+        self.rf_telemetry_pending.clear()
         if self.reader:
             self.reader.digi_allowed.clear()
         self.digi.stop()
         self.state.update_digi(self.digi.snapshot())
-        self._journal('SYSTEM','DIGI',outcome='Disabled')
+        self._update_position()
 
     def _disconnect_reader(self):
         if self.reader is not None:
@@ -501,12 +474,11 @@ class APRSService:
             previous.join(timeout=1.0)
             self.reader = None
         self.radio_ready = False
-        self.usb_disconnected_at = time.monotonic()
-        self.object_schedule_enabled = False  # do not resume unattended RF after USB loss
-        self.object_next_due.clear()
+        self.rf_telemetry_pending.clear()
         self.messages.usb_closed()
         self.digi.stop()
         self.state.update_digi(self.digi.snapshot())
+        self._update_position()
         self.state.update_status(radio='Odpojeno')
 
     def _connect_tick(self):
@@ -515,9 +487,9 @@ class APRSService:
         port = find_radio_port(self.config.data['serial']['port'])
         self.next_serial_attempt = time.monotonic() + self.config.data['serial']['retry_seconds']
         if port is None:
-            self.stats['usb_discovery_fail'] += 1
             self.state.update_status(radio='USB nenalezeno / více portů; nastav port')
             if time.monotonic() - self.last_serial_warning > 45:
+                self.journal.log('USB','missing',detail='Port not found or ambiguous')
                 LOG.warning('USB KISS port nenalezen/nejednoznačný; zvol /dev/ttyACM0 nebo COMx.')
                 self.last_serial_warning = time.monotonic()
             return
@@ -540,12 +512,10 @@ class APRSService:
             if session == -1:
                 continue  # old GUI-style events; headless APRS-IS has its own queue
             if event == 'connected':
-                self.usb_connect_count += 1
-                self.usb_connected_at = time.monotonic()
-                self.usb_disconnected_at = None
-                self._last_health_alert = None
-                self._journal('SYSTEM', 'KISS', detail=str(value), outcome='USB opened; RF health unverified')
                 self.radio_ready = True
+                self.serial_connections += 1
+                self.last_usb_error=''
+                self.journal.log('USB','connected',detail=str(value))
                 self.state.update_status(radio='Připojeno '+str(value))
                 LOG.info('USB KISS připojeno: %s', value)
                 if self.want_digi:
@@ -553,18 +523,23 @@ class APRSService:
             elif event == 'frame':
                 self._on_frame(value)
             elif event == 'tx_written':
-                category = value.get('category', '') if isinstance(value, dict) else ''
-                self.stats['tx_usb_written'] += 1
-                self._journal('TX', 'KISS', detail=category, outcome='USB written; RF unverified')
+                self.journal.log('TX','written',detail=str(value))
+                self.stats['tx_written']+=1
                 self.state.note_tx()
+                if isinstance(value, dict):
+                    category=value.get('category','unknown')
+                    self.telemetry.record_tx(category)
+                    if category == 'telemetry_rf':
+                        self.journal.log('TELEM','rf-usb-written',self.config.data['digi']['call'])
                 if isinstance(value, dict) and value.get('category', '').startswith(('msg:', 'msgack:')):
                     self.messages.tx_written(value['category'])
                 if isinstance(value, dict) and value.get('category') == 'digi':
                     self.digi.mark_written()
                     self.state.update_digi(self.digi.snapshot())
             elif event == 'tx_error':
-                self.stats['tx_usb_errors'] += 1
-                self._journal('DROP', 'KISS', detail=str(value), outcome='USB write error')
+                self.journal.log('TX','error',detail=str(value))
+                self.stats['tx_error']+=1
+                self.telemetry.record_tx_error()
                 LOG.warning('TX USB selhal: %s', value)
                 if isinstance(value, dict) and value.get('category', '').startswith(('msg:', 'msgack:')):
                     self.messages.tx_error(value['category'], value.get('error', 'Chyba USB'))
@@ -572,15 +547,16 @@ class APRSService:
                     self.digi.mark_error()
                     self.state.update_digi(self.digi.snapshot())
             elif event == 'invalid':
+                self.journal.log('KISS','invalid',detail=str(value))
                 self.stats['invalid'] += 1
-                self._journal('DROP', 'KISS', detail=value, outcome='Invalid KISS')
             elif event == 'error':
-                self.last_usb_error = str(value)[:110]
-                self._journal('SYSTEM','KISS',detail=str(value),outcome='Serial error')
+                self.last_usb_error=str(value)
+                self.journal.log('USB','error',detail=str(value))
                 LOG.warning('Chyba USB KISS: %s', value)
                 self.state.update_status(radio='Chyba USB: '+str(value)[:95])
             elif event == 'closed':
-                self._journal('SYSTEM','KISS',outcome='USB disconnected; reconnect scheduled')
+                self.journal.log('USB','disconnected')
+                self.stats['usb_disconnects']+=1
                 self._disconnect_reader()
                 LOG.info('USB odpojeno, automatický pokus o opětovné připojení.')
         # Only consume events from the current APRS-IS session. A disconnected
@@ -592,65 +568,62 @@ class APRSService:
                 except queue.Empty:
                     break
                 if event == 'igate_status':
-                    self._journal('SYSTEM', 'APRS-IS', detail=value, outcome='Connection state')
                     self.state.update_status(igate=value)
                 elif event == 'igate_sent':
-                    self.stats['igate_written'] += 1
-                    self._journal('IS','APRS-IS',detail=value,outcome='Sent to server socket')
+                    self.journal.log('IGATE','sent',detail=str(value))
+                    self.stats['igate_sent']+=1
                     self.state.note_igate(True)
+                    self.telemetry.record_gate()
+                elif event == 'igate_local_sent':
+                    kind = value.get('kind', 'unknown') if isinstance(value,dict) else 'unknown'
+                    self.stats['aprsis_local_'+kind] += 1
+                    if kind == 'digi_beacon':
+                        self.journal.log('BEACON','sent',self.config.data['digi']['call'],detail='APRS-IS DIGI position')
+                    elif kind == 'telemetry':
+                        self.journal.log('TELEM','sent',detail='APRS-IS local telemetry')
                 elif event == 'igate_beacon':
-                    self._journal('IS','APRS-IS',detail=value,outcome='Position beacon sent')
                     self.state.note_beacon()
                 elif event == 'igate_error':
-                    self._journal('DROP','APRS-IS',detail=value,outcome='Network error')
+                    self.last_igate_error=str(value)
+                    self.journal.log('IGATE','error',detail=str(value))
                     self.state.update_status(igate='Chyba: '+str(value)[:120])
                     LOG.warning('APRS-IS: %s', value)
 
     def _on_frame(self, packet):
-        if (packet.source == '?' or packet.control != 0x03 or packet.pid != 0xf0):
-            self.stats['invalid_aprs'] += 1
-            self._journal('DROP','KISS',source=packet.source,destination=packet.destination,
-                          path=packet.path,detail=packet.summary,outcome='Not a valid APRS UI frame')
-            self.state.add(packet)
-            return
-        self.last_valid_rx_at = time.monotonic()
-        self.last_valid_rx_utc = datetime.now(timezone.utc).isoformat(timespec='seconds')
-        self.stats['rx_valid'] += 1
-        self._journal('RX','KISS', source=packet.source, destination=packet.destination,
-                      path=packet.path,detail=packet.summary,outcome=packet.kind)
+        self.last_frame_at=time.monotonic()
+        self.last_rx_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+        self.stats['rx']+=1
+        loc=self.config.data['position']
+        own=(loc['latitude'],loc['longitude']) if loc['latitude'] is not None else None
+        if not packet.simulated and packet.source != '?':
+            self.telemetry.record_rx(packet.source, packet.latitude, packet.longitude,
+                                     own_position=own,position_label=packet.position_label)
+        self.journal.log('RX','accepted',packet.source,packet.destination,
+                         (packet.raw_info.decode('latin-1','replace') if isinstance(packet.raw_info,bytes) else str(packet.raw_info))[:250])
         msg = self.messages.receive(packet, self.radio_ready)
         if msg:
             LOG.info('APRS zpráva: %s od %s', msg.get('kind'), msg.get('from'))
         if self.digi.enabled and packet.raw_ax25:
-            reason = self.digi.receive(packet.raw_ax25)
-            if reason:
-                direction = 'TX' if reason.startswith('Plánováno') else 'DROP'
-                self._journal(direction,'DIGI', packet.source, packet.destination, packet.path,
-                              packet.summary,reason)
+            reason=self.digi.receive(packet.raw_ax25)
+            self.journal.log('DIGI','checked',packet.source,packet.destination,reason)
             self.state.update_digi(self.digi.snapshot())
         self.state.add(packet)
         if self.igate_client and self.igate_client.connected.is_set():
             line, reason = igate_tnc2(packet, self.igate_client.call)
+            if not line:
+                self.journal.log('IGATE','rejected',packet.source,packet.destination,reason)
             if line:
                 now = time.monotonic()
                 key = (packet.source, packet.destination, packet.raw_info)
                 if now - self.gate_cache.get(key, float('-inf')) > 30:
                     if self.igate_client.enqueue(line):
+                        self.journal.log('IGATE','queued',packet.source,packet.destination)
                         self.gate_cache[key] = now
-                        self._journal('IS','APRS-IS',packet.source,packet.destination,packet.path,
-                                      packet.summary,'Queued to APRS-IS')
                     else:
-                        self._journal('DROP','APRS-IS',packet.source,packet.destination,packet.path,
-                                      packet.summary,'APRS-IS queue full')
                         self.state.note_igate(False)
-                else:
-                    self._journal('DROP','APRS-IS',packet.source,packet.destination,packet.path,
-                                  packet.summary,'Duplicate within 30 s')
+                        self.journal.log('IGATE','queue-full',packet.source,packet.destination)
                 if len(self.gate_cache) > 4000:
                     self.gate_cache = {key:stamp for key,stamp in self.gate_cache.items() if now-stamp < 60}
-            else:
-                self._journal('DROP','APRS-IS',packet.source,packet.destination,packet.path,
-                              packet.summary,reason)
         if self.state.rx % 50 == 0:
             LOG.info('APRS RF RX: %s platných rámců', self.state.rx)
 
@@ -664,50 +637,101 @@ class APRSService:
         if p is None:
             return
         if self.reader.send(encode_kiss_data(p.raw), category='digi'):
+            self.journal.log('DIGI','queued',detail=p.input_path)
             self.digi.mark_queued(p.signature)
             self.state.update_digi(self.digi.snapshot())
 
-    def _object_tick(self):
-        if not self.object_schedule_enabled or not self.radio_ready or not self.reader:
-            return
-        now = time.monotonic()
-        if now - self.last_object_tx < 45:
-            return
-        for entry in self.config.data['objects']['entries']:
-            if not entry['repeat']:
-                continue
-            key = (entry['kind'], entry['name'])
-            if now < self.object_next_due.get(key, now+60):
-                continue
-            try:
-                payload = object_info(entry, alive=True)
-                self._send_rf_operation(payload, 'obj:'+entry['name'])
-            except ValueError as exc:
-                self._journal('DROP','OBJECT',detail=entry['name'],outcome=str(exc))
-                return
-            self.last_object_tx = now
-            self.object_next_due[key] = now + entry['interval_minutes'] * 60
-            break
+    def _telemetry_flags(self):
+        m=self.telemetry.snapshot()
+        p=self.config.data['position']
+        return dict(usb=self.radio_ready,
+                    aprsis=bool(self.igate_client and self.igate_client.connected.is_set()),
+                    digi=self.digi.enabled, heard=m['rx_packets']>0,
+                    tx_error=m['tx_errors']>0, gps=p['latitude'] is not None,
+                    telemetry=True, reserved=False)
 
-    def _health_tick(self):
+    def _telemetry_send(self, force_metadata=False):
+        client=self.igate_client
+        is_online=bool(client and client.connected.is_set())
         now=time.monotonic()
-        config=self.config.data['health']
-        if not self.radio_ready:
-            age=now - (self.usb_disconnected_at or self.started_monotonic)
-            alert='usb_offline' if age >= config['disconnect_warning_seconds'] else None
-        elif self.usb_connected_at is not None:
-            last = self.last_valid_rx_at if self.last_valid_rx_at is not None else self.usb_connected_at
-            alert='quiet' if now - last >= config['quiet_warning_minutes']*60 else None
-        else:
-            alert=None
-        if alert != self._last_health_alert:
-            if alert:
-                self._journal('SYSTEM','HEALTH',outcome=(
-                    'USB disconnected (no radio port)' if alert == 'usb_offline'
-                    else 'No recent APRS frames; cannot prove firmware failure'))
-            elif self._last_health_alert:
-                self._journal('SYSTEM','HEALTH',outcome='Status restored')
-            self._last_health_alert=alert
+        metrics=self.telemetry.snapshot()
+        flags=self._telemetry_flags()
+        total=0
+        for role in ('igate','digi'):
+            opts=self.config.data[role]
+            if not opts['telemetry_enabled']:
+                continue
+            if role == 'digi' and (not self.digi.enabled or not self.radio_ready):
+                continue
+            rf = role == 'digi' and opts['telemetry_transport'] == 'rf'
+            if rf:
+                if self.rf_telemetry_pending or not self.reader:
+                    continue  # no overlapping RF metadata / telemetry bursts
+            elif not is_online:
+                continue
+            call=opts['call']
+            meta_due=(force_metadata or now-self.telemetry_metadata_at.get(role,float('-inf'))>=6*3600)
+            seq=self.telemetry_seq[role]
+            packets=aprsis_telemetry_lines(call,seq,metrics,role,flags,metadata=meta_due)
+            if rf:
+                # Only a local KISS radio transmits. Deliberately paced below
+                # one frame per 12s to avoid metadata bursts on 144.800 MHz.
+                from aprs_features import encode_ui_packet, encode_kiss_data
+                for line in packets:
+                    info=line.split('TCPIP*:',1)[1]
+                    raw=encode_ui_packet(call,'APRS',opts['telemetry_rf_path'],info)
+                    self.rf_telemetry_pending.append(encode_kiss_data(raw))
+                    total+=1
+                self.rf_telemetry_next_tx=now
+                self.journal.log('TELEM','rf-scheduled',call,detail=f'{total} frames / path {opts["telemetry_rf_path"] or "DIRECT"}')
+            else:
+                for line in packets:
+                    if not client.enqueue_local(line,'telemetry'):
+                        return total  # preserve sequence; no queue flooding on failures
+                    total+=1
+            if meta_due:
+                self.telemetry_metadata_at[role]=now
+            self.telemetry_seq[role]=(seq+1)%1000
+            self.telemetry_last_sent[role]=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+        return total
+
+    def _rf_telemetry_tick(self):
+        if not self.rf_telemetry_pending or not self.digi.enabled or not self.radio_ready or self.reader is None:
+            return
+        now=time.monotonic()
+        if now < self.rf_telemetry_next_tx:
+            return
+        frame=self.rf_telemetry_pending[0]
+        if self.reader.send(frame, category='telemetry_rf'):
+            self.rf_telemetry_pending.popleft()
+            self.rf_telemetry_next_tx=now+12
+
+    def _telemetry_tick(self):
+        now=time.monotonic()
+        if now >= self.next_telemetry_ui:
+            self.state.set_telemetry(self.telemetry_snapshot())
+            self.next_telemetry_ui = now + 2
+        self._rf_telemetry_tick()
+        now=time.monotonic()
+        if now >= self.telemetry_next:
+            self._telemetry_send()
+            self.telemetry_next=now+self.config.data['telemetry']['interval_minutes']*60
+        client=self.igate_client
+        if client is None or not client.connected.is_set():
+            return
+        # On reconnect resend parameter metadata, but not the T# report early.
+        epoch=getattr(client,'connection_epoch',0)
+        if epoch != self.telemetry_epoch:
+            self.telemetry_epoch=epoch
+            self.telemetry_metadata_at.clear()
+            self.digi_last_position=float('-inf')
+        d=self.config.data['digi'];p=self.config.data['position']
+        if (d['beacon_enabled'] and self.digi.enabled and self.radio_ready and
+            p['latitude'] is not None and now-self.digi_last_position >= d['beacon_interval']*60):
+            line=aprsis_position(d['call'],p['latitude'],p['longitude'],
+                   d['beacon_comment'], symbol_code(d['symbol_table'],d['symbol'],d['overlay']))
+            if client.enqueue_local(line,'digi_beacon'):
+                self.digi_last_position=now
 
     def run(self):
         # Web server always remains independent of Tkinter and can serve a Pi.
@@ -731,8 +755,7 @@ class APRSService:
                 self._connect_tick()
                 self._messages_tick()
                 self._digi_tick()
-                self._object_tick()
-                self._health_tick()
+                self._telemetry_tick()
                 self.stop.wait(0.08)
         finally:
             self.running = False

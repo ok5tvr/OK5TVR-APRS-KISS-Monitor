@@ -1,61 +1,88 @@
-# OK5TVR APRS KISS Monitor (Windows / Raspberry Pi)
+# OK5TVR APRS KISS Monitor — English guide
 
-**Version 1.6.0-rc1** – a bilingual Czech/English APRS KISS TNC monitor, one-way RF → APRS-IS iGate, controlled digipeater, messaging, objects/items, diagnostics, and local web panel.
+**Version 1.7.0-rc1** · Windows / Raspberry Pi OS / Debian · Python 3.10+
 
-Designed for **Quansheng UV-K1(8)** with **F4HWN Labs KISS TNC** over USB-C. Basic RX/TX has been tested with a real radio; new object TX, automated DIGI, full iGate operation and 24/7 Raspberry Pi operation still require on-air verification. This is a release candidate, not a declared stable release.
+A personal amateur-radio project for a **Quansheng UV-K1(8)** running F4HWN Labs with the **KISS TNC** application. Designed for 1200-baud AX.25 APRS over USB CDC (typically 144.800 MHz FM in Czechia).
 
-## Capabilities
+## Main features
 
-- USB KISS (AX.25) RX and user-confirmed TX; live decoder and offline APRS map.
-- APRS-IS one-way iGate (RF → Internet), with loop/duplicate suppression.
-- Conservative fill-in WIDE1-1 or opt-in regional WIDEn-N/TRACE digipeating.
-- Addressed APRS messages: Inbox/Outbox, ACK/REJ, retry limits and SQLite history.
-- **APRS Objects and Items:** save location, symbol, comment, path, send LIVE/KILL, opt-in interval repetition; also manual station position and status packets.
-- **Diagnostics & journal:** KISS, APRS-IS and DIGI status; timestamped RX/TX/IS/DROP/SYSTEM entries with drop reasons, SQLite history and CSV export.
-- **TNC health monitoring:** alerts for disconnected USB or extended silence. A silent channel does **not** prove the radio or KISS firmware has failed.
-- **Portable configuration backup/restore:** JSON without passcodes, bearer tokens or database history. Autostart iGate/DIGI and auto ACK are disabled on import.
-- Windows desktop GUI and Raspberry Pi / Debian `systemd` service, plus read-only map and token-protected admin pages.
-- Live **CZ / EN** switch on all web pages and Windows desktop.
+- USB KISS TNC RX decoding and manually confirmed TX tests.
+- Map of heard stations, offline geographic data, optional CARTO map tiles.
+- One-way **RF → APRS-IS** iGate with duplicate handling and loop prevention.
+- Software APRS digipeater (fill-in WIDE1-1, optional regional WIDEn-N/TRACE); TX disabled by default.
+- GPS position of the iGate and optional APRS-IS beacon (not automatically sent on RF).
+- APRS messages over RF: Inbox, Outbox, configurable target and path, ACK/REJ, limited retries and SQLite history.
+- Responsive web dashboard and admin page on Windows or Raspberry Pi, with an optional headless systemd service.
+- **Language switcher CZ / EN** for the web map, control panel, messages page and Windows Tkinter desktop interface. The browser saves its language preference locally; desktop preferences are saved in `~/.ok5tvr_aprs_monitor.json`.
 
-## Install on Raspberry Pi OS / Debian
+## New in v1.7: separate iGate/DIGI symbols and APRS telemetry
+
+Both iGate and DIGI have independent APRS **symbol-table** (`/` primary or `\\` alternate), **icon** (e.g. `&` iGate, `#` digi), and optional single-character **overlay** (A–Z or 0–9 on alternate table only). Examples: `R&` is a receive-only iGate, `1#` a fill-in digi. These settings affect their map markers and APRS-IS position beacons, not the radio's display.
+
+Telemetry is disabled on new installations. Enable it separately for iGate or DIGI on the **Settings / Admin** page:
+
+- **iGate** transmits telemetry to **APRS-IS only**, when connected. **DIGI** also uses APRS-IS by default; an explicit, confirmed configuration can instead transmit DIGI telemetry via **RF KISS TNC** while PC digipeating is active.
+- `T#` reports have five 0–255 analog channels: **received KISS packets over the last 15 minutes**, **USB TX writes over 15 minutes**, **average distance (km)** from latest decoded GPS positions, **unique heard callsigns**, and **APRS-IS gated** (iGate) or **DIGI-repeat USB TX** counts (DIGI).
+- Standard `PARM`, `UNIT`, `EQNS` and `BITS` definitions are transmitted with the first report and periodically. Report every 15, 30 or 60 minutes, always measuring the previous **15 minutes**.
+- Extra web diagnostics show longest GPS-based distance, DX station, RX/min, TX/min, percentage of received packets forwarded to APRS-IS, USB write errors and link state.
+- APRS analog data saturates at 255; the live web statistics retain exact values. USB writes **do not prove actual on-air RF transmission**. Distance calculated from a station's claimed position **is not** a verified direct RF reception range.
+
+**Optional DIGI RF telemetry** uses the `DIRECT` RF path by default and spaces frames by **at least 12 seconds**. A full first report is five frames (four metadata + one data). Changing DIGI state or losing USB clears queued RF telemetry. Manual send is separately confirmed and rate-limited. Before enabling RF telemetry on 144.800 MHz, verify the local channel plan and network load.
+
+See [README_v1.7_CZ.md](README_v1.7_CZ.md) for full Czech instructions, symbol examples and the Raspberry Pi upgrade procedure.
+
+## Windows web service
+
+1. Install Python 3.10 or later and run `spustit_sluzbu_windows.bat`.
+2. On the UV-K1(8), select 144.800 MHz FM, launch **KISS TNC**, and connect the USB-C data cable.
+3. Run `zobrazit_odkazy_windows.bat` to display the authenticated web links.
+4. Choose **CZ** or **EN** in the top navigation of any web page.
+5. Configure USB, callsign and optional APRS-IS credentials in the admin interface.
+
+The classic desktop GUI is available with `spustit.bat`. Use its **CZ / EN** selector in the top bar. Do **not** run the GUI and headless service on the same serial port concurrently.
+
+## Raspberry Pi OS / Debian
+
+Install the project from its directory (as your ordinary account, not root):
 
 ```sh
-git clone https://github.com/ok5tvr/OK5TVR-APRS-KISS-Monitor.git
-cd OK5TVR-APRS-KISS-Monitor
 sh install_raspberry.sh --lan
-python3 /opt/ok5tvr-aprs/aprs_service.py --links
 sudo systemctl status ok5tvr-aprs
+python3 /opt/ok5tvr-aprs/aprs_service.py --links
 ```
 
-Use `--lan` only on a trusted private LAN. For existing installations, update the source checkout and run the installer again. Credentials/configuration remain in the user's home directory.
+Omit `--lan` to keep the web interface on the local host only. The service automatically retries USB after a disconnect and can reconnect to APRS-IS. On first install, **automatic RF TX, iGate forwarding and automatic ACK are all OFF**. Enable them explicitly after checking the configuration.
 
-## Windows
+## Safety and limitations
 
-Run `spustit_sluzbu_windows.bat`, then `zobrazit_odkazy_windows.bat`. For the legacy GUI, use `spustit.bat`. Never run the desktop GUI and headless service on the same COM port simultaneously.
+- The web panel uses HTTP with access tokens; **never expose it directly to the public internet**. Use a VPN for remote access.
+- APRS is publicly receivable; do not use APRS messages to transmit confidential information.
+- USB write success means only that the frame reached the TNC, not that RF transmission was verified.
+- The radio must run KISS TNC in TX-capable mode to transmit; do not use the radio's separate APRS DIGI app simultaneously with PC digipeating.
+- Automatic iGate forwarding, software DIGI and messaging are still **experimental**, with simulated integration tests; on-air reliability and unattended operation require field testing.
+- This program does not implement APRS-IS → RF forwarding.
 
-## Web pages
-
-`map` (offline map), `admin` (settings), `messages` (Inbox/Outbox), `objects` (RF objects/items/status/position), `diagnostics` (KISS/IS/DIGI, export and backup). All pages have a CZ/EN language switch.
-
-## RF Objects
-
-Create an object (9-character name, UTC timestamp, GPS, symbol and printable ASCII comment) or item (variable-length name, no timestamp). Save it without RF, then use the one-shot LIVE or KILL action. Optional repeating objects must be **explicitly enabled each service session** and are stopped on USB loss. Object broadcasts and status/position transmissions are written to the KISS serial interface, not proven transmitted on RF: verify with a separate receiver. The frame's source callsign is the configured iGate callsign.
-
-## Security
-
-- RF digipeater, scheduled objects, iGate and automatic ACK are off on a fresh installation. Every manual RF action must be confirmed.
-- The admin interface uses HTTP with bearer keys in URL. **Do not expose this HTTP server to the public Internet.** Use VPN for remote access.
-- Backup excludes APRS-IS passcode, access keys and message history. Restore disables automatic transmissions and iGate until you review settings.
-- Your radio must run `KISS TNC` with TX enabled, have a suitable antenna and use the applicable local APRS frequency and operating rules.
-- APRS-IS → RF automatic forwarding is **not** implemented. Neither are weather sensors, live GPS tracking, or every optional feature in the APRS specification.
-
-## Tests
+## Development / tests
 
 ```sh
 python3 -m pip install -r requirements.txt
 python3 -m unittest discover -p 'test*.py' -q
 ```
 
-Protocol references: [APRS 1.0.1](https://www.aprs.org/doc/APRS101.PDF) and [APRS-IS IGate Details](https://www.aprs-is.net/IGateDetails.aspx).
+See [README_v1.5_CZ.md](README_v1.5_CZ.md) for the Czech release notes and [README_v1.4_CZ.md](README_v1.4_CZ.md) for the v1.4 setup reference.
 
-73, **OK5TVR**
+Firmware: [F4HWN UV-K1/K5 V3](https://github.com/armel/uv-k1-k5v3-firmware-custom). APRS specification: [APRS 1.0.1](https://www.aprs.org/doc/APRS101.PDF).
+
+73, OK5TVR
+
+
+## v1.6 operational extensions (release candidate)
+
+Open the **Operations / Diagnostics** page via the `operations` link printed by `python3 aprs_service.py --links`. It includes:
+
+- USB/KISS health and disconnect warning, latest RF frame timestamp, APRS-IS status, DIGI statistics and last errors. USB connected does not prove RF reception.
+- Durable SQLite activity journal (RX/TX, accepted/rejected DIGI and IGate, USB events) and CSV export.
+- Portable JSON configuration backup without APRS-IS passcode or web tokens. Restoring always disables DIGI/IGate autostart and automatic ACK.
+- Manually transmitted live/killed APRS RF objects, own RF position and status text; one packet per confirmation, 30 s cooldown.
+
+These features operate via the headless web service on Windows or Raspberry Pi. The legacy Tkinter window remains available, but does not expose the new management pages itself. APRS-IS→RF gating remains unsupported. Do not expose the administrative HTTP interface to the public Internet.

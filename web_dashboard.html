@@ -10,7 +10,6 @@
 header{padding:16px clamp(14px,3vw,35px);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--edge)}
 .brand{font-weight:800;font-size:19px;letter-spacing:.2px}.brand b{color:var(--mint)}small,.muted{color:var(--muted)}
 main{padding:20px clamp(12px,3vw,35px);max-width:1850px;margin:0 auto}
-#healthbanner{margin-bottom:12px;padding:9px 13px;border:1px solid #9b713c;background:#44331b;color:#ffe9b5;border-radius:8px}#healthbanner[hidden]{display:none}
 .cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .card,.panel{border:1px solid var(--edge);border-radius:12px;background:var(--pane)}.card{padding:14px 15px}
 .metric{font-size:26px;font-weight:750;font-variant-numeric:tabular-nums}.caption{font-size:12px;color:var(--muted)}
@@ -35,6 +34,8 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 .map-marker:after{content:'';position:absolute;top:100%;left:calc(50% - 5px);border:5px solid transparent;border-top-color:#75ecd7}
 .map-marker.active{background:#146b65}
 .map-marker.own{background:#6b491d;border-color:#ffd480;color:#fff3d1}.map-marker.own:before{background:#ffc875;border-color:#fff3d1}
+.aprs-symbol-code{display:inline-block;margin-left:3px;padding:1px 4px;border:1px solid currentColor;border-radius:4px;font-size:11px;opacity:.88;font-family:monospace}
+.map-marker.digi-own{background:#16395f;border-color:#80bfff;color:#e3f3ff}.map-marker.digi-own:before{background:#5faeff;border-color:#f1f9ff}
 .map-popup{pointer-events:auto;position:absolute;min-width:195px;max-width:240px;background:#0f2132;color:#e7f4ff;border:1px solid #6b91aa;border-radius:8px;
   padding:10px 12px;box-shadow:0 6px 28px #0009;z-index:5;transform:translate(-50%,calc(-100% - 28px));font-size:12px}
 .map-popup strong{font-size:14px;color:#76f4dc}.map-popup button{float:right;background:transparent;border:0;padding:0 3px}
@@ -53,7 +54,6 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <header><div class="brand"><b>OK5TVR</b> APRS KISS <span class="muted">· živá mapa</span></div>
 <div><span id="rf" class="pill off">Rádio: odpojeno</span> &nbsp; <span id="igate" class="pill off">iGate: vypnuto</span> &nbsp; <span id="digi" class="pill off">DIGI: vypnuto</span></div></header>
 <main>
-<div id="healthbanner" hidden role="status"></div>
 <div class="cards">
 <div class="card"><div class="caption">Přijaté RF rámce</div><div class="metric" id="rx">0</div></div>
 <div class="card"><div class="caption">Slyšené stanice</div><div class="metric" id="stations">0</div></div>
@@ -63,6 +63,16 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <div class="card"><div class="caption">DIGI TX (USB)</div><div class="metric" id="digi_tx">0</div></div>
 <div class="card"><div class="caption">Vlastní APRS-IS majáky</div><div class="metric" id="beacons">0</div></div>
 </div>
+<section class="panel" style="margin-bottom:16px"><h2>Statistiky za posledních 15 minut / Last 15 minutes</h2>
+<div class="cards" style="padding:14px;margin:0">
+<div class="card"><div class="caption">RX / 15 min</div><div class="metric" id="rx15">0</div></div>
+<div class="card"><div class="caption">TX / 15 min (USB)</div><div class="metric" id="tx15">0</div></div>
+<div class="card"><div class="caption">Unikátní stanice / Unique stations</div><div class="metric" id="unique15">0</div></div>
+<div class="card"><div class="caption">Průměrná vzdálenost / Average (km)</div><div class="metric" id="avg15">–</div></div>
+<div class="card"><div class="caption">Max. vzdálenost / DX (km)</div><div class="metric" id="dx15">–</div></div>
+<div class="card"><div class="caption">iGate → IS / 15 min</div><div class="metric" id="gate15">0</div></div>
+<div class="card"><div class="caption">DIGI TX / 15 min</div><div class="metric" id="digi15">0</div></div>
+</div><p class="muted" style="padding:0 16px;font-size:12px">Vzdálenost je vypočtena z GPS poloh unikátních stanic vůči vlastní poloze. Není to měření přímého dosahu RF. / Distances are derived from reported positions, not measured RF range.</p></section>
 <div class="grid">
 <section class="panel">
 <h2 class="map-header"><span>Mapa přijatých APRS pozic</span><span>
@@ -98,7 +108,7 @@ const templates={
  'carto-light':'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
  'carto-dark':'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
 };
-let positions=[], ownPosition=null, chosen=null, firstPosition=true, geo=null;
+let positions=[], ownPosition=null, ownDigi=null, chosen=null, firstPosition=true, geo=null;
 let view={lat:49.7384,lon:13.3736,z:8}, effectiveProvider=$('mapstyle').value;
 let tileEpoch=0, mapRedrawTimer=null, pointer=null, tileWatchdog=null, success=0, requested=0, failure=0;
 const mapNode=$('map'), canvas=$('geography'), context=canvas.getContext('2d');
@@ -242,14 +252,22 @@ function drawTiles(){
 function updateMarkers(){
  const {w,h}=pixels(),holder=$('markers');holder.replaceChildren();
  let active=null;
- const visible=ownPosition ? [...positions.filter(s=>s.call!==ownPosition.call),
-   {...ownPosition,own:true,count:tr('vlastní'),last:tr('nastavená poloha')}] : positions;
+ const base=positions.filter(s=>s.call!==ownPosition?.call && s.call!==ownDigi?.call);
+ const visible=[...base];
+ if(ownPosition)visible.push({...ownPosition,own:true,count:tr('vlastní'),last:tr('nastavená poloha')});
+ if(ownDigi?.active)visible.push({...ownDigi,digiOwn:true,count:'–',last:tr('nastavená poloha')});
  for(const s of visible){
   if(!Number.isFinite(s.lat)||!Number.isFinite(s.lon))continue;
   const p=project(s.lat,s.lon);
   if(p.x<-120||p.x>w+120||p.y<-60||p.y>h+50)continue;
-  const pin=document.createElement('button');pin.type='button';pin.className='map-marker'+(s.own?' own':'');pin.textContent=s.call+(s.own?' · iGate':'');
-  pin.style.left=p.x+'px';pin.style.top=p.y+'px';pin.title=s.call+' · '+s.lat.toFixed(5)+', '+s.lon.toFixed(5);
+  const pin=document.createElement('button');pin.type='button';pin.className='map-marker'+(s.own?' own':s.digiOwn?' digi-own':'');
+  pin.textContent=s.call+(s.own?' · iGate':s.digiOwn?' · DIGI':'');
+  if ((s.own||s.digiOwn) && s.symbol) {
+   const sym=document.createElement('span');sym.className='aprs-symbol-code';
+   sym.textContent=s.symbol;pin.appendChild(sym);
+  }
+  pin.style.left=(p.x+(s.digiOwn?18:0))+'px';pin.style.top=(p.y+(s.digiOwn?-20:0))+'px';
+  pin.title=s.call+' · '+s.lat.toFixed(5)+', '+s.lon.toFixed(5)+' · '+(s.symbol||'');
   pin.addEventListener('click',e=>{e.stopPropagation();chosen=chosen===s.call?null:s.call;updateMarkers();});
   if(s.call===chosen){pin.classList.add('active');active={p,s};}
   holder.appendChild(pin);
@@ -259,7 +277,7 @@ function updateMarkers(){
   pop.style.top=clamp(p.y,120,h-20)+'px';
   const close=document.createElement('button');close.textContent='×';close.title=tr('Zavřít');close.addEventListener('click',()=>{chosen=null;updateMarkers();});pop.appendChild(close);
   const strong=document.createElement('strong');strong.textContent=s.call;pop.appendChild(strong);
-  for(const line of [`GPS: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`,`${tr('Pakety')}: ${s.count}`,`${tr('Poslední')}: ${s.last}`]){
+  for(const line of [`GPS: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`,`${tr('Pakety')}: ${s.count}`,`${tr('Poslední')}: ${s.last}`,...((s.own||s.digiOwn)&&s.symbol?[`APRS symbol: ${s.symbol}`]:[])]){
    const row=document.createElement('div');row.textContent=line;pop.appendChild(row);
   }
   holder.appendChild(pop);
@@ -350,8 +368,6 @@ async function refresh(){
   const response=await fetch(authPath('/api/state'),{cache:'no-store'});
   if(!response.ok)throw new Error('HTTP '+response.status);
   const st=await response.json();
-  $('healthbanner').hidden=!st.health?.warning;
-  $('healthbanner').textContent=st.health?.warning?tr(st.health.warning):'';
   $('rx').textContent=st.rx;$('stations').textContent=st.station_count;
   $('positions').textContent=st.position_count;$('gated').textContent=st.igate_sent;$('tx').textContent=st.tx_requests;
   $('digi_tx').textContent=st.digi?.tx_written||0;$('beacons').textContent=st.beacons_sent||0;
@@ -360,10 +376,17 @@ async function refresh(){
   $('digi').classList.toggle('off',!st.digi?.enabled);
   $('rf').classList.toggle('off',!st.rf_status.includes('Připojeno'));
   $('igate').classList.toggle('off',!st.igate_status.startsWith('Online'));
-  positions=st.stations.sort((a,b)=>b.last.localeCompare(a.last));ownPosition=st.own_position||null;
+  positions=st.stations.sort((a,b)=>b.last.localeCompare(a.last));
+  ownPosition=st.own_position||null;ownDigi=st.digi_position||null;
+  const met=st.telemetry||{};
+  $('rx15').textContent=met.rx_packets??0;$('tx15').textContent=met.tx_packets??0;
+  $('unique15').textContent=met.unique_stations??0;
+  $('avg15').textContent=met.avg_distance_km===null||met.avg_distance_km===undefined?'–':met.avg_distance_km;
+  $('dx15').textContent=met.dx_max_km===null||met.dx_max_km===undefined?'–':met.dx_max_km;
+  $('gate15').textContent=met.igate_forwarded??0;$('digi15').textContent=met.digi_tx??0;
   renderStations();renderMap(false);
   if(firstPosition&&(positions.some(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon))||ownPosition)){
-    fitStations([...positions,...(ownPosition?[ownPosition]:[])]);firstPosition=false;}
+    fitStations([...positions,...(ownPosition?[ownPosition]:[]),...(ownDigi?.active?[ownDigi]:[])]);firstPosition=false;}
   const rows=$('rows');rows.replaceChildren();
   for(const item of st.history.slice(0,100)){
    const tr=document.createElement('tr');

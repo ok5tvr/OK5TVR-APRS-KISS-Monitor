@@ -39,7 +39,7 @@ def encode_ui_packet(source: str, destination: str, path: str, payload: str) -> 
     info = payload.encode("ascii", errors="strict")
     if not info or len(info) > 100 or any(c < 32 or c > 126 for c in info):
         raise ValueError("Obsah musí mít 1–100 tisknutelných ASCII znaků.")
-    if not info.startswith((b">", b"!", b"=", b"@", b"/", b":", b";", b")")):
+    if not info.startswith((b">", b"!", b"=", b"@", b"/", b":", b";", b"T#")):
         raise ValueError("Obsah musí začínat typem APRS (například > pro status).")
     addresses = [destination, source] + hops
     result = b"".join(address_bytes(s, last=i == len(addresses)-1)
@@ -212,6 +212,8 @@ class MonitorState:
         self.rf_status = "Odpojeno"
         self.start = datetime.now().astimezone().isoformat(timespec="seconds")
         self.own_position = None
+        self.digi_position = None
+        self.telemetry = {}
         self.digi = {"enabled":False,"last_action":"Vypnuto","tx_written":0,"pending":0}
         self.beacons_sent = 0
 
@@ -247,6 +249,14 @@ class MonitorState:
         with self.lock:
             self.own_position = dict(position) if position else None
 
+    def set_digi_position(self, position):
+        with self.lock:
+            self.digi_position = dict(position) if position else None
+
+    def set_telemetry(self, metrics):
+        with self.lock:
+            self.telemetry = dict(metrics)
+
     def update_digi(self, digi):
         with self.lock:
             self.digi = dict(digi)
@@ -270,10 +280,12 @@ class MonitorState:
 
     def snapshot(self):
         with self.lock:
-            return {"version":"1.6", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
+            return {"version":"1.7.0-rc1", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
                     "rf_status":self.rf_status, "igate_status":self.igate_status, "rx":self.rx, "demo":self.demo,
                     "tx_requests":self.tx_requests, "igate_sent":self.igate_sent,"igate_rejected":self.igate_rejected,
-                    "beacons_sent":self.beacons_sent, "own_position":self.own_position, "digi":dict(self.digi),
+                    "beacons_sent":self.beacons_sent, "own_position":self.own_position,
+                    "digi_position":self.digi_position, "telemetry":dict(self.telemetry),
+                    "digi":dict(self.digi),
                     "station_count":len(self.stations), "position_count":sum(1 for x in self.stations.values() if x["lat"] is not None),
                     "types":dict(self.type_counts), "stations":list(self.stations.values()),"history":list(self.history)}
 
@@ -291,6 +303,7 @@ class APRSISClient(threading.Thread):
         self.position_interval = 30*60
         self.last_beacon_at = float('-inf')
         self.last_beacon_line = None
+        self.connection_epoch = 0
 
     def configure_position(self, line: str | None, every_minutes: int = 30):
         if line and ('\r' in line or '\n' in line):
@@ -315,6 +328,19 @@ class APRSISClient(threading.Thread):
             self.emit("igate_error", "Fronta APRS-IS plná (200), rámec zahozen")
             return False
 
+    def enqueue_local(self, line: str, kind: str = 'telemetry') -> bool:
+        if kind not in ('telemetry', 'digi_beacon'):
+            raise ValueError('Unknown APRS-IS local packet type')
+        if not self.connected.is_set() or self.stop.is_set() or any(c in line for c in '\r\n'):
+            return False
+        try:
+            line.encode('ascii')
+            self.outgoing.put_nowait((time.monotonic(), line, kind))
+            return True
+        except (queue.Full, UnicodeEncodeError):
+            self.emit('igate_error', 'APRS-IS local telemetry/beacon queue full or invalid')
+            return False
+
     def run(self):
         backoff = 3
         while not self.stop.is_set():
@@ -328,7 +354,7 @@ class APRSISClient(threading.Thread):
                 # Read server banner when available, then send login.
                 try: conn.recv(2048)
                 except socket.timeout: pass
-                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 1.6\r\n"
+                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 1.7\r\n"
                 conn.sendall(login.encode("ascii"))
                 buffer = b""
                 verified = False
@@ -351,6 +377,7 @@ class APRSISClient(threading.Thread):
                     if verified: break
                 if not verified: raise ConnectionError("APRS-IS nepotvrdil ověřené přihlášení")
                 self.connected.set()
+                self.connection_epoch += 1
                 self.emit("igate_status", f"Online: {self.call} @ {self.host}:{self.port}")
                 backoff = 3
                 # Keep server socket alive and drain a few queued RF frames per cycle.
@@ -367,11 +394,16 @@ class APRSISClient(threading.Thread):
                             self.last_beacon_line = posline
                         self.emit('igate_beacon', posline[:110])
                     for _ in range(6):
-                        try: created, line = self.outgoing.get_nowait()
+                        try: event = self.outgoing.get_nowait()
                         except queue.Empty: break
+                        created, line = event[:2]
+                        kind = event[2] if len(event) == 3 else 'rf_forward'
                         if time.monotonic() - created > 60: continue
-                        conn.sendall(line.encode("latin-1") + b"\r\n")
-                        self.emit("igate_sent", line[:100])
+                        conn.sendall(line.encode('latin-1') + b'\r\n')
+                        if kind == 'rf_forward':
+                            self.emit('igate_sent', line[:100])
+                        else:
+                            self.emit('igate_local_sent', {'kind': kind, 'line': line[:110]})
                     try:
                         got = conn.recv(2048)
                         if not got: raise ConnectionError("APRS-IS odpojil spojení")

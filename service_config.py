@@ -16,21 +16,24 @@ from aprs_features import CALL_RE
 from aprs_messages import normalize_call, normalize_path
 from aprs_digi import DigiConfig
 from aprs_station import decimal_coordinate, aprsis_position
-from aprs_operations import validate_objects_settings
+from aprs_telemetry import symbol_code
 
 DEFAULT_PATH = Path.home() / '.config' / 'ok5tvr-aprs' / 'config.json'
 DEFAULT_CONFIG = {
     'serial': {'port': 'auto', 'baud': 115200, 'retry_seconds': 4},
     'web': {'port': 8765, 'lan': False},
     'igate': {'call': 'OK5TVR-10', 'host': 'rotate.aprs2.net', 'port': 14580,
-              'autostart': False},
+              'autostart': False, 'symbol_table': '\\', 'symbol': '&',
+              'overlay': 'R', 'telemetry_enabled': False},
     'digi': {'call': 'OK5TVR-3', 'mode': 'fill', 'trace': False,
              'delay_s': 4.0, 'max_per_min': 6, 'min_gap_s': 3.0,
-             'autostart': False},
+             'autostart': False, 'symbol_table': '\\', 'symbol': '#',
+             'overlay': '1', 'beacon_enabled': False, 'beacon_interval': 30,
+             'beacon_comment': 'OK5TVR APRS DIGI', 'telemetry_enabled': False,
+             'telemetry_transport': 'is', 'telemetry_rf_path': ''},
     'messages': {'target': '', 'path': 'WIDE1-1', 'auto_ack': False,
                  'retry_seconds': 45, 'max_attempts': 3},
-    'health': {'quiet_warning_minutes': 30, 'disconnect_warning_seconds': 15},
-    'objects': {'path': 'WIDE1-1', 'entries': []},
+    'telemetry': {'interval_minutes': 15},
     'position': {'latitude': None, 'longitude': None,
                  'comment': 'OK5TVR RX iGate', 'beacon_enabled': False,
                  'beacon_interval': 30},
@@ -100,17 +103,36 @@ def validate_config(candidate):
         raise ValueError('Neplatný APRS-IS server.')
     i['port'] = _int(i['port'], 'APRS-IS port', 1, 65535)
     i['autostart'] = _bool(i['autostart'], 'Automatický iGate')
+    i['telemetry_enabled'] = _bool(i['telemetry_enabled'], 'iGate APRS-IS telemetry')
+    symbol_code(i['symbol_table'], i['symbol'], i['overlay'])
     d = v['digi']
     if not isinstance(d['call'], str):
         raise ValueError('DIGI značka musí být text.')
     d['call'] = d['call'].upper()
     d['trace'] = _bool(d['trace'], 'TRACE')
+    d['telemetry_enabled'] = _bool(d['telemetry_enabled'], 'DIGI telemetry')
+    if d['telemetry_transport'] not in ('is','rf'):
+        raise ValueError('DIGI telemetry transport must be APRS-IS or RF.')
+    d['telemetry_rf_path'] = normalize_path(d['telemetry_rf_path'])
+    d['beacon_enabled'] = _bool(d['beacon_enabled'], 'DIGI APRS-IS beacon')
+    d['beacon_interval'] = _int(d['beacon_interval'], 'DIGI beacon interval', 30, 120)
+    if (not isinstance(d['beacon_comment'], str) or len(d['beacon_comment']) > 43
+            or any(ord(c) < 32 or ord(c) > 126 for c in d['beacon_comment'])):
+        raise ValueError('DIGI beacon comment: up to 43 printable ASCII chars.')
+    symbol_code(d['symbol_table'], d['symbol'], d['overlay'])
     d['autostart'] = _bool(d['autostart'], 'Automatický DIGI')
     d['delay_s'] = float(d['delay_s']) if type(d['delay_s']) in (int, float) else d['delay_s']
     d['min_gap_s'] = float(d['min_gap_s']) if type(d['min_gap_s']) in (int, float) else d['min_gap_s']
     d['max_per_min'] = _int(d['max_per_min'], 'DIGI TX/min', 1, 12)
     DigiConfig(d['call'], d['mode'], d['trace'], d['delay_s'],
                d['max_per_min'], d['min_gap_s']).validate()
+    if ((d['telemetry_enabled'] and d['telemetry_transport'] == 'is') or d['beacon_enabled']) and i['call'].split('-')[0] != d['call'].split('-')[0]:
+        raise ValueError('DIGI APRS-IS beacon/telemetry requires same base callsign as the APRS-IS login.')
+    if d['telemetry_enabled'] and d['telemetry_transport'] == 'is' and i['telemetry_enabled'] and d['call'] == i['call']:
+        raise ValueError('iGate and DIGI telemetry cannot share the same source callsign.')
+    v['telemetry']['interval_minutes'] = _int(v['telemetry']['interval_minutes'], 'Telemetry interval', 15, 60)
+    if v['telemetry']['interval_minutes'] not in (15, 30, 60):
+        raise ValueError('Telemetry interval must be 15, 30 or 60 minutes.')
     m = v['messages']
     if not isinstance(m['target'], str) or len(m['target']) > 9:
         raise ValueError('Neplatná výchozí cílová značka.')
@@ -121,10 +143,6 @@ def validate_config(candidate):
     m['auto_ack'] = _bool(m['auto_ack'], 'Automatické potvrzování APRS zpráv (RF TX)')
     m['retry_seconds'] = _int(m['retry_seconds'], 'Opakování zprávy (s)', 30, 180)
     m['max_attempts'] = _int(m['max_attempts'], 'Počet odeslání', 1, 5)
-    h = v['health']
-    h['quiet_warning_minutes'] = _int(h['quiet_warning_minutes'], 'Upozornění na ticho (min)', 5, 240)
-    h['disconnect_warning_seconds'] = _int(h['disconnect_warning_seconds'], 'Výpadek USB (s)', 5, 300)
-    v['objects'] = validate_objects_settings(v['objects'])
     p = v['position']
     p['beacon_enabled'] = _bool(p['beacon_enabled'], 'Pozicni majak')
     p['beacon_interval'] = _int(p['beacon_interval'], 'Interval majaku', 30, 120)
@@ -139,7 +157,13 @@ def validate_config(candidate):
     if not isinstance(p['comment'], str) or len(p['comment']) > 43 or any(ord(c) < 32 or ord(c) > 126 for c in p['comment']):
         raise ValueError('Komentář musí mít maximálně 43 tisknutelných ASCII znaků.')
     if p['latitude'] is not None:
-        aprsis_position(i['call'], p['latitude'], p['longitude'], p['comment'], 'R&')
+        aprsis_position(i['call'], p['latitude'], p['longitude'], p['comment'],
+                        symbol_code(i['symbol_table'], i['symbol'], i['overlay']))
+        if d['beacon_enabled']:
+            aprsis_position(d['call'], p['latitude'], p['longitude'], d['beacon_comment'],
+                            symbol_code(d['symbol_table'], d['symbol'], d['overlay']))
+    elif d['beacon_enabled']:
+        raise ValueError('Configure own GPS before enabling a DIGI position beacon.')
     return v
 
 
@@ -182,28 +206,6 @@ class ServiceConfig:
             _atomic_json(self.secret_path, self.secrets)
         return self.public_view()
 
-    def export_backup(self):
-        """Portable non-secret backup. Never include passcode or bearer keys."""
-        from datetime import datetime, timezone
-        return {'format': 'ok5tvr-config-v1',
-                'created_utc': datetime.now(timezone.utc).isoformat(timespec='seconds'),
-                'config': copy.deepcopy(self.data),
-                'note': 'Secrets are NOT included. Re-enter APRS-IS passcode on target.'}
-
-    def restore_backup(self, document):
-        """Import with all automatic TX/network actions disabled for safety."""
-        if not isinstance(document, dict) or document.get('format') != 'ok5tvr-config-v1':
-            raise ValueError('Neznámý formát zálohy. Vyber export OK5TVR.')
-        raw = document.get('config')
-        if not isinstance(raw, dict):
-            raise ValueError('Záloha neobsahuje konfiguraci.')
-        # validate entire payload before writing anything
-        clean = validate_config(raw)
-        clean['digi']['autostart'] = False
-        clean['igate']['autostart'] = False
-        clean['messages']['auto_ack'] = False
-        return self.update(clean)
-
     def public_view(self):
         result = copy.deepcopy(self.data)
         result['igate']['has_passcode'] = bool(self.secrets['igate_passcode'])
@@ -214,5 +216,4 @@ class ServiceConfig:
         return {'map': prefix+'/?key='+self.secrets['viewer_token'],
                 'admin':prefix+'/control?admin='+self.secrets['admin_token'],
                 'messages':prefix+'/messages?admin='+self.secrets['admin_token'],
-                'objects':prefix+'/operations?admin='+self.secrets['admin_token'],
-                'diagnostics':prefix+'/diagnostics?admin='+self.secrets['admin_token']}
+                'operations':prefix+'/operations?admin='+self.secrets['admin_token']}

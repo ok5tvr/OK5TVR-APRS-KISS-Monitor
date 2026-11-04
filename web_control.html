@@ -6,7 +6,7 @@
 *{box-sizing:border-box}body{background:var(--bg);color:var(--ink);font:15px system-ui,Arial;margin:0;padding:18px}
 main{max-width:1120px;margin:auto}h1{font-size:25px}h2{font-size:17px;margin:0 0 13px;color:var(--mint)}p{color:var(--sub)}
 section{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:19px;margin:12px 0}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}.grid section{margin:0}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.grid section{margin:0}@media(max-width:760px){.grid{grid-template-columns:1fr}}
 label{display:block;margin:10px 0 3px;color:var(--sub);font-size:13px}
 input,select{background:#102134;color:var(--ink);border:1px solid #52718c;border-radius:7px;width:100%;padding:8px 10px;font-size:14px}
 input[type=checkbox]{width:auto;margin-right:6px}.check{display:flex;align-items:center;gap:6px;color:var(--ink);font-size:14px;line-height:1.4}
@@ -19,9 +19,8 @@ button.primary{background:#167f70}button.danger{background:#9e4651}button:disabl
 <p>Správa Raspberry Pi / PC bez monitoru. Přenos je HTTP: používej pouze v důvěryhodné LAN, bez přesměrování portu do internetu.</p>
 <section><div class="summary"><span>USB: <b id="rf">–</b></span><span>APRS-IS: <b id="is">–</b></span><span>DIGI: <b id="dg">–</b></span><span>RX: <b id="rx">0</b></span><span>→ IS: <b id="gate">0</b></span><span>DIGI TX: <b id="dtx">0</b></span></div>
 <a id="view" class="link" href="#" target="_blank" rel="noopener noreferrer">Otevřít mapu</a>
+<a id="operations" class="link" href="#">Diagnostika / objekty</a>
 <a id="msgpage" class="link" href="#">APRS Zprávy · Inbox / Outbox</a>
-<a id="objectspage" class="link" href="#">Objekty a RF</a>
-<a id="diagpage" class="link" href="#">Diagnostika a deník</a>
 </section>
 <div class="grid">
 <section><h2>USB KISS / web</h2><label>Port (auto, /dev/ttyACM0, COM3)</label><input id="serial_port" autocomplete="off">
@@ -32,6 +31,10 @@ button.primary{background:#167f70}button.danger{background:#9e4651}button:disabl
 <label>Značka iGate</label><input id="igate_call"><label>APRS-IS passcode (ponech prázdný pro zachování)</label><input type="password" id="passcode" autocomplete="new-password">
 <label>Server</label><input id="host"><label>TCP port</label><input type="number" id="igate_port" min="1" max="65535">
 <label class="check"><input id="is_auto" type="checkbox"> Spustit iGate automaticky po restartu</label>
+<label>APRS iGate – tabulka ikon / Symbol table</label><select id="igate_table"><option value="\">Alternativní / Alternate (\)</option><option value="/">Primární / Primary (/)</option></select>
+<label>Ikona iGate / iGate symbol</label><select id="igate_symbol"><option value="&">&amp; · iGate</option><option value="#"># · DIGI</option><option value="-">- · QTH house</option><option value="r">r · repeater</option><option value=">">&gt; · vehicle</option><option value="H">H · hotel</option><option value="W">W · weather</option></select>
+<label>Overlay (A–Z / 0–9, only alternate table)</label><input id="igate_overlay" maxlength="1" placeholder="R" autocomplete="off">
+<label class="check"><input id="igate_telemetry" type="checkbox"> APRS-IS telemetrie iGate / iGate telemetry (T#)</label>
 <div><button class="primary" id="ison">Zapnout iGate</button><button id="isoff">Vypnout iGate</button></div></section>
 <section><h2>Vlastní GPS poloha</h2><label>Latitude (desetinné °)</label><input id="lat" placeholder="49.7384">
 <label>Longitude (desetinné °)</label><input id="lon" placeholder="13.3736"><label>ASCII komentář</label><input id="comment">
@@ -43,10 +46,23 @@ button.primary{background:#167f70}button.danger{background:#9e4651}button:disabl
 <label>Zpoždění před retransmisí (s)</label><input type="number" id="delay" min="0" max="10" step="0.5">
 <label>Max TX za minutu (1–12)</label><input type="number" id="limit" min="1" max="12">
 <label>Minimální rozestup TX (s)</label><input type="number" id="gap" min="1" max="30" step="0.5">
+<label>APRS DIGI – tabulka ikon / Symbol table</label><select id="digi_table"><option value="\">Alternativní / Alternate (\)</option><option value="/">Primární / Primary (/)</option></select>
+<label>Ikona DIGI / DIGI symbol</label><select id="digi_symbol"><option value="#"># · DIGI</option><option value="&">&amp; · iGate</option><option value="-">- · QTH house</option><option value="r">r · repeater</option><option value=">">&gt; · vehicle</option><option value="W">W · weather</option></select>
+<label>Overlay (A–Z / 0–9, only alternate table)</label><input id="digi_overlay" maxlength="1" placeholder="1" autocomplete="off">
+<label class="check"><input id="digi_beacon" type="checkbox"> Veřejný APRS-IS poziční maják DIGI (jen při zapnutém DIGI, bez RF) / DIGI position beacon</label>
+<label>Interval majáku DIGI / DIGI beacon interval (min)</label><input id="digi_beacon_interval" type="number" min="30" max="120" value="30">
+<label>Komentář DIGI / DIGI comment (ASCII)</label><input id="digi_beacon_comment" maxlength="43" value="OK5TVR APRS DIGI">
+<label class="check"><input id="digi_telemetry" type="checkbox"> Telemetrie DIGI / DIGI telemetry (only while DIGI active)</label>
+<label>Kam odeslat DIGI telemetrii / DIGI telemetry transport</label><select id="digi_transport"><option value="is">APRS-IS (no RF)</option><option value="rf">RF / KISS TNC (automatic RF TX!)</option></select>
+<label>RF cesta pro telemetrii / RF telemetry path</label><select id="digi_telemetry_path"><option value="">DIRECT (bez hopu)</option><option value="WIDE1-1">WIDE1-1</option><option value="WIDE2-1">WIDE2-1</option></select>
 <label class="check"><input type="checkbox" id="digi_auto"> Po restartu automaticky obnovit DIGI <b>(RF TX!)</b></label>
 <div><button class="danger" id="dgon">Zapnout DIGI</button><button id="dgoff">Vypnout DIGI</button></div>
 <p class="note">Na UV-K1 musí být KISS TNC s TX povoleným a interní APRS DIGI vypnutá. PC nemůže potvrdit skutečnou VF retransmisi.</p></section>
 </div>
+<section><h2>Telemetrie iGate / DIGI</h2>
+<p>APRS-IS nebo volitelně RF telemetrie DIGI (odstup 12 s/rámec). Standard T#, PARM, UNIT, EQNS, BITS. Kanály: RX/15 min, TX/15 min, průměr km, unikátní stanice, předané do APRS-IS (iGate) nebo opakované (DIGI). Hodnoty nad 255 jsou v APRS omezeny; přesná čísla zůstávají ve webu. Ve výchozím stavu vypnuto.</p>
+<label>Interval reportu / Report interval (minuty)</label><select id="telemetry_interval"><option value="15">15</option><option value="30">30</option><option value="60">60</option></select>
+<p class="note">Všechny hodnoty jsou za POSLEDNÍCH 15 minut; délka okna zůstává stejná i při méně častém reportu.</p></section>
 <section><h2>Uložit konfiguraci</h2>
 <p>Uložení běžných parametrů nic nevysílá. Změna automatického DIGI se potvrzuje zvlášť. Aktuální běžící iGate/DIGI případně vypni a znovu zapni pro nové parametry.</p>
 <button class="primary" id="save">Uložit nastavení</button>
@@ -69,6 +85,14 @@ async function fetchConfig(){
   const c=await r.json(),s=c.serial,w=c.web,i=c.igate,d=c.digi,p=c.position;
   $('serial_port').value=s.port;$('serial_baud').value=s.baud;$('retry').value=s.retry_seconds;
   $('igate_call').value=i.call;$('host').value=i.host;$('igate_port').value=i.port;$('is_auto').checked=i.autostart;
+  $('igate_table').value=i.symbol_table;$('igate_symbol').value=i.symbol;$('igate_overlay').value=i.overlay;
+  $('igate_telemetry').checked=i.telemetry_enabled;
+  $('digi_table').value=d.symbol_table;$('digi_symbol').value=d.symbol;$('digi_overlay').value=d.overlay;
+  $('digi_beacon').checked=d.beacon_enabled;$('digi_beacon_interval').value=d.beacon_interval;
+  $('digi_beacon_comment').value=d.beacon_comment;$('digi_telemetry').checked=d.telemetry_enabled;
+  $('digi_transport').value=d.telemetry_transport;$('digi_telemetry_path').value=d.telemetry_rf_path;
+  $('telemetry_interval').value=c.telemetry.interval_minutes;
+  for(const role of ['igate','digi'])$(role+'_overlay').disabled=$(role+'_table').value==='/';
   passcodeIsSet=!!i.has_passcode;
   $('passcode').placeholder=passcodeIsSet?tr('Uloženo bezpečně'):tr('Chybí');
   $('digi_call').value=d.call;$('mode').value=d.mode;$('trace').checked=d.trace;
@@ -76,9 +100,7 @@ async function fetchConfig(){
   $('lat').value=p.latitude===null?'':p.latitude;$('lon').value=p.longitude===null?'':p.longitude;
   $('comment').value=p.comment;$('beacon').checked=p.beacon_enabled;$('beacon_interval').value=p.beacon_interval;
   $('view').href='/'+(c.viewer_token?'?key='+encodeURIComponent(c.viewer_token):'');
-  $('msgpage').href='/messages?admin='+encodeURIComponent(key);
-  $('objectspage').href='/operations?admin='+encodeURIComponent(key);
-  $('diagpage').href='/diagnostics?admin='+encodeURIComponent(key);
+  $('msgpage').href='/messages?admin='+encodeURIComponent(key);$('operations').href='/operations?admin='+encodeURIComponent(key);
   notify('Nastavení načteno. APRS-IS passcode se nezobrazuje.');
  }catch(e){notify(tr('Nelze načíst konfiguraci: ')+e.message)}
 }
@@ -94,16 +116,29 @@ function collect(){const nonempty=id=>$(id).value.trim();
  const lat=nonempty('lat'),lon=nonempty('lon'),passcode=$('passcode').value;
  return {config:{
   serial:{port:nonempty('serial_port'),baud:Number($('serial_baud').value),retry_seconds:Number($('retry').value)},
-  igate:{call:nonempty('igate_call').toUpperCase(),host:nonempty('host'),port:Number($('igate_port').value),autostart:$('is_auto').checked},
+  igate:{call:nonempty('igate_call').toUpperCase(),host:nonempty('host'),port:Number($('igate_port').value),autostart:$('is_auto').checked,
+       symbol_table:$('igate_table').value,symbol:$('igate_symbol').value,overlay:nonempty('igate_overlay').toUpperCase(),telemetry_enabled:$('igate_telemetry').checked},
   digi:{call:nonempty('digi_call').toUpperCase(),mode:$('mode').value,trace:$('trace').checked,
-      delay_s:Number($('delay').value),max_per_min:Number($('limit').value),min_gap_s:Number($('gap').value),autostart:$('digi_auto').checked},
+      delay_s:Number($('delay').value),max_per_min:Number($('limit').value),min_gap_s:Number($('gap').value),autostart:$('digi_auto').checked,
+      symbol_table:$('digi_table').value,symbol:$('digi_symbol').value,overlay:nonempty('digi_overlay').toUpperCase(),
+      beacon_enabled:$('digi_beacon').checked,beacon_interval:Number($('digi_beacon_interval').value),
+      beacon_comment:nonempty('digi_beacon_comment'),telemetry_enabled:$('digi_telemetry').checked,
+      telemetry_transport:$('digi_transport').value,telemetry_rf_path:$('digi_telemetry_path').value},
+  telemetry:{interval_minutes:Number($('telemetry_interval').value)},
   position:{latitude:lat===''?null:Number(lat.replace(',','.')),longitude:lon===''?null:Number(lon.replace(',','.')),
       comment:nonempty('comment'),beacon_enabled:$('beacon').checked,beacon_interval:Number($('beacon_interval').value)}
   },passcode:passcode||null};
 }
+for(const role of ['igate','digi']){
+  const table=$(role+'_table'),overlay=$(role+'_overlay');
+  table.addEventListener('change',()=>{if(table.value==='/')overlay.value='';overlay.disabled=table.value==='/'});
+  overlay.disabled=table.value==='/';
+}
 $('save').onclick=()=>{
- const o=collect();if(o.config.digi.autostart&&!confirm(tr('POZOR: Automatické vysílání DIGI po restartu. Opravdu to povolit?')))return;
- api('save',{...o,confirm_auto_tx:o.config.digi.autostart});
+ const o=collect();
+ const wantsRF=o.config.digi.telemetry_enabled&&o.config.digi.telemetry_transport==='rf';
+ if(wantsRF&&!confirm(tr('POZOR: Automatické RF vysílání DIGI telemetrie po zapnutí DIGI. Pokračovat?')))return;if(o.config.digi.autostart&&!confirm(tr('POZOR: Automatické vysílání DIGI po restartu. Opravdu to povolit?')))return;
+ api('save',{...o,confirm_auto_tx:o.config.digi.autostart,confirm_rf_telemetry:wantsRF});
 };
 $('ison').onclick=()=>{if(confirm(tr('Povolit odesílání skutečně přijatých APRS paketů do veřejné APRS-IS?')))api('igate_on',{confirm:true})};
 $('isoff').onclick=()=>api('igate_off');

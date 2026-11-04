@@ -210,7 +210,7 @@ class StationPositionTests(unittest.TestCase):
         client.start()
         self.assertTrue(done.wait(5),'Position was not sent after verified login')
         client.stop.set()
-        self.assertIn('vers OK5TVR-KISS 1.6',got[0])
+        self.assertIn('vers OK5TVR-KISS 1.7',got[0])
         self.assertEqual(got[1].strip(),beacon)
 
 

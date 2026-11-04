@@ -225,7 +225,7 @@ class HeadlessIntegrationTests(unittest.TestCase):
         packet=encode_ui_packet('OK5ABC-7','APRS','WIDE1-1','>RF-to-IS TEST')
         FakeSerial.incoming.put(encode_kiss_data(packet))
         self.assertTrue(ready.wait(5), 'Local APRS-IS server received no RF packet')
-        self.assertIn('vers OK5TVR-KISS 1.6',received[0])
+        self.assertIn('vers OK5TVR-KISS 1.7',received[0])
         self.assertIn(',qAO,OK5TVR-10:>RF-to-IS TEST', received[1])
         self.assertTrue(FakeSerial.outgoing.empty(), 'Internet test unexpectedly emitted RF')
 
