@@ -20,16 +20,19 @@ class NavigationTests(unittest.TestCase):
         map_html = (base / 'web_dashboard.html').read_text(encoding='utf-8')
         operations = (base / 'web_operations.html').read_text(encoding='utf-8')
         messages = (base / 'web_messages.html').read_text(encoding='utf-8')
-        desktop = (base / 'aprs_kiss_monitor.py').read_text(encoding='utf-8')
-        for element in ['nav-control', 'nav-messages', 'nav-objects', 'nav-diagnostics']:
+        desktop = (base / 'aprs_desktop.py').read_text(encoding='utf-8')
+        shim = (base / 'aprs_kiss_monitor.py').read_text(encoding='utf-8')
+        for element in ['nav-control','nav-messages','nav-objects','nav-diagnostics']:
             self.assertIn('id="' + element + '"', map_html)
         self.assertIn('id="objects"', operations)
         self.assertIn('id="diagnostics"', operations)
         self.assertIn('id="objects_nav"', messages)
         self.assertIn('id="diagnostics_nav"', messages)
-        self.assertIn('self.open_service_page("messages")', desktop)
-        self.assertIn('self.open_service_page("operations", "objects")', desktop)
-        self.assertIn('self.open_service_page("operations", "diagnostics")', desktop)
+        for tab in ("'Příjem / TX'", "'Mapa'", "'Zprávy'", "'Objekty'", "'iGate / DIGI'", "'Telemetrie'", "'Diagnostika / deník'"):
+            self.assertIn(tab, desktop)
+        self.assertIn("'with_web':False", desktop)
+        self.assertNotIn('webbrowser.open(', desktop)
+        self.assertIn('from aprs_desktop import DesktopApp, main', shim)
         self.assertIn('const adminToken=', map_html)
 
     def test_read_only_map_has_visible_links_but_no_admin_access(self):

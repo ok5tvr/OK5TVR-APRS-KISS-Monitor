@@ -111,6 +111,7 @@ class APRSService:
         self.rf_telemetry_next_tx = 0.0
         self.next_telemetry_ui = 0.0
         self.running = False
+        self.serial_enabled = True  # desktop UI may disconnect without exiting
 
     def _make_digi(self):
         d = self.config.data['digi']
@@ -223,6 +224,20 @@ class APRSService:
                 response.put_nowait((False, str(exc)))
 
     def _execute(self, action, data):
+        # Native desktop UI uses the same service loop and the same USB port.
+        if action == 'serial_disconnect':
+            self.serial_enabled = False
+            self._disable_digi()  # never retain automatic RF permission after manual disconnect
+            self._disconnect_reader()
+            self.state.update_status(radio='Odpojeno uživatelem')
+            return 'USB KISS odpojeno; automatické připojení pozastaveno.'
+        if action in ('serial_connect', 'serial_reconnect'):
+            if action == 'serial_reconnect':
+                self._disable_digi()
+                self._disconnect_reader()
+            self.serial_enabled = True
+            self.next_serial_attempt = 0.0
+            return 'Připojování USB KISS; případně nastav správný COM port.'
         if action == 'telemetry_send_now':
             if data.get('confirm') is not True:
                 raise ValueError('APRS telemetry send requires confirmation.')
@@ -485,6 +500,8 @@ class APRSService:
         self.state.update_status(radio='Odpojeno')
 
     def _connect_tick(self):
+        if not self.serial_enabled:
+            return
         if self.reader is not None or time.monotonic() < self.next_serial_attempt:
             return
         port = find_radio_port(self.config.data['serial']['port'])
@@ -736,14 +753,18 @@ class APRSService:
             if client.enqueue_local(line,'digi_beacon'):
                 self.digi_last_position=now
 
-    def run(self):
-        # Web server always remains independent of Tkinter and can serve a Pi.
+    def run(self, with_web=True):
+        # One backend, two mutually exclusive frontends: native desktop (no HTTP)
+        # and headless Raspberry Pi / browser service. Never open two USB readers.
         c = self.config.data
-        lan = c['web']['lan'] or self.force_lan
-        self.web.start(lan=lan, port=c['web']['port'], fallback=False)
+        if with_web:
+            lan = c['web']['lan'] or self.force_lan
+            self.web.start(lan=lan, port=c['web']['port'], fallback=False)
+            LOG.info('Web %s:%d (správa jen pomocí soukromého odkazu).',
+                     'LAN' if lan else 'localhost', self.web.port)
+        else:
+            LOG.info('Nativní Windows režim: webový server se nespouští.')
         self.running = True
-        LOG.info('Web %s:%d (správa jen pomocí soukromého odkazu).',
-                 'LAN' if lan else 'localhost', self.web.port)
         if c['igate']['autostart']:
             try:
                 self._start_igate()

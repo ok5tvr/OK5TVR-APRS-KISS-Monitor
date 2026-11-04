@@ -1,14 +1,6 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-echo OK5TVR APRS v1.7 RC1 - webova sluzba (iGate / DIGI / Zpravy / Objekty)
-where py >nul 2>nul
-if errorlevel 1 (
-  echo Chybi Python 3 a py launcher.
-  pause
-  exit /b 1
-)
-py -3 -m pip show pyserial >nul 2>nul
-if errorlevel 1 py -3 -m pip install "pyserial>=3.5"
-py -3 aprs_service.py
-pause
+echo OK5TVR APRS v1.8: vsechny moduly jsou v jednom okne se zalozkami.
+echo Spoustim jednotnou Windows aplikaci, bez prohlizece.
+call "%~dp0spustit.bat"

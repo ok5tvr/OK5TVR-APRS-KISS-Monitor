@@ -1,3 +1,9 @@
+# Windows native tabbed app (v1.8 RC1)
+
+**All Windows modules now run inside one native desktop window**: Monitor/TX, Offline Map, Messages (Inbox/Outbox, ACK/REJ), APRS Objects (LIVE/KILL), iGate/DIGI, Telemetry, Diagnostics and Packet Journal. No Chrome or administration URL is required on Windows; the app uses the same APRS service backend with HTTP **disabled** in desktop mode, so only one process owns the serial port. Use `spustit.bat` or `py -3 aprs_kiss_monitor.py`. Czech [v1.8 guide](README_v1.8_CZ.md).
+
+The standalone Raspberry Pi/headless service retains optional browser access as an independent deployment mode. Do not start both desktop and headless service against the same TNC.
+
 # OK5TVR APRS KISS Monitor — English guide
 
 **Version 1.7.0-rc1** · Windows / Raspberry Pi OS / Debian · Python 3.10+

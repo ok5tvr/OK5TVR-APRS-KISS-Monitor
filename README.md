@@ -2,13 +2,19 @@
 
 **Windows / Raspberry Pi APRS monitor, one-way iGate, digipeater and messaging over USB KISS TNC**
 
-Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.7.0-rc1**.
+Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.8.0-rc1**.
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
 
+## Nově v1.8: všechno v jednom okně Windows
+
+Windows verze používá nativní záložky **Příjem/TX, Mapa, Zprávy, Objekty, iGate/DIGI, Telemetrie, Diagnostika/deník**. Žádné přepínání do Chrome ani administrátorské tokeny pro desktop nejsou potřeba. Všechny tyto funkce běží ve společném backendu a sdílejí **jeden USB KISS COM port**. Spusť `spustit.bat` nebo `py -3 aprs_kiss_monitor.py`. Podrobný [český návod v1.8](README_v1.8_CZ.md).
+
+Na Raspberry Pi zůstává samostatná headless služba s webovou správou; současné spuštění desktopu a služby na stejném COM portu není podporováno.
+
 ## Jazyk / Language
 
-**CZ / EN**: přepínač na webové mapě, v administraci, APRS zprávách a ve Windows GUI. Anglický návod: [README_EN.md](README_EN.md); české poznámky k v1.5: [README_v1.5_CZ.md](README_v1.5_CZ.md).
+**CZ / EN**: v nativním Windows okně přímo nahoře, bez restartu; pro headless Raspberry Pi zůstává přepínač na webu. Anglický návod: [README_EN.md](README_EN.md); české poznámky k v1.5: [README_v1.5_CZ.md](README_v1.5_CZ.md).
 
 
 ## Nově v1.7: Symboly, overlay a telemetrie

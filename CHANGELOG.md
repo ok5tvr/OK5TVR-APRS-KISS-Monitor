@@ -1,3 +1,14 @@
+# Version 1.8.0 RC1 — Unified native Windows GUI
+
+- New single-window Tkinter application with seven tabs: Monitor/TX, offline Map, Messages, Objects, iGate/DIGI, Telemetry and Diagnostics/Journal.
+- Desktop directly uses the headless `APRSService` engine (`run(with_web=False)`) and one USB KISS port; no web browser, localhost admin key, or split UI.
+- Native Inbox/Outbox with ACK/REJ, reply, retry cancellation, additional receive SSIDs and diagnostics; APRS objects LIVE/KILL, status and GPS transmit.
+- APRS-IS/DIGI configuration with icons/overlay, telemetry, SQLite activity journal, backup/restore and CZ/EN switching retained in the same window.
+- Native offline map from bundled geography data; no map tile network dependency.
+- `spustit.bat`, `spustit_sluzbu_windows.bat` and direct `aprs_kiss_monitor.py` now launch the unified desktop; standalone headless Windows server has a distinct filename.
+- Desktop commands and data snapshots are sent via the shared service command queue, not a second USB receiver.
+- Added unit/integration tests for one-engine startup without HTTP and simulated RF addressed message receive.
+
 ## v1.7.0-rc1 – oprava Inbox RX (2026-11-04)
 - APRS Inbox přijímá zprávy pro přesnou značku iGate (např. OK5TVR-10) **i základní značku bez SSID** (OK5TVR).
 - Další vlastní značky se nastavují na stránce Zprávy → Další přijímané značky / SSID (např. OK5TVR-7,OK5TVR-3); jen stejná základní volací značka.

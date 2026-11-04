@@ -225,7 +225,9 @@ class MonitorState:
             self.history.appendleft(dict(time=packet.timestamp, source=packet.source,
                                          destination=packet.destination, path=packet.path,
                                          kind=packet.kind, summary=packet.summary,
-                                         demo=bool(packet.simulated), gate=getattr(packet,"gate", "")))
+                                         demo=bool(packet.simulated), gate=getattr(packet,"gate", ""),
+                                         payload=getattr(packet,"payload", "")[:260],
+                                         hex_data=getattr(packet,"hex_data", "")[:1200]))
             if packet.source == "?" or packet.simulated:
                 return
             entry = self.stations.setdefault(packet.source, dict(call=packet.source, count=0, last="",
