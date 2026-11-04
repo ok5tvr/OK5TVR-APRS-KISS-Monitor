@@ -4,6 +4,7 @@
 const english = {
   "Mapa / Map": "Map / Mapa",
   "APRS objekty": "APRS objects",
+  "Diagnostika": "Diagnostics",
   "Pro zprávy a objekty spusť plnou webovou službu; klasický monitor poskytuje jen mapu.": "Start the full web service for messages and objects; the classic monitor provides a read-only map.",
   "Toto je pouze mapa klasického monitoru. Pro zprávy a objekty ukonči monitor a spusť spustit_sluzbu_windows.bat.": "This is the classic monitor map only. Close the monitor and run spustit_sluzbu_windows.bat for messages and objects.",
   "Vlož administrátorský odkaz nebo klíč z příkazu zobrazit_odkazy_windows.bat:": "Paste the admin URL or key printed by zobrazit_odkazy_windows.bat:",
