@@ -84,9 +84,11 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 Mapová data © OpenStreetMap contributors; online dlaždice © <a href="https://carto.com/" target="_blank" rel="noopener" style="color:inherit">CARTO</a>;
 offline geografie: GSHHG / WDBII / basemap_data (LGPL-3.0-or-later).</p>
 </main>
+<script src="/assets/web_locale.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
+const tr=value=>window.OK5TVRLocale.tr(value);
 const token=new URLSearchParams(location.search).get('key')||'';
 const authPath=(path)=>path+(token?(path.includes('?')?'&':'?')+'key='+encodeURIComponent(token):'');
 const TILE=256, MAX_ZOOM=16;
@@ -118,8 +120,8 @@ function project(lat,lon){
  return {x:w/2+x,y:h/2+v.y-c.y};
 }
 function centerFromPixel(x,y,z=view.z){const c=pixelCenter(),{w,h}=pixels();return unmercator(c.x+x-w/2,c.y+y-h/2,z);}
-function setNotice(value){$('mapnote').textContent=value;}
-function setHint(msg){$('maphint').textContent=msg;$('maphint').hidden=!msg;}
+function setNotice(value){$('mapnote').textContent=tr(value);}
+function setHint(msg){$('maphint').textContent=tr(msg);$('maphint').hidden=!msg;}
 function paintPath(points, fill=false){
  if(points.length<2)return false;
  context.beginPath();let first=true;
@@ -161,7 +163,7 @@ function drawGeography(){
  context.setTransform(dpr,0,0,dpr,0,0);
  context.fillStyle='#172b3c';context.fillRect(0,0,w,h);
  drawGraticule(w,h);
- if(!geo){context.fillStyle='#b2d0df';context.font='14px Segoe UI, sans-serif';context.fillText('Offline geografická data se načítají…',20,h-22);return;}
+ if(!geo){context.fillStyle='#b2d0df';context.font='14px Segoe UI, sans-serif';context.fillText(tr('Offline geografická data se načítají…'),20,h-22);return;}
  let detail=geo.world;
  if(view.lon>=-23&&view.lon<=52&&view.lat>=30&&view.lat<=73&&view.z>=5)detail=geo.europe;
  if(view.lon>=5&&view.lon<=23&&view.lat>=44&&view.lat<=54&&view.z>=8)detail=geo.central;
@@ -192,7 +194,7 @@ function activateOffline(reason){
  if(effectiveProvider==='offline')return;
  effectiveProvider='offline';$('mapstyle').value='offline';
  $('tiles').replaceChildren();if(tileWatchdog)clearTimeout(tileWatchdog);tileWatchdog=null;
- tileEpoch++;setNotice('Offline mapa: '+reason);
+ tileEpoch++;setNotice(tr('Offline mapa: ')+tr(reason));
  setHint('Podrobný online podklad se nepodařilo načíst. Zobrazení geografických hranic a poloh stanic funguje bez internetu.');
  $('attribution').textContent='Offline: GSHHG / WDBII (Basemap)';
 }
@@ -239,7 +241,7 @@ function updateMarkers(){
  const {w,h}=pixels(),holder=$('markers');holder.replaceChildren();
  let active=null;
  const visible=ownPosition ? [...positions.filter(s=>s.call!==ownPosition.call),
-   {...ownPosition,own:true,count:'vlastní',last:'nastavená poloha'}] : positions;
+   {...ownPosition,own:true,count:tr('vlastní'),last:tr('nastavená poloha')}] : positions;
  for(const s of visible){
   if(!Number.isFinite(s.lat)||!Number.isFinite(s.lon))continue;
   const p=project(s.lat,s.lon);
@@ -253,9 +255,9 @@ function updateMarkers(){
  if(active){
   const {p,s}=active,pop=document.createElement('div');pop.className='map-popup';pop.style.left=clamp(p.x,105,w-105)+'px';
   pop.style.top=clamp(p.y,120,h-20)+'px';
-  const close=document.createElement('button');close.textContent='×';close.title='Zavřít';close.addEventListener('click',()=>{chosen=null;updateMarkers();});pop.appendChild(close);
+  const close=document.createElement('button');close.textContent='×';close.title=tr('Zavřít');close.addEventListener('click',()=>{chosen=null;updateMarkers();});pop.appendChild(close);
   const strong=document.createElement('strong');strong.textContent=s.call;pop.appendChild(strong);
-  for(const line of [`GPS: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`,`Pakety: ${s.count}`,`Poslední: ${s.last}`]){
+  for(const line of [`GPS: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`,`${tr('Pakety')}: ${s.count}`,`${tr('Poslední')}: ${s.last}`]){
    const row=document.createElement('div');row.textContent=line;pop.appendChild(row);
   }
   holder.appendChild(pop);
@@ -284,7 +286,7 @@ function renderStations(){
    const td=document.createElement('td');td.textContent=str;tr.appendChild(td);
   }
   if(Number.isFinite(s.lat)&&Number.isFinite(s.lon)){
-   tr.style.cursor='pointer';tr.title='Zobrazit stanici na mapě';
+   tr.style.cursor='pointer';tr.title=window.OK5TVRLocale.tr('Zobrazit stanici na mapě');
    tr.addEventListener('click',()=>{chosen=s.call;setCenter(s.lat,s.lon,12);});
   }
   out.appendChild(tr);
@@ -349,8 +351,8 @@ async function refresh(){
   $('rx').textContent=st.rx;$('stations').textContent=st.station_count;
   $('positions').textContent=st.position_count;$('gated').textContent=st.igate_sent;$('tx').textContent=st.tx_requests;
   $('digi_tx').textContent=st.digi?.tx_written||0;$('beacons').textContent=st.beacons_sent||0;
-  $('rf').textContent='Rádio: '+st.rf_status;$('igate').textContent='iGate: '+st.igate_status;
-  $('digi').textContent='DIGI: '+(st.digi?.enabled ? ('zapnuto · '+st.digi.call) : 'vypnuto');
+  $('rf').textContent=tr('Rádio: ')+tr(st.rf_status);$('igate').textContent='iGate: '+tr(st.igate_status);
+  $('digi').textContent='DIGI: '+(st.digi?.enabled ? (tr('Zapnuto')+' · '+st.digi.call) : tr('Vypnuto'));
   $('digi').classList.toggle('off',!st.digi?.enabled);
   $('rf').classList.toggle('off',!st.rf_status.includes('Připojeno'));
   $('igate').classList.toggle('off',!st.igate_status.startsWith('Online'));
@@ -366,9 +368,10 @@ async function refresh(){
    }
    rows.appendChild(tr);
   }
-  $('update').textContent='Aktualizováno '+new Date().toLocaleTimeString('cs-CZ');
- }catch(err){$('update').textContent='Spojení s monitorem není dostupné: '+err.message;}
+  $('update').textContent=tr('Aktualizováno ')+new Date().toLocaleTimeString(window.OK5TVRLocale.language==='en'?'en-GB':'cs-CZ');
+ }catch(err){$('update').textContent=tr('Spojení s monitorem není dostupné: ')+err.message;}
 }
+window.addEventListener('ok5tvr:language',()=>{renderStations();renderMap(true);refresh();});
 loadLocalGeography();renderMap(true);refresh();setInterval(refresh,2500);
 </script>
 </body>

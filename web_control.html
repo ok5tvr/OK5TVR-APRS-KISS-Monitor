@@ -52,18 +52,23 @@ button.primary{background:#167f70}button.danger{background:#9e4651}button:disabl
 <p class="note">Test vysílání je dostupný pouze po potvrzení; opakované stisky jsou omezené. Nepovoluj TX bez antény a dodržuj pravidla místní APRS sítě.</p></section>
 <div id="result" aria-live="polite">Načítám…</div>
 </main>
+<script src="/assets/web_locale.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id),key=new URLSearchParams(location.search).get('admin')||'';
 const url=p=>p+'?admin='+encodeURIComponent(key);
-function notify(t){$('result').textContent=t;}
+const tr=value=>window.OK5TVRLocale.tr(value);
+let currentNotice = '';
+let passcodeIsSet = false;
+function notify(t){currentNotice=t;$('result').textContent=tr(t);}
 async function fetchConfig(){
  try{
   const r=await fetch(url('/api/config'),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
   const c=await r.json(),s=c.serial,w=c.web,i=c.igate,d=c.digi,p=c.position;
   $('serial_port').value=s.port;$('serial_baud').value=s.baud;$('retry').value=s.retry_seconds;
   $('igate_call').value=i.call;$('host').value=i.host;$('igate_port').value=i.port;$('is_auto').checked=i.autostart;
-  $('passcode').placeholder=i.has_passcode?'Uloženo bezpečně':'Chybí';
+  passcodeIsSet=!!i.has_passcode;
+  $('passcode').placeholder=passcodeIsSet?tr('Uloženo bezpečně'):tr('Chybí');
   $('digi_call').value=d.call;$('mode').value=d.mode;$('trace').checked=d.trace;
   $('delay').value=d.delay_s;$('limit').value=d.max_per_min;$('gap').value=d.min_gap_s;$('digi_auto').checked=d.autostart;
   $('lat').value=p.latitude===null?'':p.latitude;$('lon').value=p.longitude===null?'':p.longitude;
@@ -71,7 +76,7 @@ async function fetchConfig(){
   $('view').href='/'+(c.viewer_token?'?key='+encodeURIComponent(c.viewer_token):'');
   $('msgpage').href='/messages?admin='+encodeURIComponent(key);
   notify('Nastavení načteno. APRS-IS passcode se nezobrazuje.');
- }catch(e){notify('Nelze načíst konfiguraci: '+e.message)}
+ }catch(e){notify(tr('Nelze načíst konfiguraci: ')+e.message)}
 }
 async function api(action,data={}){
  try{
@@ -79,7 +84,7 @@ async function api(action,data={}){
     method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key},body:JSON.stringify({action,...data})
   });const v=await r.json();if(!r.ok||!v.ok)throw Error(v.error||'HTTP '+r.status);
   notify(typeof v.result==='string'?v.result:JSON.stringify(v.result,null,2));
- }catch(e){notify('CHYBA: '+e.message)}
+ }catch(e){notify(tr('CHYBA: ')+e.message)}
 }
 function collect(){const nonempty=id=>$(id).value.trim();
  const lat=nonempty('lat'),lon=nonempty('lon'),passcode=$('passcode').value;
@@ -93,17 +98,22 @@ function collect(){const nonempty=id=>$(id).value.trim();
   },passcode:passcode||null};
 }
 $('save').onclick=()=>{
- const o=collect();if(o.config.digi.autostart&&!confirm('POZOR: Automatické vysílání DIGI po restartu. Opravdu to povolit?'))return;
+ const o=collect();if(o.config.digi.autostart&&!confirm(tr('POZOR: Automatické vysílání DIGI po restartu. Opravdu to povolit?')))return;
  api('save',{...o,confirm_auto_tx:o.config.digi.autostart});
 };
-$('ison').onclick=()=>{if(confirm('Povolit odesílání skutečně přijatých APRS paketů do veřejné APRS-IS?'))api('igate_on',{confirm:true})};
+$('ison').onclick=()=>{if(confirm(tr('Povolit odesílání skutečně přijatých APRS paketů do veřejné APRS-IS?')))api('igate_on',{confirm:true})};
 $('isoff').onclick=()=>api('igate_off');
-$('dgon').onclick=()=>{if(confirm('POZOR: Povolit automatické retransmise APRS paketů na RF? Interní DIGI je vypnutá a KISS TX povolen?'))api('digi_on',{confirm:true})};
+$('dgon').onclick=()=>{if(confirm(tr('POZOR: Povolit automatické retransmise APRS paketů na RF? Interní DIGI je vypnutá a KISS TX povolen?')))api('digi_on',{confirm:true})};
 $('dgoff').onclick=()=>api('digi_off');
-$('test').onclick=()=>{if(confirm('Odeslat JEDEN testovací APRS status přes RF?'))api('tx_test',{confirm:true})};
+$('test').onclick=()=>{if(confirm(tr('Odeslat JEDEN testovací APRS status přes RF?')))api('tx_test',{confirm:true})};
 async function refresh(){try{const r=await fetch(url('/api/state'),{cache:'no-store'}),v=await r.json();
- $('rf').textContent=v.rf_status;$('is').textContent=v.igate_status;
- $('dg').textContent=v.digi.enabled?'Zapnuto':'Vypnuto';$('rx').textContent=v.rx;$('gate').textContent=v.igate_sent;
- $('dtx').textContent=v.digi.tx_written||0;}catch(e){$('rf').textContent='Nedostupné';}}
+ $('rf').textContent=tr(v.rf_status);$('is').textContent=tr(v.igate_status);
+ $('dg').textContent=v.digi.enabled?tr('Zapnuto'):tr('Vypnuto');$('rx').textContent=v.rx;$('gate').textContent=v.igate_sent;
+ $('dtx').textContent=v.digi.tx_written||0;}catch(e){$('rf').textContent=tr('Nedostupné');}}
+window.addEventListener('ok5tvr:language',()=>{
+  $('result').textContent=tr(currentNotice);
+  $('passcode').placeholder=passcodeIsSet?tr('Uloženo bezpečně'):tr('Chybí');
+  refresh();
+});
 fetchConfig();refresh();setInterval(refresh,3000);
 </script></body></html>

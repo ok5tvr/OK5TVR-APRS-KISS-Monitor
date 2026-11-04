@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""OK5TVR APRS v1.4: headless Windows/Linux KISS receiver, RF->IS iGate and DIGI.
+"""OK5TVR APRS v1.5: headless Windows/Linux KISS receiver, RF->IS iGate and DIGI.
 
 Shared protocol, serial, APRS-IS and digipeater modules are also used by the GUI.
 Safe defaults: no automatic RF TX and no APRS-IS forwarding on fresh install.

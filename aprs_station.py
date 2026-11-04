@@ -74,7 +74,7 @@ def load_settings() -> dict:
 def save_settings(data: dict):
     """Persist location and callsign only. Never save passcode or enable radio TX."""
     clean={k:data[k] for k in ('latitude','longitude','comment','locator','beacon_enabled',
-                             'beacon_interval','igate_call','digi_call','digi_mode','digi_trace') if k in data}
+                             'beacon_interval','igate_call','digi_call','digi_mode','digi_trace','ui_language') if k in data}
     temporary=SETTINGS.with_suffix('.json.tmp')
     temporary.write_text(json.dumps(clean,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     if os.name!='nt': os.chmod(temporary,0o600)

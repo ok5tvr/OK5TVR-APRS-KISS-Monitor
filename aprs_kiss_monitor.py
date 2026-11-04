@@ -14,6 +14,7 @@ import re
 import threading
 import time
 import webbrowser
+import weakref
 import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,6 +25,7 @@ from aprs_features import (APRSISClient, MonitorState, encode_ui_packet,
                            CALL_RE, IS_CALL_RE)
 from web_panel import WebPanel, local_ipv4
 from aprs_digi import DigiConfig, DigiRepeater
+from desktop_locale import translate as translate_ui
 from aprs_station import (aprsis_position, decimal_coordinate, maidenhead_center,
                           load_settings, save_settings)
 
@@ -35,7 +37,7 @@ except ImportError:
     list_ports = None
 
 APP_TITLE = "OK5TVR APRS KISS Monitor"
-VERSION = "1.3"
+VERSION = "1.5.0-rc1"
 FEND, FESC, TFEND, TFESC = 0xC0, 0xDB, 0xDC, 0xDD
 MAX_KISS_FRAME = 4096
 
@@ -82,6 +84,14 @@ class App:
         self.last_tx = 0.0
         self.gate_cache = {}  # (src,dst,info) -> recent time: RF duplicates not re-gated
         self.settings = load_settings()  # excludes APRS-IS passcode
+        self.language = self.settings.get('ui_language', 'cs')
+        if self.language not in ('cs', 'en'):
+            self.language = 'cs'
+        self._localized_widgets = weakref.WeakKeyDictionary()
+        self._localized_windows = weakref.WeakKeyDictionary()
+        self._table_titles = {}
+        self._status_original = 'Nepřipojeno'
+        self._detail_original = ''
         try:
             self.digi = DigiRepeater(DigiConfig(
                 call=str(self.settings.get('digi_call','OK5TVR-3')).upper(),
@@ -103,6 +113,53 @@ class App:
         self.root.after(80, self._pump)
         self.root.protocol("WM_DELETE_WINDOW", self.exit_app)
 
+    def tr(self, value):
+        return translate_ui(value, self.language)
+
+    def _widget_text(self, widget, original):
+        if original:
+            self._localized_widgets[widget] = str(original)
+            widget.configure(text=self.tr(original))
+        return widget
+
+    def _window_title(self, window, original):
+        self._localized_windows[window] = original
+        window.title(self.tr(original))
+
+    def _message_box(self, fn, title, message, **kwargs):
+        return fn(self.tr(title), self.tr(message), **kwargs)
+
+    def set_language(self, event=None):
+        chosen = 'en' if self.language_choice.get() == 'EN' else 'cs'
+        if chosen == self.language:
+            return
+        self.language = chosen
+        self.settings['ui_language'] = chosen
+        try:
+            save_settings(self.settings)
+        except OSError:
+            pass  # Still apply language for this running session.
+        for widget, source in list(self._localized_widgets.items()):
+            try:
+                if widget.winfo_exists():
+                    widget.configure(text=self.tr(source))
+            except tk.TclError:
+                continue
+        for window, source in list(self._localized_windows.items()):
+            try:
+                if window.winfo_exists():
+                    window.title(self.tr(source))
+            except tk.TclError:
+                continue
+        for key, source in self._table_titles.items():
+            self.table.heading(key, text=self.tr(source))
+        self.status_var.set(self.tr(self._status_original))
+        self._update_counters()
+        if self.table.selection():
+            self.on_select()
+        elif self._detail_original:
+            self.set_detail(self._detail_original)
+
     def _styles(self):
         style = ttk.Style(self.root)
         style.theme_use("clam")
@@ -120,23 +177,31 @@ class App:
 
     def _label(self, parent, text: str, size=10, color=None, weight="normal", **opts):
         font_name = "Segoe UI Semibold" if weight == "bold" else "Segoe UI"
-        return tk.Label(parent, text=text, bg=opts.pop("bg", self.BG), fg=color or self.TEXT,
-                        font=(font_name, size), **opts)
+        widget = tk.Label(parent, text=self.tr(text), bg=opts.pop("bg", self.BG), fg=color or self.TEXT,
+                          font=(font_name, size), **opts)
+        return self._widget_text(widget, text)
 
     def _btn(self, parent, text, command, primary=False, **opts):
-        return tk.Button(parent, text=text, command=command, padx=16, pady=8,
-                         font=("Segoe UI Semibold", 10), relief="flat", bd=0,
-                         fg=self.BG if primary else self.TEXT,
-                         bg=self.ACCENT if primary else "#304358",
-                         activebackground="#64E5D0" if primary else "#42607E",
-                         cursor="hand2", **opts)
+        widget = tk.Button(parent, text=self.tr(text), command=command, padx=16, pady=8,
+                           font=("Segoe UI Semibold", 10), relief="flat", bd=0,
+                           fg=self.BG if primary else self.TEXT,
+                           bg=self.ACCENT if primary else "#304358",
+                           activebackground="#64E5D0" if primary else "#42607E",
+                           cursor="hand2", **opts)
+        return self._widget_text(widget, text)
 
     def _layout(self):
         header = tk.Frame(self.root, bg=self.BG)
         header.pack(fill="x", padx=22, pady=(17, 5))
         self._label(header, "OK5TVR", 12, self.ACCENT, "bold").pack(side="left", padx=(0, 12))
         self._label(header, "APRS KISS Monitor", 19, self.TEXT, "bold").pack(side="left")
-        self._label(header, "UV-K1(8)  ·  F4HWN Labs  ·  KISS TNC", 10, self.SUB).pack(side="right")
+        self.language_choice = ttk.Combobox(header, state="readonly", width=4,
+                                             values=("CZ", "EN"), style="Dark.TCombobox")
+        self.language_choice.set("EN" if self.language == "en" else "CZ")
+        self.language_choice.pack(side="right", padx=(8, 0))
+        self.language_choice.bind("<<ComboboxSelected>>", self.set_language)
+        self._label(header, "Jazyk / Language", 9, self.SUB).pack(side="right")
+        self._label(header, "UV-K1(8)  ·  F4HWN Labs  ·  KISS TNC", 10, self.SUB).pack(side="right", padx=(0, 16))
 
         controls = tk.Frame(self.root, bg=self.PANEL, padx=15, pady=13, highlightthickness=1,
                             highlightbackground=self.BORDER)
@@ -170,7 +235,7 @@ class App:
         banner.pack(fill="x", padx=22, pady=(5, 12))
         self.status_dot = self._label(banner, "●", 15, self.WARNING)
         self.status_dot.pack(side="left")
-        self.status_var = tk.StringVar(value="Nepřipojeno")
+        self.status_var = tk.StringVar(value=self.tr("Nepřipojeno"))
         self._label(banner, "", color=self.SUB, textvariable=self.status_var).pack(side="left", padx=(7, 0))
         self.counters_var = tk.StringVar(value="Rámce: 0     Ovládací KISS: 0     Chybné: 0")
         self._label(banner, "", 10, self.SUB, textvariable=self.counters_var).pack(side="right")
@@ -192,8 +257,9 @@ class App:
             "kind": ("Typ", 90, "w"),
             "summary": ("Obsah / dekódovaná zpráva", 425, "w"),
         }
+        self._table_titles = {key: heading for key, (heading, _, _) in specs.items()}
         for key, (heading, width, align) in specs.items():
-            self.table.heading(key, text=heading)
+            self.table.heading(key, text=self.tr(heading))
             self.table.column(key, width=width, anchor=align, minwidth=65,
                               stretch=key == "summary")
         self.table.tag_configure("sim", foreground=self.WARNING)
@@ -222,9 +288,10 @@ class App:
         self._label(footer, f"v{VERSION}", 9, self.SUB).pack(side="right")
 
     def set_detail(self, value):
+        self._detail_original = value
         self.detail.configure(state="normal")
         self.detail.delete("1.0", "end")
-        self.detail.insert("1.0", value)
+        self.detail.insert("1.0", self.tr(value))
         self.detail.configure(state="disabled")
 
     def refresh_ports(self):
@@ -245,7 +312,8 @@ class App:
             self.set_status("Žádný COM port nenalezen" if list_ports else "Není nainstalován pyserial", False)
 
     def set_status(self, message: str, connected=False):
-        self.status_var.set(message)
+        self._status_original = message
+        self.status_var.set(self.tr(message))
         self.status_dot.configure(fg=self.ACCENT if connected else self.WARNING)
 
     def toggle_connection(self):
@@ -257,10 +325,10 @@ class App:
     def connect(self):
         choice = self.port_choice.get().strip()
         if not choice:
-            messagebox.showwarning(APP_TITLE, "Nejprve vyber sériový port. Zkus tlačítko ⟳.")
+            self._message_box(messagebox.showwarning, APP_TITLE, "Nejprve vyber sériový port. Zkus tlačítko ⟳.")
             return
         if serial is None:
-            messagebox.showerror(APP_TITLE, "Chybí knihovna pyserial.\nSpusť spustit.bat nebo:\npy -3 -m pip install pyserial")
+            self._message_box(messagebox.showerror, APP_TITLE, "Chybí knihovna pyserial.\nSpusť spustit.bat nebo:\npy -3 -m pip install pyserial")
             return
         port = choice.split(" | ", 1)[0]
         self.session += 1
@@ -282,7 +350,7 @@ class App:
             self.stop_event.set()
         self.connecting = False
         self.closing = True
-        self.connect_btn.configure(text="Odpojuji...", state="disabled")
+        self._widget_text(self.connect_btn, "Odpojuji..."); self.connect_btn.configure( state="disabled")
         self.set_status("Odpojuji sériový port ...")
         self.state.update_status(radio="Odpojuji")
 
@@ -312,7 +380,7 @@ class App:
             if event_type == "connected":
                 self.active = True
                 self.connecting = False
-                self.connect_btn.configure(text="Odpojit", state="normal")
+                self._widget_text(self.connect_btn, "Odpojit"); self.connect_btn.configure( state="normal")
                 self.set_status(f"Připojeno k {value} – čekám na KISS rámce", True)
                 self.state.update_status(radio="Připojeno " + value)
             elif event_type == "frame":
@@ -350,7 +418,7 @@ class App:
                 self.active = False
                 self.connecting = False
                 self.closing = False
-                self.connect_btn.configure(text="Připojit", state="normal")
+                self._widget_text(self.connect_btn, "Připojit"); self.connect_btn.configure( state="normal")
                 if not self.status_var.get().startswith("Chyba"):
                     self.set_status("Odpojeno")
                 self.state.update_status(radio="Odpojeno")
@@ -363,7 +431,7 @@ class App:
         gated = self.state.snapshot()["igate_sent"]
         digi_tx = self.digi.stats['tx_written']
         self.counters_var.set(f"RX: {self.frame_count}   TX: {self.tx_attempts}   DIGI: {digi_tx}"
-                              f"   →IS: {gated}   KISS: {self.control_count}   Chybné: {self.invalid_count}")
+                              f"   →IS: {gated}   KISS: {self.control_count}   {self.tr('Chybné')}: {self.invalid_count}")
 
     def _digi_tick(self):
         if not self.digi.enabled or not self.active or self.reader is None:
@@ -429,14 +497,14 @@ class App:
         packet = self.packet_by_row.get(selection[0])
         if packet is None:
             return
-        source = "SIMULACE – NEPŘIŠLO Z RÁDIA" if packet.simulated else "RADIO / KISS USB"
+        source = self.tr("SIMULACE – NEPŘIŠLO Z RÁDIA") if packet.simulated else "RADIO / KISS USB"
         text = (f"{packet.timestamp} | {source}\n"
                 f"{packet.source} > {packet.destination}"
                 f"{(',' + packet.path) if packet.path else ''}\n"
-                f"Typ: {packet.kind}\n"
-                f"Text: {packet.payload}\n"
-                f"Dekódováno: {packet.summary}\n\n"
-                f"AX.25 bez FCS (HEX):\n{packet.hex_data}\n")
+                f"{self.tr('Typ')}: {packet.kind}\n"
+                f"{self.tr('Text')}: {packet.payload}\n"
+                f"{self.tr('Dekódováno')}: {packet.summary}\n\n"
+                f"{self.tr('AX.25 bez FCS (HEX)')}:\n{packet.hex_data}\n")
         self.set_detail(text)
 
     def demo(self):
@@ -445,7 +513,7 @@ class App:
 
     def export_csv(self):
         if not self.records:
-            messagebox.showinfo(APP_TITLE, "Zatím nejsou žádné rámce k exportu.")
+            self._message_box(messagebox.showinfo, APP_TITLE, "Zatím nejsou žádné rámce k exportu.")
             return
         filename = f"aprs_kiss_{datetime.now():%Y%m%d_%H%M%S}.csv"
         path = filedialog.asksaveasfilename(title="Uložit přijímané rámce", defaultextension=".csv",
@@ -461,19 +529,19 @@ class App:
                                      packet.kind, packet.summary, packet.payload,
                                      packet.hex_data, "ANO" if packet.simulated else "NE"])
         except OSError as exc:
-            messagebox.showerror(APP_TITLE, f"Soubor se nepodařilo uložit:\n{exc}")
+            self._message_box(messagebox.showerror, APP_TITLE, f"Soubor se nepodařilo uložit:\n{exc}")
             return
         self.set_status(f"Exportováno {len(self.records)} rámců do {Path(path).name}", self.active)
 
     def open_map(self):
         if self.web.httpd is None:
-            messagebox.showerror(APP_TITLE,"Webové rozhraní neběží.")
+            self._message_box(messagebox.showerror, APP_TITLE,"Webové rozhraní neběží.")
             return
         webbrowser.open(self.web.local_url())
 
     def tx_dialog(self):
         win = tk.Toplevel(self.root)
-        win.title("KISS TNC – ruční TX test")
+        self._window_title(win,"KISS TNC – ruční TX test")
         win.geometry("560x380")
         win.minsize(470, 320)
         win.configure(bg=self.BG)
@@ -499,17 +567,17 @@ class App:
         self._label(panel,"",9,self.WARNING,textvariable=msg,wraplength=505,justify="left").pack(anchor="w",pady=5)
         def send():
             if self.digi.enabled:
-                messagebox.showwarning('KISS TX','Nejprve vypni automatický digipeater, aby se nemísily TX rámce.',parent=win);return
+                self._message_box(messagebox.showwarning, 'KISS TX','Nejprve vypni automatický digipeater, aby se nemísily TX rámce.',parent=win);return
             if not self.active or self.reader is None:
-                messagebox.showwarning("KISS TX", "Nejprve připoj COM port radiostanice.",parent=win);return
+                self._message_box(messagebox.showwarning, "KISS TX", "Nejprve připoj COM port radiostanice.",parent=win);return
             if time.monotonic()-self.last_tx < 20:
-                messagebox.showwarning("KISS TX","Mezi dvěma ručními testy vyčkej alespoň 20 sekund.",parent=win);return
+                self._message_box(messagebox.showwarning, "KISS TX","Mezi dvěma ručními testy vyčkej alespoň 20 sekund.",parent=win);return
             try:
                 ui=encode_ui_packet(call.get(),"APRS",path.get(),">"+text.get())
                 wire=encode_kiss_data(ui)
             except (ValueError,UnicodeError) as exc:
-                messagebox.showerror("KISS TX",str(exc),parent=win);return
-            if not messagebox.askyesno("Potvrdit vysílání", 
+                self._message_box(messagebox.showerror, "KISS TX",str(exc),parent=win);return
+            if not self._message_box(messagebox.askyesno, "Potvrdit vysílání", 
                        "Program pošle JEDEN rámec do radiostanice. Pokud je KISS TNC v režimu TX, může se odvysílat na RF.\n\n"
                        + call.get().upper()+">APRS"+(" "+path.get() if path.get() else "")+":>"+text.get()
                        +"\n\nPokračovat?",parent=win):return
@@ -521,7 +589,7 @@ class App:
 
     def igate_dialog(self):
         win=tk.Toplevel(self.root)
-        win.title("APRS-IS iGate – pouze RF → internet")
+        self._window_title(win,"APRS-IS iGate – pouze RF → internet")
         win.geometry("575x440")
         win.configure(bg=self.BG)
         panel=tk.Frame(win,bg=self.BG,padx=22,pady=17);panel.pack(fill="both",expand=True)
@@ -556,15 +624,15 @@ class App:
             status.set("Vypnuto")
         def start():
             if self.igate_client:
-                messagebox.showinfo("APRS-IS", "iGate už běží. Nejprve ji vypni.",parent=win);return
+                self._message_box(messagebox.showinfo, "APRS-IS", "iGate už běží. Nejprve ji vypni.",parent=win);return
             c=call.get().strip().upper();pc=passcode.get().strip();h=host.get().strip()
             try:portno=int(port.get())
             except ValueError:portno=-1
             if (not IS_CALL_RE.fullmatch(c) or not pc.isdigit() or not 0<=int(pc)<=32767
                     or not h or len(h)>253 or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-" for ch in h)
                     or not 1<=portno<=65535):
-                messagebox.showerror("APRS-IS","Oprav značku, numerický passcode (0–32767), server a port.",parent=win);return
-            if not messagebox.askyesno("Povolit RF→APRS-IS", "Odesílat reálně přijaté a povolené RF pakety do veřejné sítě APRS-IS?\n\n"
+                self._message_box(messagebox.showerror, "APRS-IS","Oprav značku, numerický passcode (0–32767), server a port.",parent=win);return
+            if not self._message_box(messagebox.askyesno, "Povolit RF→APRS-IS", "Odesílat reálně přijaté a povolené RF pakety do veřejné sítě APRS-IS?\n\n"
                                      + c+" @ "+h+":"+str(portno),parent=win):return
             self.igate_client=APRSISClient(c,pc,h,portno,self.events)
             try:
@@ -572,7 +640,7 @@ class App:
                     int(self.settings.get('beacon_interval',30)))
             except (ValueError,TypeError) as exc:
                 self.igate_client=None
-                messagebox.showerror('APRS-IS',f'Neplatné nastavení polohy: {exc}',parent=win);return
+                self._message_box(messagebox.showerror, 'APRS-IS',f'Neplatné nastavení polohy: {exc}',parent=win);return
             self.settings['igate_call']=c
             try: save_settings(self.settings)
             except OSError: pass
@@ -610,7 +678,7 @@ class App:
             self.state.set_own_position(None)
 
     def position_dialog(self):
-        win=tk.Toplevel(self.root);win.title('Poloha GPS iGate a APRS-IS maják')
+        win=tk.Toplevel(self.root);self._window_title(win,'Poloha GPS iGate a APRS-IS maják')
         win.geometry('640x565');win.minsize(560,500);win.configure(bg=self.BG)
         panel=tk.Frame(win,bg=self.BG,padx=22,pady=15);panel.pack(fill='both',expand=True)
         self._label(panel,'GPS POLOHA STANICE / APRS-IS',14,self.ACCENT,'bold').pack(anchor='w',pady=(0,8))
@@ -638,12 +706,12 @@ class App:
         def from_locator():
             try:
                 lt,ln=maidenhead_center(locator.get());lat.set(f'{lt:.6f}');lon.set(f'{ln:.6f}')
-            except ValueError as exc:messagebox.showerror('Lokátor',str(exc),parent=win)
+            except ValueError as exc:self._message_box(messagebox.showerror, 'Lokátor',str(exc),parent=win)
         self._btn(row,'Použít střed lokátoru',from_locator).pack(side='left',padx=9)
         self._label(panel,'Střed lokátoru není přesná GPS poloha. Pro skutečnou polohu zadej souřadnice.',
                     9,self.WARNING).pack(anchor='w',pady=(2,9))
         field('Komentář APRS',comment)
-        tk.Checkbutton(panel,text='Posílat polohu do APRS-IS, pokud běží iGate (nikoli na RF)',
+        tk.Checkbutton(panel,text=self.tr('Posílat polohu do APRS-IS, pokud běží iGate (nikoli na RF)'),
                        variable=beacon,bg=self.BG,fg=self.TEXT,selectcolor='#26384B',
                        activebackground=self.BG,activeforeground=self.TEXT,
                        font=('Segoe UI',10)).pack(anchor='w',pady=(12,8))
@@ -668,7 +736,7 @@ class App:
                 if lt is not None:
                     aprsis_position(str(self.settings.get('igate_call','OK5TVR-10')),lt,ln,comment.get(),'R&')
                 if beacon.get() and self.igate_client is not None:
-                    if not messagebox.askyesno('Zveřejnění GPS na APRS-IS',
+                    if not self._message_box(messagebox.askyesno, 'Zveřejnění GPS na APRS-IS',
                        f'Zveřejnit na APRS-IS polohu {lt:.5f}, {ln:.5f} jako '+self.igate_client.call+
                        '? Maják je veřejný a může se zobrazit na aprs.fi.',parent=win):return
                 self.settings.update({'latitude':lt,'longitude':ln,
@@ -680,12 +748,12 @@ class App:
                     self.igate_client.configure_position(
                         self._position_beacon_line(self.igate_client.call),it)
             except (ValueError,OSError) as exc:
-                messagebox.showerror('Nastavení GPS',str(exc),parent=win);return
+                self._message_box(messagebox.showerror, 'Nastavení GPS',str(exc),parent=win);return
             status.set('Nastavení uloženo. Veřejný maják: '+('povolen' if beacon.get() else 'vypnut'))
         self._btn(panel,'Uložit polohu / nastavení',save,primary=True).pack(anchor='w',pady=(7,0))
 
     def digi_dialog(self):
-        win=tk.Toplevel(self.root);win.title('APRS DIGI repeater přes USB KISS')
+        win=tk.Toplevel(self.root);self._window_title(win,'APRS DIGI repeater přes USB KISS')
         win.geometry('680x610');win.minsize(590,550);win.configure(bg=self.BG)
         panel=tk.Frame(win,bg=self.BG,padx=22,pady=14);panel.pack(fill='both',expand=True)
         self._label(panel,'APRS DIGIPEATER – PC → USB KISS → RF',14,self.ACCENT,'bold').pack(anchor='w',pady=(0,6))
@@ -693,7 +761,7 @@ class App:
                     10,self.WARNING).pack(anchor='w',pady=(0,7))
         cfg=self.digi.config
         call=tk.StringVar(value=cfg.call)
-        mode=tk.StringVar(value='Regionální WIDE1 + WIDE2' if cfg.mode=='regional' else 'Fill-in WIDE1-1')
+        mode=tk.StringVar(value=self.tr('Regionální WIDE1 + WIDE2') if cfg.mode=='regional' else 'Fill-in WIDE1-1')
         trace=tk.BooleanVar(value=cfg.trace)
         delay=tk.StringVar(value=str(cfg.delay_s))
         limit=tk.StringVar(value=str(cfg.max_per_min))
@@ -706,9 +774,9 @@ class App:
         field('Vlastní značka DIGI',call)
         row=tk.Frame(panel,bg=self.BG);row.pack(fill='x',pady=4)
         self._label(row,'Režim',10,self.SUB,width=24,anchor='w').pack(side='left')
-        ttk.Combobox(row,values=['Fill-in WIDE1-1','Regionální WIDE1 + WIDE2'],
+        ttk.Combobox(row,values=['Fill-in WIDE1-1',self.tr('Regionální WIDE1 + WIDE2')],
             state='readonly',style='Dark.TCombobox',textvariable=mode,width=32).pack(side='left')
-        tk.Checkbutton(panel,text='V regionálním režimu navíc TRACE2-1 / TRACE2-2',variable=trace,
+        tk.Checkbutton(panel,text=self.tr('V regionálním režimu navíc TRACE2-1 / TRACE2-2'),variable=trace,
             bg=self.BG,fg=self.TEXT,selectcolor='#26384B',activebackground=self.BG,
             activeforeground=self.TEXT,font=('Segoe UI',10)).pack(anchor='w',pady=(5,8))
         field('Odklad / viscous (s)',delay)
@@ -729,7 +797,7 @@ class App:
                 c.validate()
                 return c
             except (ValueError,TypeError) as exc:
-                messagebox.showerror('APRS DIGI','Oprav konfiguraci: '+str(exc),parent=win)
+                self._message_box(messagebox.showerror, 'APRS DIGI','Oprav konfiguraci: '+str(exc),parent=win)
                 return None
         def preview():
             c=config_read()
@@ -748,12 +816,12 @@ class App:
             self._update_counters()
         def start():
             if self.digi.enabled:
-                messagebox.showinfo('APRS DIGI','Nejprve vypni běžící DIGI.',parent=win);return
+                self._message_box(messagebox.showinfo, 'APRS DIGI','Nejprve vypni běžící DIGI.',parent=win);return
             if not self.active or self.reader is None:
-                messagebox.showwarning('APRS DIGI','Nejprve připoj USB KISS TNC.',parent=win);return
+                self._message_box(messagebox.showwarning, 'APRS DIGI','Nejprve připoj USB KISS TNC.',parent=win);return
             c=config_read()
             if c is None:return
-            if not messagebox.askyesno('Povolit automatické RF vysílání',
+            if not self._message_box(messagebox.askyesno, 'Povolit automatické RF vysílání',
                 'Zapnout opakování APRS paketů prostřednictvím USB KISS TNC?\n\n'
                 'UV-K1(8) musí být v KISS TX režimu a aplikace APRS DIGI na rádiu vypnutá.\n'
                 'Software filtruje duplicitní pakety, ale neumí sám potvrdit fyzické odvysílání.\n\n'
@@ -786,28 +854,28 @@ class App:
 
     def lan_dialog(self):
         if self.web.httpd is None:
-            messagebox.showerror(APP_TITLE,"Webové rozhraní není dostupné.")
+            self._message_box(messagebox.showerror, APP_TITLE,"Webové rozhraní není dostupné.")
             return
         if not self.web.lan:
-            if not messagebox.askyesno("Webový přístup v LAN", 
+            if not self._message_box(messagebox.askyesno, "Webový přístup v LAN", 
                     "Povolit přístup k READ-ONLY mapě z dalších zařízení ve stejné síti?\n\n"
                     "Připojení je HTTP bez TLS; používej jen důvěryhodnou domácí LAN. "
                     "Nedoporučuje se vystavovat port do internetu.\n\nPokračovat?"):
                 return
             try:self.web.start(lan=True,port=self.web.port)
             except OSError as exc:
-                messagebox.showerror(APP_TITLE, str(exc));return
+                self._message_box(messagebox.showerror, APP_TITLE, str(exc));return
             url=self.web.lan_url(local_ipv4())
             self.root.clipboard_clear();self.root.clipboard_append(url)
             self.web_var.set("LAN mapa aktivní · odkaz ve schránce")
-            messagebox.showinfo("Mapa v telefonu", 
+            self._message_box(messagebox.showinfo, "Mapa v telefonu", 
                 "Otevři na mobilu (ve stejné Wi-Fi):\n\n"+url+
                 "\n\nOdkaz včetně přístupového klíče byl zkopírován do schránky. "
                 "Pokud se stránka nenačte, ověř IP PC a firewall Windows.")
         else:
-            if messagebox.askyesno("Web v LAN","Vypnout přístup z LAN (web v tomto PC zůstane)?"):
+            if self._message_box(messagebox.askyesno, "Web v LAN","Vypnout přístup z LAN (web v tomto PC zůstane)?"):
                 try:self.web.start(lan=False,port=self.web.port)
-                except OSError as exc:messagebox.showerror(APP_TITLE,str(exc));return
+                except OSError as exc:self._message_box(messagebox.showerror, APP_TITLE,str(exc));return
                 self.web_var.set("LAN web vypnut · pouze " + self.web.local_url())
 
     def exit_app(self):

@@ -2,9 +2,13 @@
 
 **Windows / Raspberry Pi APRS monitor, one-way iGate, digipeater and messaging over USB KISS TNC**
 
-Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.4**.
+Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.5.0-rc1**.
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
+
+## Jazyk / Language
+
+**CZ / EN**: přepínač na webové mapě, v administraci, APRS zprávách a ve Windows GUI. Anglický návod: [README_EN.md](README_EN.md); české poznámky k v1.5: [README_v1.5_CZ.md](README_v1.5_CZ.md).
 
 ## Funkce
 
@@ -54,7 +58,7 @@ python3 /opt/ok5tvr-aprs/aprs_service.py --links
 
 ## Dokumentace
 
-Podrobný český návod včetně nastavení RF cesty, zpráv a instalace najdeš v [README_v1.4_CZ.md](README_v1.4_CZ.md).
+Pro přepínání CZ/EN a aktualizaci viz [README_v1.5_CZ.md](README_v1.5_CZ.md). Podrobný popis v1.4: [README_v1.4_CZ.md](README_v1.4_CZ.md). English: [README_EN.md](README_EN.md).
 
 ## Testy
 

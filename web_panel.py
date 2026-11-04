@@ -17,6 +17,7 @@ _ASSET_DIR = Path(__file__).resolve().parent
 HTML = (_ASSET_DIR / 'web_dashboard.html').read_text(encoding='utf-8')
 ADMIN_HTML = (_ASSET_DIR / 'web_control.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_control.html').exists() else ''
 MESSAGES_HTML = (_ASSET_DIR / 'web_messages.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_messages.html').exists() else ''
+LOCALE_JS = (_ASSET_DIR / 'web_locale.js').read_text(encoding='utf-8')
 
 
 class WebPanel:
@@ -77,6 +78,10 @@ class WebPanel:
 
             def do_GET(self):
                 parsed = urlsplit(self.path)
+                # Public, non-sensitive local script shared by all three pages.
+                if parsed.path == '/assets/web_locale.js':
+                    self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
+                    return
                 if parsed.path in ('/control', '/api/config', '/messages', '/api/messages'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')

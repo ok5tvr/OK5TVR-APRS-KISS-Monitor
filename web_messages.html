@@ -87,51 +87,53 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
 </div>
 <div id="toast" role="status" aria-live="polite">Inicializuji…</div>
 </main>
+<script src="/assets/web_locale.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
+const tr=value=>window.OK5TVRLocale.tr(value);
 const key=new URLSearchParams(location.search).get('admin')||'';
 const authUrl=p=>p+'?admin='+encodeURIComponent(key);
 $('admin').href=authUrl('/control');$('map').href=authUrl('/');
 const label={queued:'Čeká na USB',usb_queued:'V USB frontě',waiting_ack:'Čeká na ACK',ack:'ACK přijato',rej:'REJ – odmítnuto',failed:'Bez ACK',interrupted:'Přerušeno',cancelled:'Zrušeno'};
 let pane='inbox',last=null,configured=false;
-function toast(msg,error=false){$('toast').textContent=msg;$('toast').style.borderColor=error?'#ad5c69':'#557b8b';}
+function toast(msg,error=false){$('toast').textContent=tr(msg);$('toast').style.borderColor=error?'#ad5c69':'#557b8b';}
 function elem(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;}
 function setPath(v){const pre=['','WIDE1-1','WIDE2-1','WIDE1-1,WIDE2-1'];
  if(pre.includes(v)){$('path_preset').value=v;$('custom_path_wrap').style.display='none';}
  else{$('path_preset').value='custom';$('custom_path_wrap').style.display='block';$('custom_path').value=v;}}
 $('path_preset').onchange=()=>{$('custom_path_wrap').style.display=$('path_preset').value==='custom'?'block':'none';};
-$('body').oninput=()=>{$('counter').textContent=Array.from($('body').value).length+' / 67 ASCII znaků';};
+$('body').oninput=()=>{$('counter').textContent=Array.from($('body').value).length+' / 67 ASCII '+tr('znaků');};
 async function request(action,data){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key},body:JSON.stringify({action,...data})});
  const result=await r.json();if(!r.ok||!result.ok)throw new Error(result.error||'HTTP '+r.status);return result.result;}
-function appendButton(node,name,fn){const button=elem('button','',name);button.onclick=fn;node.append(button);}
+function appendButton(node,name,fn){const button=elem('button','',tr(name));button.onclick=fn;node.append(button);}
 function render(){if(!last)return;
- $('mycall').textContent=last.call;$('radio').textContent=last.radio_ready?'Připojeno':'Odpojeno';
+ $('mycall').textContent=last.call;$('radio').textContent=last.radio_ready?tr('Připojeno'):tr('Odpojeno');
  $('radio').className=last.radio_ready?'good':'bad';
  $('numin').textContent=last.stats.inbox;$('numout').textContent=last.stats.outbox;$('pending').textContent=last.stats.pending;
  $('tabin_count').textContent='('+last.stats.inbox+')';$('tabout_count').textContent='('+last.stats.outbox+')';
  $('tabin').classList.toggle('active',pane==='inbox');$('tabout').classList.toggle('active',pane==='outbox');
  const list=last[pane],wrap=$('items');wrap.replaceChildren();
- if(!list.length){wrap.append(elem('div','empty',pane==='inbox'?'Zatím nebyla přijata žádná adresovaná zpráva.':'Outbox je zatím prázdný.'));return;}
+ if(!list.length){wrap.append(elem('div','empty',pane==='inbox'?tr('Zatím nebyla přijata žádná adresovaná zpráva.'):tr('Outbox je zatím prázdný.')));return;}
  for(const msg of list){const card=elem('article','entry'),header=elem('div','entry-header');
-  header.append(elem('strong','',pane==='inbox'?'Od '+msg.sender:'Komu '+msg.recipient));
-  const status=pane==='inbox'?(msg.ack_sent?'ACK odesláno do TNC ×'+msg.ack_sent:'Přijato'):(label[msg.status]||msg.status);
+  header.append(elem('strong','',pane==='inbox'?tr('Od')+' '+msg.sender:tr('Komu')+' '+msg.recipient));
+  const status=pane==='inbox'?(msg.ack_sent?tr('ACK odesláno do TNC ×')+msg.ack_sent:tr('Přijato')):tr(label[msg.status]||msg.status);
   header.append(elem('span','badge '+(msg.status==='ack'?'good':msg.status==='rej'||msg.status==='failed'?'bad':''),status));card.append(header);
   card.append(elem('div','entry-body',msg.text));
   const footer=elem('div','entry-footer');
-  const info=pane==='inbox'?msg.arrived_at+' · ID '+(msg.message_id||'bez ID')+' · cesta '+(msg.path||'DIRECT')+(msg.duplicates?' · opakování '+msg.duplicates:'')
+  const info=pane==='inbox'?msg.arrived_at+' · ID '+(msg.message_id||tr('bez ID'))+' · '+tr('cesta')+' '+(msg.path||'DIRECT')+(msg.duplicates?' · '+tr('opakování')+' '+msg.duplicates:'')
    :msg.created_at+' · ID '+msg.message_id+' · '+(msg.path||'DIRECT')+' · TX '+msg.attempts+'/'+msg.max_attempts;
   footer.append(elem('span','',info));
   const buttons=elem('div','');
   if(pane==='inbox'){
-   if(msg.message_id)appendButton(buttons,'Ruční ACK',async()=>{if(!confirm('Odeslat JEDNO protokolové ACK na RF stanici '+msg.sender+'?'))return;
+   if(msg.message_id)appendButton(buttons,'Ruční ACK',async()=>{if(!confirm(tr('Odeslat JEDNO protokolové ACK na RF stanici ')+msg.sender+'?'))return;
     try{toast(await request('message_ack',{id:msg.id,confirm:true}));refresh();}catch(e){toast(e.message,true);}});
-   if(msg.message_id)appendButton(buttons,'Odmítnout (REJ)',async()=>{if(!confirm('Odeslat REJ přes RF? Protokolové odmítnutí zprávy.'))return;
+   if(msg.message_id)appendButton(buttons,'Odmítnout (REJ)',async()=>{if(!confirm(tr('Odeslat REJ přes RF? Protokolové odmítnutí zprávy.')))return;
     try{toast(await request('message_rej',{id:msg.id,confirm:true}));refresh();}catch(e){toast(e.message,true);}});
    appendButton(buttons,'Odpovědět',()=>{$('target').value=msg.sender;window.scrollTo({top:0,behavior:'smooth'});$('body').focus();});
   }else{
    if(['queued','usb_queued','waiting_ack'].includes(msg.status))appendButton(buttons,'Zrušit opakování',async()=>{
-    if(!confirm('Zrušit budoucí opakování? Již zadaný USB paket nelze odvolat.'))return;
+    if(!confirm(tr('Zrušit budoucí opakování? Již zadaný USB paket nelze odvolat.')))return;
     try{toast(await request('message_cancel',{id:msg.id}));refresh();}catch(e){toast(e.message,true);}});
    else appendButton(buttons,'Znovu napsat',()=>{$('target').value=msg.recipient;$('body').value=msg.text;setPath(msg.path);$('body').oninput();window.scrollTo({top:0,behavior:'smooth'});});
   }
@@ -144,19 +146,20 @@ async function refresh(){try{const r=await fetch(authUrl('/api/messages'),{cache
    $('default_path').value=last.default_path||'DIRECT';setPath(last.default_path);
    $('retry').value=last.retry_seconds;$('attempts').value=last.max_attempts;$('autoack').checked=last.auto_ack;configured=true;
    toast('Připraveno. Odeslání přes RF vyžaduje potvrzení.');}
- render();}catch(e){toast('Nelze načíst zprávy: '+e.message,true);}}
+ render();}catch(e){toast(tr('Nelze načíst zprávy: ')+e.message,true);}}
 $('send').onclick=async()=>{const target=$('target').value.trim().toUpperCase(),text=$('body').value,path=$('path_preset').value==='custom' ? $('custom_path').value : $('path_preset').value;
- if(!target||!text){toast('Vyplň cílovou značku a text.',true);return;}
- if(!/^[\x20-\x7E]{1,67}$/.test(text)||/[{}]/.test(text)){toast('Použij 1–67 znaků ASCII bez diakritiky a { nebo }.',true);return;}
- if(!confirm('Odeslat APRS zprávu z '+(last?.call||'vlastní značky')+' na '+target+' přes '+(path||'DIRECT')+'?\n\nOpakování do ACK: max. '+(last?.max_attempts||3)+'×. Vysílání je veřejné.'))return;
+ if(!target||!text){toast(tr('Vyplň cílovou značku a text.'),true);return;}
+ if(!/^[\x20-\x7E]{1,67}$/.test(text)||/[{}]/.test(text)){toast(tr('Použij 1–67 znaků ASCII bez diakritiky a { nebo }.'),true);return;}
+ if(!confirm(tr('Odeslat APRS zprávu z ')+(last?.call||tr('vlastní značky'))+tr(' na ')+target+tr(' přes ')+(path||'DIRECT')+'?\n\n'+tr('Opakování do ACK: max. ')+(last?.max_attempts||3)+'×. '+tr('Vysílání je veřejné.')))return;
  $('send').disabled=true;
- try{const res=await request('message_send',{confirm:true,target,text,path});toast('Zpráva #'+res.message_id+' zařazena do Outboxu pro '+res.recipient+'.');$('body').value='';$('body').oninput();pane='outbox';await refresh();}
- catch(e){toast('TX zpráva: '+e.message,true);}finally{$('send').disabled=false;}};
+ try{const res=await request('message_send',{confirm:true,target,text,path});toast(tr('Zpráva #')+res.message_id+tr(' zařazena do Outboxu pro ')+res.recipient+'.');$('body').value='';$('body').oninput();pane='outbox';await refresh();}
+ catch(e){toast(tr('TX zpráva: ')+e.message,true);}finally{$('send').disabled=false;}};
 $('save').onclick=async()=>{const target=$('default_target').value.trim().toUpperCase(),path=$('default_path').value.trim(),auto=$('autoack').checked;
- if(auto&&!confirm('Povolit automatické RF vysílání ACK při každé příchozí zprávě s ID? Bude pokračovat i po restartu.'))return;
+ if(auto&&!confirm(tr('Povolit automatické RF vysílání ACK při každé příchozí zprávě s ID? Bude pokračovat i po restartu.')))return;
  try{toast(await request('save',{config:{messages:{target,path,auto_ack:auto,retry_seconds:Number($('retry').value),max_attempts:Number($('attempts').value)}},confirm_auto_ack:auto}));
   configured=false;await refresh();}catch(e){toast(e.message,true);}};
 $('tabin').onclick=()=>{pane='inbox';render();};$('tabout').onclick=()=>{pane='outbox';render();};$('refresh').onclick=refresh;
+window.addEventListener('ok5tvr:language',()=>{if(last)render();$('body').oninput();});
 refresh();setInterval(refresh,4500);
 </script>
 </body>

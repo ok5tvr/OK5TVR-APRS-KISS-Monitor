@@ -13,10 +13,10 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-py -3 -m PyInstaller --clean --noconfirm --onefile --windowed --name OK5TVR_APRS_KISS_Monitor_v1_3 --add-data "web_dashboard.html;." --add-data "web_control.html;." --add-data "offline_geography.json;." aprs_kiss_monitor.py
+py -3 -m PyInstaller --clean --noconfirm --onefile --windowed --name OK5TVR_APRS_KISS_Monitor_v1_5 --add-data "web_dashboard.html;." --add-data "web_control.html;." --add-data "web_locale.js;." --add-data "offline_geography.json;." aprs_kiss_monitor.py
 if errorlevel 1 (
     echo Sestaveni EXE selhalo.
 ) else (
-    echo Hotovo: dist\OK5TVR_APRS_KISS_Monitor_v1_3.exe
+    echo Hotovo: dist\OK5TVR_APRS_KISS_Monitor_v1_5.exe
 )
 pause
