@@ -119,7 +119,7 @@ const token=urlParams.get('key')||'';
 const adminToken=urlParams.get('admin')||'';
 const authPath=(path)=>path+(adminToken?'?admin='+encodeURIComponent(adminToken):token?'?key='+encodeURIComponent(token):'');
 let capabilityPromise=null;
-function navInfo(message){const box=$('nav-info');box.hidden=false;box.textContent=tr(message);}
+function navInfo(message){const box=$('nav-info');box.hidden=false;const prefix='Nelze otevřít administrátorskou stránku: ';box.textContent=message.startsWith(prefix)?tr(prefix)+message.slice(prefix.length):tr(message);}
 async function capabilities(){
  if(!capabilityPromise){capabilityPromise=fetch(authPath('/api/capabilities'),{cache:'no-store'})
    .then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()});}
