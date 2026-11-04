@@ -1,117 +1,109 @@
-"""APRS RF objects/items/status/position, validated before KISS transmission.
+"""APRS operations: bounded durable packet journal, object generator and portable backup.
 
-APRS 1.0.1 object: ;NAME_____*DDHHMMzDDMM.mmN/DDDMM.mmE>comment
-Only printable ASCII on RF. Timestamp is UTC and live/dead is * / _.
-This module never transmits on its own.
+Never transmit on module import. RF transmissions require user confirmation in the service.
 """
 from __future__ import annotations
-
-from datetime import datetime, timezone
+import copy
+import datetime as dt
+import json
+import logging
 import re
-
-from aprs_features import encode_ui_packet, CALL_RE
-from aprs_messages import normalize_path
+import sqlite3
+from pathlib import Path
 from aprs_station import aprs_coord, decimal_coordinate
+from aprs_messages import normalize_path
+from service_config import validate_config
 
-OBJECT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,8}$")
-ITEM_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,8}$")
-MAX_OBJECTS = 20
-
-
-def ascii_text(value, max_length=43, allow_empty=True):
-    if not isinstance(value, str) or len(value) > max_length or (not allow_empty and not value):
-        raise ValueError(f"Text musí mít 1–{max_length} ASCII znaků." if not allow_empty
-                         else f"Text smí mít nejvýše {max_length} ASCII znaků.")
-    if any(ord(ch) < 32 or ord(ch) > 126 for ch in value):
-        raise ValueError("Text musí obsahovat pouze tisknutelné ASCII znaky bez diakritiky.")
-    return value
+NAME_RE = re.compile(r'^[A-Za-z0-9 _.-]{1,9}$')
+PRINTABLE = re.compile(r'^[\x20-\x7e]{0,43}$')
 
 
-def validate_object(value: dict) -> dict:
-    if not isinstance(value, dict):
-        raise ValueError("Objekt musí být JSON objekt.")
-    allowed = {'name', 'latitude', 'longitude', 'symbol_table', 'symbol',
-               'comment', 'repeat', 'interval_minutes', 'kind'}
-    if set(value) - allowed:
-        raise ValueError("Nepodporované pole APRS objektu.")
-    name = value.get('name', '')
-    if not isinstance(name, str) or not OBJECT_NAME_RE.fullmatch(name):
-        raise ValueError("Název objektu musí mít 1–9 znaků (A-Z, 0-9, mezera, _ . -).")
-    kind = value.get('kind', 'object')
-    if kind not in ('object', 'item'):
-        raise ValueError("Typ musí být object nebo item.")
-    # APRS uncompressed position: table / or backslash, printable symbol code.
-    symbol_table = value.get('symbol_table', '/')
-    symbol = value.get('symbol', '>')
-    if symbol_table not in ('/', '\\') or not isinstance(symbol, str) or len(symbol) != 1 or not 33 <= ord(symbol) <= 126:
-        raise ValueError("Neplatný APRS symbol. Tabulka / nebo \\, jediný tisknutelný znak symbolu.")
-    repeat = value.get('repeat', False)
-    if type(repeat) is not bool:
-        raise ValueError("Opakování objektu musí být true/false.")
-    interval = value.get('interval_minutes', 30)
-    if type(interval) is not int or not 10 <= interval <= 180:
-        raise ValueError("Interval objektu musí být 10–180 minut.")
-    return {
-        'name': name,
-        'latitude': decimal_coordinate(value.get('latitude'), True),
-        'longitude': decimal_coordinate(value.get('longitude'), False),
-        'symbol_table': symbol_table,
-        'symbol': symbol,
-        'comment': ascii_text(value.get('comment', ''), 43),
-        'repeat': repeat,
-        'interval_minutes': interval,
-        'kind': kind,
-    }
+def object_payload(name: str, lat: float, lon: float, comment: str = '', alive=True,
+                   symbol_table='/', symbol='r', now=None) -> str:
+    """APRS 1.0.1 object, UTC DDHHMMz timestamp, live '*' or killed '_'."""
+    if not isinstance(name, str) or not NAME_RE.fullmatch(name) or not name.strip():
+        raise ValueError('Název objektu: 1 až 9 ASCII znaků, písmena/číslice/mezera/_/.-')
+    if not isinstance(comment, str) or not PRINTABLE.fullmatch(comment):
+        raise ValueError('Komentář objektu: maximálně 43 znaků ASCII.')
+    if symbol_table not in ('/', '\\') or not isinstance(symbol,str) or len(symbol) != 1 or not (33 <= ord(symbol) <= 126):
+        raise ValueError('Neplatná tabulka nebo APRS symbol objektu.')
+    lat, lon = decimal_coordinate(lat, True), decimal_coordinate(lon, False)
+    now = now or dt.datetime.now(dt.timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError('Čas objektu musí obsahovat časové pásmo.')
+    stamp = now.astimezone(dt.timezone.utc).strftime('%d%H%Mz')
+    return ';' + name.upper().ljust(9) + ('*' if alive else '_') + stamp + aprs_coord(lat,True) + symbol_table + aprs_coord(lon,False) + symbol + comment
 
 
-def validate_objects_settings(value: dict) -> dict:
-    if not isinstance(value, dict) or set(value) - {'path', 'entries'}:
-        raise ValueError('Neplatné nastavení APRS objektů.')
-    path = normalize_path(value.get('path', 'WIDE1-1'))
-    entries = value.get('entries', [])
-    if not isinstance(entries, list) or len(entries) > MAX_OBJECTS:
-        raise ValueError(f'Lze uložit nejvýše {MAX_OBJECTS} objektů.')
-    clean = [validate_object(entry) for entry in entries]
-    names = [(x['kind'], x['name']) for x in clean]
-    if len(set(names)) != len(names):
-        raise ValueError('Duplicitní názvy APRS objektů.')
-    return {'path': path, 'entries': clean}
+def validate_object_request(req: dict) -> dict:
+    if not isinstance(req, dict):
+        raise ValueError('Neplatné nastavení objektu.')
+    name=req.get('name','')
+    if not isinstance(name,str) or not NAME_RE.fullmatch(name) or not name.strip():
+        raise ValueError('Název objektu je neplatný.')
+    return dict(name=name.upper().strip(), lat=decimal_coordinate(req.get('lat'),True),
+                lon=decimal_coordinate(req.get('lon'),False), comment=req.get('comment',''),
+                path=normalize_path(req.get('path','WIDE1-1')),
+                alive=req.get('alive',True) is True,
+                symbol_table=req.get('symbol_table','/'),symbol=req.get('symbol','r'))
 
 
-def object_info(entry: dict, alive=True, now: datetime | None = None) -> str:
-    obj = validate_object(entry)
-    lat = aprs_coord(obj['latitude'], True)
-    lon = aprs_coord(obj['longitude'], False)
-    symbol = obj['symbol_table'] + lon + obj['symbol']
-    state = '*' if alive else '_'
-    if obj['kind'] == 'object':
-        current = now or datetime.now(timezone.utc)
-        if current.tzinfo is None:
-            raise ValueError('APRS čas musí obsahovat časovou zónu.')
-        utc = current.astimezone(timezone.utc)
-        stamp = utc.strftime('%d%H%Mz')
-        result = ';' + obj['name'].ljust(9) + state + stamp + lat + symbol + obj['comment']
-    else:
-        result = ')' + obj['name'] + ('!' if alive else '_') + lat + symbol + obj['comment']
-    result.encode('ascii')
-    return result
+class Journal:
+    """Write from service thread; HTTP readers use separate SQLite connections."""
+    def __init__(self, path: Path, max_rows=20000):
+        self.path=Path(path)
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        self.con=sqlite3.connect(self.path,timeout=3,check_same_thread=False)
+        self.con.execute('PRAGMA journal_mode=WAL')
+        self.con.execute('CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, utc TEXT NOT NULL, category TEXT NOT NULL, outcome TEXT NOT NULL, source TEXT, target TEXT, detail TEXT)')
+        self.con.execute('CREATE INDEX IF NOT EXISTS idx_events_category ON events(category,id)')
+        self.con.commit()
+        self.max_rows=max_rows
+        self.count=0
+    def log(self, category, outcome, source='', target='', detail=''):
+        cat=str(category)[:24];result=str(outcome)[:32]
+        try:
+            self.con.execute('INSERT INTO events(utc,category,outcome,source,target,detail) VALUES(?,?,?,?,?,?)',
+                             (dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),cat,result,str(source)[:24],str(target)[:24],str(detail)[:250]))
+            self.count+=1
+            if self.count%200==0:
+                self.con.execute('DELETE FROM events WHERE id <= (SELECT MAX(id)-? FROM events)',(self.max_rows,))
+            self.con.commit()
+        except sqlite3.Error as exc:
+            # Diagnostic storage must never bring down radio/I-gate operations.
+            logging.getLogger('ok5tvr.aprs').warning('Provozní deník nelze zapsat: %s',exc)
+            try: self.con.rollback()
+            except sqlite3.Error: pass
+    def read(self,limit=100,category=''):
+        limit=min(max(int(limit),1),500)
+        with sqlite3.connect(self.path,timeout=3) as db:
+            db.row_factory=sqlite3.Row
+            if category:
+                rows=db.execute('SELECT * FROM events WHERE category=? ORDER BY id DESC LIMIT ?', (category,limit)).fetchall()
+            else:
+                rows=db.execute('SELECT * FROM events ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
+        return [dict(r) for r in rows]
+    def close(self):self.con.close()
 
 
-def status_info(text: str) -> str:
-    return '>' + ascii_text(text, 67, allow_empty=False)
+def backup_document(config, include_secrets=False):
+    """Export portable JSON, never automatically include passwords or URL bearer tokens."""
+    data=copy.deepcopy(config.data)
+    # Autostart is intentionally reset on restore, even from a local backup.
+    data['digi']['autostart']=False
+    data['igate']['autostart']=False
+    data['messages']['auto_ack']=False
+    return {'format':'ok5tvr-config','version':1,'exported_at':dt.datetime.now(dt.timezone.utc).isoformat(),
+            'config':data,'includes_credentials':False}
 
 
-def position_info(lat, lon, symbol_table='/', symbol='&', comment='') -> str:
-    lat = decimal_coordinate(lat, True)
-    lon = decimal_coordinate(lon, False)
-    if symbol_table not in ('/', '\\') or len(symbol) != 1 or not 33 <= ord(symbol) <= 126:
-        raise ValueError('Neplatný APRS symbol pozice.')
-    return '!' + aprs_coord(lat, True) + symbol_table + aprs_coord(lon, False) + symbol + ascii_text(comment, 43)
-
-
-def make_rf_frame(source: str, path: str, info: str) -> bytes:
-    if not isinstance(source, str) or not CALL_RE.fullmatch(source.upper()):
-        raise ValueError('Neplatná volací značka vysílače.')
-    normalized_path = normalize_path(path)
-    info.encode('ascii')
-    return encode_ui_packet(source.upper(), 'APZKIS', normalized_path, info)
+def validate_restore_document(doc):
+    if not isinstance(doc,dict) or doc.get('format')!='ok5tvr-config' or doc.get('version')!=1 or not isinstance(doc.get('config'),dict):
+        raise ValueError('Nepodporovaný nebo neplatný formát zálohy.')
+    if len(json.dumps(doc))>32768:
+        raise ValueError('Záloha překračuje bezpečný limit 32 kB.')
+    config=validate_config(doc['config'])
+    config['digi']['autostart']=False
+    config['igate']['autostart']=False
+    config['messages']['auto_ack']=False
+    return config

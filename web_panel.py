@@ -16,9 +16,8 @@ from urllib.parse import parse_qs, urlsplit
 _ASSET_DIR = Path(__file__).resolve().parent
 HTML = (_ASSET_DIR / 'web_dashboard.html').read_text(encoding='utf-8')
 ADMIN_HTML = (_ASSET_DIR / 'web_control.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_control.html').exists() else ''
+OPERATIONS_HTML = (_ASSET_DIR / 'web_operations.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_operations.html').exists() else ''
 MESSAGES_HTML = (_ASSET_DIR / 'web_messages.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_messages.html').exists() else ''
-OPERATIONS_HTML = (_ASSET_DIR / 'web_operations.html').read_text(encoding='utf-8')
-DIAGNOSTICS_HTML = (_ASSET_DIR / 'web_diagnostics.html').read_text(encoding='utf-8')
 LOCALE_JS = (_ASSET_DIR / 'web_locale.js').read_text(encoding='utf-8')
 
 
@@ -58,15 +57,13 @@ class WebPanel:
                 return secrets.compare_digest(
                     parse_qs(parsed.query).get('admin', [''])[0], admin_key)
 
-            def _respond(self, code, contents, mime='application/json; charset=utf-8', cache='no-store', download=None):
+            def _respond(self, code, contents, mime='application/json; charset=utf-8', cache='no-store'):
                 if isinstance(contents, str):
                     contents = contents.encode('utf-8')
                 self.send_response(code)
                 self.send_header('Content-Type', mime)
                 self.send_header('Content-Length', str(len(contents)))
                 self.send_header('Cache-Control', cache)
-                if download:
-                    self.send_header('Content-Disposition', f'attachment; filename={download}')
                 self.send_header('X-Content-Type-Options', 'nosniff')
                 self.send_header('X-Frame-Options', 'DENY')
                 self.send_header('Referrer-Policy', 'strict-origin-when-cross-origin')
@@ -86,9 +83,7 @@ class WebPanel:
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/control','/api/config','/messages','/api/messages',
-                                    '/operations','/api/objects','/diagnostics', '/api/diagnostics',
-                                    '/api/backup', '/api/journal.csv'):
+                if parsed.path in ('/control', '/api/config', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
@@ -96,30 +91,13 @@ class WebPanel:
                         self._respond(200, ADMIN_HTML, 'text/html; charset=utf-8')
                     elif parsed.path == '/operations':
                         self._respond(200, OPERATIONS_HTML, 'text/html; charset=utf-8')
-                    elif parsed.path == '/diagnostics':
-                        self._respond(200, DIAGNOSTICS_HTML, 'text/html; charset=utf-8')
-                    elif parsed.path == '/api/objects':
-                        self._respond(200, json.dumps(operator.objects_snapshot(), ensure_ascii=False))
                     elif parsed.path == '/api/diagnostics':
-                        try:
-                            args=parse_qs(parsed.query)
-                            count=int(args.get('limit', ['250'])[0])
-                            direction=args.get('direction', [''])[0]
-                            report=operator.journal_snapshot(count, direction)
-                        except (ValueError, TypeError) as exc:
-                            self._respond(400, json.dumps({'error':str(exc)},ensure_ascii=False))
-                            return
-                        self._respond(200,json.dumps(report,ensure_ascii=False))
+                        self._respond(200, json.dumps(operator.diagnostics_snapshot(),ensure_ascii=False))
+                    elif parsed.path == '/api/journal':
+                        args=parse_qs(parsed.query)
+                        self._respond(200, json.dumps(operator.journal_snapshot(args.get('limit',['100'])[0],args.get('category',[''])[0]),ensure_ascii=False))
                     elif parsed.path == '/api/backup':
-                        body=json.dumps(operator.config_backup(),ensure_ascii=False,indent=2)+'\n'
-                        self._respond(200,body,'application/json; charset=utf-8',download='ok5tvr-config-backup.json')
-                    elif parsed.path == '/api/journal.csv':
-                        try:
-                            blob=operator.journal.csv_export(2000)
-                        except ValueError as exc:
-                            self._respond(400,json.dumps({'error':str(exc)}))
-                            return
-                        self._respond(200,blob,'text/csv; charset=utf-8',download='ok5tvr-aprs-journal.csv')
+                        self._respond(200, json.dumps(operator.config_backup(),ensure_ascii=False,indent=2))
                     elif parsed.path == '/messages':
                         self._respond(200, MESSAGES_HTML, 'text/html; charset=utf-8')
                     elif parsed.path == '/api/messages':
@@ -133,10 +111,7 @@ class WebPanel:
                 if parsed.path == '/':
                     self._respond(200, HTML, 'text/html; charset=utf-8')
                 elif parsed.path == '/api/state':
-                    data=state.snapshot()
-                    if operator is not None:
-                        data['health']=operator.diagnostics_snapshot()
-                    self._respond(200, json.dumps(data, ensure_ascii=False))
+                    self._respond(200, json.dumps(state.snapshot(), ensure_ascii=False))
                 elif parsed.path == '/assets/offline_geography.json':
                     try:
                         contents = (_ASSET_DIR / 'offline_geography.json').read_bytes()
@@ -172,8 +147,8 @@ class WebPanel:
                     return
                 try:
                     length = int(self.headers.get('Content-Length', '0'))
-                    if not 0 < length <= 65536:
-                        raise ValueError('Tělo požadavku musí mít 1–65536 B.')
+                    if not 0 < length <= 8192:
+                        raise ValueError('Tělo požadavku musí mít 1–8192 B.')
                     payload = json.loads(self.rfile.read(length).decode('utf-8'))
                     if not isinstance(payload, dict):
                         raise ValueError('Čekám objekt JSON.')
