@@ -1,0 +1,40 @@
+<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>OK5TVR · diagnostika a provozní deník</title>
+<style>
+:root{color-scheme:dark;--bg:#0e1928;--panel:#1a2b40;--line:#3d566d;--mint:#5bdbc4;--text:#ebf6ff;--sub:#aac0d0}*{box-sizing:border-box}body{background:var(--bg);color:var(--text);font:14px system-ui,Arial;padding:20px;margin:0}main{max-width:1300px;margin:auto}h1{font-size:25px}h2{color:var(--mint);font-size:18px}section{border:1px solid var(--line);border-radius:12px;padding:18px;background:var(--panel);margin:14px 0}a,button{display:inline-block;background:#34546e;border:0;border-radius:7px;color:#fff;text-decoration:none;cursor:pointer;font-weight:650;margin:5px 6px 3px 0;padding:10px 12px}button.primary{background:#167b68}button.danger{background:#963f4f}input,select{background:#14263b;border:1px solid #506b81;color:#fff;padding:8px 10px;border-radius:7px}input[type=number]{width:110px}label{display:inline-block;margin:8px 14px 8px 0}#warning{padding:10px;border-radius:7px;background:#42331f;color:#ffe1a5;white-space:pre-wrap}#warning:empty{display:none}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}.box{background:#11253a;padding:12px;border-radius:8px}.box b{font-size:17px;color:var(--mint)}.box small{display:block;color:var(--sub);margin-bottom:4px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{text-align:left;padding:9px 7px;border-bottom:1px solid #334c63;vertical-align:top}td{overflow-wrap:anywhere}tbody tr:nth-child(even){background:#1e3349}div.scroll{max-height:640px;overflow:auto}p,.muted{color:var(--sub)}#result{min-height:20px;white-space:pre-wrap;font-size:13px}
+</style></head><body><main><h1>OK5TVR · diagnostika a deník</h1>
+<p>Kontrola komunikace USB KISS, APRS-IS a DIGI; přehled RX, TX a odmítnutých rámců. Podrobné záznamy jsou dostupné pouze administrátorovi.</p>
+<nav><a id="control" href="#">Nastavení</a><a id="operations" href="#">Objekty a RF</a><a id="messages" href="#">Zprávy</a><a id="map" href="#">Mapa</a></nav>
+<section><h2>Stav služby a hlášení</h2><div class="summary">
+<div class="box"><small>USB KISS</small><b id="usb">—</b></div><div class="box"><small>APRS-IS</small><b id="is">—</b></div><div class="box"><small>DIGI</small><b id="digi">—</b></div><div class="box"><small>Poslední RF rámec UTC</small><b id="rx">—</b></div><div class="box"><small>Opětovná připojení USB</small><b id="retries">0</b></div><div class="box"><small>Záznamů</small><b id="count">0</b></div>
+</div><p id="warning"></p><p class="muted">Připojený USB port potvrzuje pouze sériové spojení. Dlouhá pauza bez APRS paketů sama nedokazuje poruchu TNC ani radiostanice.</p>
+<label>Varování při tichu kanálu po <input id="quiet" type="number" min="5" max="240" value="30"> minutách</label>
+<label>Varování při výpadku USB po <input id="disconnected" type="number" min="5" max="300" value="15"> sekundách</label>
+<button id="savehealth" class="primary">Uložit prahy hlídání</button></section>
+<section><h2>Podrobný provozní deník</h2><label>Filtr <select id="direction"><option value="">Všechny události</option><option value="RX">RX</option><option value="TX">TX</option><option value="IS">APRS-IS</option><option value="DROP">Odmítnuté</option><option value="SYSTEM">Systém</option></select></label>
+<button id="refresh">Aktualizovat</button><a id="csv" href="#">Export deníku CSV</a><button id="clear" class="danger">Vymazat deník</button>
+<div class="scroll"><table><thead><tr><th>UTC</th><th>Směr</th><th>Subsystém</th><th>Zdroj</th><th>Cíl</th><th>Cesta</th><th>Popis</th><th>Výsledek / důvod</th></tr></thead><tbody id="records"></tbody></table></div></section>
+<section><h2>Záloha a obnova konfigurace</h2><p>Záloha obsahuje volací značky, GPS, cesty, uložené objekty a konfiguraci. Neobsahuje APRS-IS passcode, přístupové klíče ani historii zpráv. Po importu jsou automatické TX a iGate vypnuté.</p>
+<a id="backup" href="#">Stáhnout zálohu JSON</a><label>Importovat soubor JSON <input id="backupfile" type="file" accept=".json,application/json"></label><button id="restore" class="danger">Obnovit konfiguraci</button></section>
+<div id="result" aria-live="polite">Připraveno.</div><p class="muted">„USB written“ znamená předání dat modemu, nikoliv potvrzení odvysílání VF signálu. Upozornění nejsou vzdálené push notifikace.</p>
+</main><script src="/assets/web_locale.js"></script><script>
+'use strict';
+const $=id=>document.getElementById(id),key=new URLSearchParams(location.search).get('admin')||'';
+const url=p=>p+'?admin='+encodeURIComponent(key),tr=v=>window.OK5TVRLocale.tr(v);
+for(const [id,path] of [['control','/control'],['operations','/operations'],['messages','/messages']])$(id).href=url(path);
+$('map').href='/?key='+encodeURIComponent(new URLSearchParams(location.search).get('key')||'');$('backup').href=url('/api/backup');$('csv').href=url('/api/journal.csv');
+let last=[];
+const notify=msg=>$('result').textContent=tr(msg);
+async function api(action,data={}){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key},body:JSON.stringify({action,...data})});const v=await r.json();if(!r.ok||!v.ok)throw Error(v.error||r.status);notify(v.result);return v.result}
+async function refresh(){try{const params=new URLSearchParams({admin:key,limit:'300'});if($('direction').value)params.set('direction',$('direction').value);let response=await fetch('/api/diagnostics?'+params.toString(),{cache:'no-store'});if(!response.ok)throw Error('HTTP '+response.status);let data=await response.json(),h=data.diagnostics;
+$('usb').textContent=h.usb_connected?tr('Připojeno'):tr('Odpojeno');$('is').textContent=h.aprsis_connected?tr('Online'):tr('Odpojeno');$('digi').textContent=h.digi.enabled?tr('Zapnuto'):tr('Vypnuto');$('rx').textContent=h.last_rx_utc||tr('Bez příjmu');$('retries').textContent=h.reconnects;$('count').textContent=h.log_entries;
+$('warning').textContent=h.warning?tr(h.warning):'';
+const body=$('records');body.replaceChildren();for(const e of data.entries){const row=document.createElement('tr');for(const col of ['at','direction','subsystem','source','destination','path','detail','outcome']){let cell=document.createElement('td');cell.textContent=col==='outcome'?tr(e[col]):e[col];row.append(cell)}body.append(row)}
+if(!data.entries.length){let row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=8;cell.textContent=tr('Zatím žádné události.');row.append(cell);body.append(row)}
+}catch(e){notify('CHYBA: '+e.message)}}
+$('direction').onchange=refresh;$('refresh').onclick=refresh;
+$('clear').onclick=()=>{if(confirm(tr('Trvale vymazat provozní deník?')))api('journal_clear',{confirm:true}).then(refresh).catch(e=>notify('CHYBA: '+e.message))};
+$('savehealth').onclick=()=>{api('health_save',{health:{quiet_warning_minutes:Number($('quiet').value),disconnect_warning_seconds:Number($('disconnected').value)}}).then(refresh).catch(e=>notify('CHYBA: '+e.message))};
+$('restore').onclick=async()=>{try{const file=$('backupfile').files[0];if(!file)throw Error(tr('Vyber soubor zálohy JSON.'));if(file.size>60000)throw Error(tr('Záloha je příliš velká.'));let backup=JSON.parse(await file.text());if(!confirm(tr('POZOR: Obnovit nastavení? iGate, DIGI a automatické RF vysílání budou vypnuty.')))return;await api('backup_restore',{backup,confirm:true});await refresh()}catch(e){notify('CHYBA: '+e.message)}};
+async function refreshLimits(){try{const r=await fetch(url('/api/config'),{cache:'no-store'});let c=await r.json();$('quiet').value=c.health.quiet_warning_minutes;$('disconnected').value=c.health.disconnect_warning_seconds;$('map').href='/?key='+encodeURIComponent(c.viewer_token||'')}catch(e){}}
+refreshLimits();refresh();setInterval(refresh,8000);
+</script></body></html>

@@ -178,7 +178,7 @@ class TestFeatures(unittest.TestCase):
         self.assertTrue(worker.enqueue(line))
         self.assertTrue(done.wait(4),'No APRS-IS packet received')
         worker.stop.set()
-        self.assertIn('vers OK5TVR-KISS 1.4',received[0])
+        self.assertIn('vers OK5TVR-KISS 1.6',received[0])
         self.assertEqual(received[1].strip(),line)
 
 if __name__=='__main__':unittest.main()

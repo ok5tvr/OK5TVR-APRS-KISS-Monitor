@@ -16,6 +16,7 @@ from aprs_features import CALL_RE
 from aprs_messages import normalize_call, normalize_path
 from aprs_digi import DigiConfig
 from aprs_station import decimal_coordinate, aprsis_position
+from aprs_operations import validate_objects_settings
 
 DEFAULT_PATH = Path.home() / '.config' / 'ok5tvr-aprs' / 'config.json'
 DEFAULT_CONFIG = {
@@ -28,6 +29,8 @@ DEFAULT_CONFIG = {
              'autostart': False},
     'messages': {'target': '', 'path': 'WIDE1-1', 'auto_ack': False,
                  'retry_seconds': 45, 'max_attempts': 3},
+    'health': {'quiet_warning_minutes': 30, 'disconnect_warning_seconds': 15},
+    'objects': {'path': 'WIDE1-1', 'entries': []},
     'position': {'latitude': None, 'longitude': None,
                  'comment': 'OK5TVR RX iGate', 'beacon_enabled': False,
                  'beacon_interval': 30},
@@ -118,6 +121,10 @@ def validate_config(candidate):
     m['auto_ack'] = _bool(m['auto_ack'], 'Automatické potvrzování APRS zpráv (RF TX)')
     m['retry_seconds'] = _int(m['retry_seconds'], 'Opakování zprávy (s)', 30, 180)
     m['max_attempts'] = _int(m['max_attempts'], 'Počet odeslání', 1, 5)
+    h = v['health']
+    h['quiet_warning_minutes'] = _int(h['quiet_warning_minutes'], 'Upozornění na ticho (min)', 5, 240)
+    h['disconnect_warning_seconds'] = _int(h['disconnect_warning_seconds'], 'Výpadek USB (s)', 5, 300)
+    v['objects'] = validate_objects_settings(v['objects'])
     p = v['position']
     p['beacon_enabled'] = _bool(p['beacon_enabled'], 'Pozicni majak')
     p['beacon_interval'] = _int(p['beacon_interval'], 'Interval majaku', 30, 120)
@@ -175,6 +182,28 @@ class ServiceConfig:
             _atomic_json(self.secret_path, self.secrets)
         return self.public_view()
 
+    def export_backup(self):
+        """Portable non-secret backup. Never include passcode or bearer keys."""
+        from datetime import datetime, timezone
+        return {'format': 'ok5tvr-config-v1',
+                'created_utc': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                'config': copy.deepcopy(self.data),
+                'note': 'Secrets are NOT included. Re-enter APRS-IS passcode on target.'}
+
+    def restore_backup(self, document):
+        """Import with all automatic TX/network actions disabled for safety."""
+        if not isinstance(document, dict) or document.get('format') != 'ok5tvr-config-v1':
+            raise ValueError('Neznámý formát zálohy. Vyber export OK5TVR.')
+        raw = document.get('config')
+        if not isinstance(raw, dict):
+            raise ValueError('Záloha neobsahuje konfiguraci.')
+        # validate entire payload before writing anything
+        clean = validate_config(raw)
+        clean['digi']['autostart'] = False
+        clean['igate']['autostart'] = False
+        clean['messages']['auto_ack'] = False
+        return self.update(clean)
+
     def public_view(self):
         result = copy.deepcopy(self.data)
         result['igate']['has_passcode'] = bool(self.secrets['igate_passcode'])
@@ -184,4 +213,6 @@ class ServiceConfig:
         prefix=f'http://{host}:{self.data["web"]["port"]}'
         return {'map': prefix+'/?key='+self.secrets['viewer_token'],
                 'admin':prefix+'/control?admin='+self.secrets['admin_token'],
-                'messages':prefix+'/messages?admin='+self.secrets['admin_token']}
+                'messages':prefix+'/messages?admin='+self.secrets['admin_token'],
+                'objects':prefix+'/operations?admin='+self.secrets['admin_token'],
+                'diagnostics':prefix+'/diagnostics?admin='+self.secrets['admin_token']}

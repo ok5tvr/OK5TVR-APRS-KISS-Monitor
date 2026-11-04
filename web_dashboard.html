@@ -10,6 +10,7 @@
 header{padding:16px clamp(14px,3vw,35px);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--edge)}
 .brand{font-weight:800;font-size:19px;letter-spacing:.2px}.brand b{color:var(--mint)}small,.muted{color:var(--muted)}
 main{padding:20px clamp(12px,3vw,35px);max-width:1850px;margin:0 auto}
+#healthbanner{margin-bottom:12px;padding:9px 13px;border:1px solid #9b713c;background:#44331b;color:#ffe9b5;border-radius:8px}#healthbanner[hidden]{display:none}
 .cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .card,.panel{border:1px solid var(--edge);border-radius:12px;background:var(--pane)}.card{padding:14px 15px}
 .metric{font-size:26px;font-weight:750;font-variant-numeric:tabular-nums}.caption{font-size:12px;color:var(--muted)}
@@ -52,6 +53,7 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <header><div class="brand"><b>OK5TVR</b> APRS KISS <span class="muted">· živá mapa</span></div>
 <div><span id="rf" class="pill off">Rádio: odpojeno</span> &nbsp; <span id="igate" class="pill off">iGate: vypnuto</span> &nbsp; <span id="digi" class="pill off">DIGI: vypnuto</span></div></header>
 <main>
+<div id="healthbanner" hidden role="status"></div>
 <div class="cards">
 <div class="card"><div class="caption">Přijaté RF rámce</div><div class="metric" id="rx">0</div></div>
 <div class="card"><div class="caption">Slyšené stanice</div><div class="metric" id="stations">0</div></div>
@@ -348,6 +350,8 @@ async function refresh(){
   const response=await fetch(authPath('/api/state'),{cache:'no-store'});
   if(!response.ok)throw new Error('HTTP '+response.status);
   const st=await response.json();
+  $('healthbanner').hidden=!st.health?.warning;
+  $('healthbanner').textContent=st.health?.warning?tr(st.health.warning):'';
   $('rx').textContent=st.rx;$('stations').textContent=st.station_count;
   $('positions').textContent=st.position_count;$('gated').textContent=st.igate_sent;$('tx').textContent=st.tx_requests;
   $('digi_tx').textContent=st.digi?.tx_written||0;$('beacons').textContent=st.beacons_sent||0;

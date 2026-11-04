@@ -39,7 +39,7 @@ def encode_ui_packet(source: str, destination: str, path: str, payload: str) -> 
     info = payload.encode("ascii", errors="strict")
     if not info or len(info) > 100 or any(c < 32 or c > 126 for c in info):
         raise ValueError("Obsah musí mít 1–100 tisknutelných ASCII znaků.")
-    if not info.startswith((b">", b"!", b"=", b"@", b"/", b":")):
+    if not info.startswith((b">", b"!", b"=", b"@", b"/", b":", b";", b")")):
         raise ValueError("Obsah musí začínat typem APRS (například > pro status).")
     addresses = [destination, source] + hops
     result = b"".join(address_bytes(s, last=i == len(addresses)-1)
@@ -270,7 +270,7 @@ class MonitorState:
 
     def snapshot(self):
         with self.lock:
-            return {"version":"1.4", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
+            return {"version":"1.6", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
                     "rf_status":self.rf_status, "igate_status":self.igate_status, "rx":self.rx, "demo":self.demo,
                     "tx_requests":self.tx_requests, "igate_sent":self.igate_sent,"igate_rejected":self.igate_rejected,
                     "beacons_sent":self.beacons_sent, "own_position":self.own_position, "digi":dict(self.digi),
@@ -328,7 +328,7 @@ class APRSISClient(threading.Thread):
                 # Read server banner when available, then send login.
                 try: conn.recv(2048)
                 except socket.timeout: pass
-                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 1.4\r\n"
+                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 1.6\r\n"
                 conn.sendall(login.encode("ascii"))
                 buffer = b""
                 verified = False

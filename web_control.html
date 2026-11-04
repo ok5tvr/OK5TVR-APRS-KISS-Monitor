@@ -20,6 +20,8 @@ button.primary{background:#167f70}button.danger{background:#9e4651}button:disabl
 <section><div class="summary"><span>USB: <b id="rf">–</b></span><span>APRS-IS: <b id="is">–</b></span><span>DIGI: <b id="dg">–</b></span><span>RX: <b id="rx">0</b></span><span>→ IS: <b id="gate">0</b></span><span>DIGI TX: <b id="dtx">0</b></span></div>
 <a id="view" class="link" href="#" target="_blank" rel="noopener noreferrer">Otevřít mapu</a>
 <a id="msgpage" class="link" href="#">APRS Zprávy · Inbox / Outbox</a>
+<a id="objectspage" class="link" href="#">Objekty a RF</a>
+<a id="diagpage" class="link" href="#">Diagnostika a deník</a>
 </section>
 <div class="grid">
 <section><h2>USB KISS / web</h2><label>Port (auto, /dev/ttyACM0, COM3)</label><input id="serial_port" autocomplete="off">
@@ -75,6 +77,8 @@ async function fetchConfig(){
   $('comment').value=p.comment;$('beacon').checked=p.beacon_enabled;$('beacon_interval').value=p.beacon_interval;
   $('view').href='/'+(c.viewer_token?'?key='+encodeURIComponent(c.viewer_token):'');
   $('msgpage').href='/messages?admin='+encodeURIComponent(key);
+  $('objectspage').href='/operations?admin='+encodeURIComponent(key);
+  $('diagpage').href='/diagnostics?admin='+encodeURIComponent(key);
   notify('Nastavení načteno. APRS-IS passcode se nezobrazuje.');
  }catch(e){notify(tr('Nelze načíst konfiguraci: ')+e.message)}
 }

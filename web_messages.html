@@ -87,9 +87,12 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
 </div>
 <div id="toast" role="status" aria-live="polite">Inicializuji…</div>
 </main>
+<nav style="padding:10px 16px"><a id="operationlink" style="color:#77dfcd;margin-right:16px" href="#">Objekty a RF</a><a id="diaglink" style="color:#77dfcd" href="#">Diagnostika a deník</a></nav>
 <script src="/assets/web_locale.js"></script>
 <script>
 'use strict';
+document.getElementById('operationlink').href='/operations?admin='+encodeURIComponent(new URLSearchParams(location.search).get('admin')||'');
+document.getElementById('diaglink').href='/diagnostics?admin='+encodeURIComponent(new URLSearchParams(location.search).get('admin')||'');
 const $=id=>document.getElementById(id);
 const tr=value=>window.OK5TVRLocale.tr(value);
 const key=new URLSearchParams(location.search).get('admin')||'';
