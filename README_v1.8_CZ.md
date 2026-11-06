@@ -1,4 +1,17 @@
-# OK5TVR APRS KISS Monitor 1.8.1 RC1 — jednotné okno Windows
+# OK5TVR APRS KISS Monitor 1.8.2 RC1 — jednotné okno Windows
+
+## Oprava v1.8.2 RC1: Maják DIGI přes RF a kontrola telemetrie
+
+**Ve verzi 1.8.1 se vlastní poziční maják DIGI posílal pouze na APRS-IS.** Ve verzi 1.8.2 lze nastavit cíl **APRS-IS / RF přes USB KISS**, samostatně od telemetrie.
+
+1. V záložce **iGate / DIGI** vyplň zeměpisnou šířku a délku QTH a značku DIGI (např. `OK5TVR-3`). Zapni **Poziční maják DIGI**, nastav **Maják DIGI: kam = rf**, **RF cesta majáku = DIRECT**, interval 30, 60 nebo 120 min a ulož. Potvrď, že povoluješ automatické RF majáky.
+2. Připoj UV-K1(8) s aktivní aplikací **KISS TNC** a povoleným TX; vypni interní APRS DIGI v radiostanici. Klikni **DIGI ZAP** a potvrď retransmise. Jeden poziční rámec se zařadí do KISS fronty při zapnutí DIGI, poté nejdříve za zvolený interval. Bez zapnutého DIGI a USB KISS se nic nevysílá.
+3. V záložce **Telemetrie** zapni **DIGI telemetrie**, zvol **DIGI transport = rf**, cestu `DIRECT`, interval například 15 minut a stiskni **Uložit telemetrii**. Potvrď automatickou RF telemetrii a **znovu spusť DIGI**, pokud ho uložení nastavení vypnulo. První automatická sada se plánuje po nastaveném intervalu; pro test můžeš použít **Vyslat nyní** s potvrzením.
+4. V záložce **Diagnostika / deník** sleduj `BEACON rf-queued` (zařazeno), `BEACON rf-usb-written` (úspěšný zápis do USB) a `TELEM rf-usb-written`. **Fyzické RF vysílání se musí ověřit druhým přijímačem**, USB události ho nezaručují.
+
+Všechny nové automatické RF přenosy jsou ve výchozím stavu vypnuté. Starší konfigurace ponechává DIGI maják v režimu APRS-IS; změna na RF vyžaduje potvrzení. APRS iGate zůstává jednosměrná RF → APRS-IS a nepředává automaticky internetové zprávy na RF.
+
+
 
 ## Nově ve v1.8.1 RC1: dekódování GPS, DIRECT/VIA, vzdálenost a azimut
 

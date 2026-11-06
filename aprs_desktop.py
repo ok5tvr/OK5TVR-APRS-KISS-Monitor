@@ -22,7 +22,7 @@ from aprs_service import APRSService
 from aprs_station import load_settings, save_settings
 from service_config import ServiceConfig
 
-VERSION = '1.8.1-rc1'
+VERSION = '1.8.2-rc1'
 BG = '#101925'
 PANEL = '#1a293a'
 INSET = '#203247'
@@ -332,8 +332,8 @@ class DesktopApp:
         header=tk.Frame(self.root,bg=BG)
         header.pack(fill='x',padx=17,pady=(11,3))
         self.label(header,'OK5TVR','OK5TVR',fg=GREEN,font=('Segoe UI Semibold',14)).pack(side='left')
-        self.label(header,'  APRS KISS Monitor  ·  USB TNC  ·  v1.8.1 RC1',
-                   '  APRS KISS Monitor  ·  USB TNC  ·  v1.8.1 RC1',font=('Segoe UI',14)).pack(side='left')
+        self.label(header,'  APRS KISS Monitor  ·  USB TNC  ·  v1.8.2 RC1',
+                   '  APRS KISS Monitor  ·  USB TNC  ·  v1.8.2 RC1',font=('Segoe UI',14)).pack(side='left')
         self.language=tk.StringVar(value='EN' if self.lang=='en' else 'CZ')
         pick=ttk.Combobox(header,textvariable=self.language,values=('CZ','EN'),width=4,
                           state='readonly',style='APRS.TCombobox')
@@ -569,7 +569,9 @@ class DesktopApp:
         self.p_comment=self.field(ps,'Komentář','Comment')
         self.p_beacon=self.check(ps,'GPS maják iGate na APRS-IS','iGate GPS beacon on APRS-IS')
         self.p_interval=self.combo(ps,'Interval (min)','Interval (min)',('30','60','120'),'30')
-        self.d_beacon=self.check(ps,'GPS maják DIGI na APRS-IS','DIGI GPS beacon on APRS-IS')
+        self.d_beacon=self.check(ps,'Poziční maják DIGI','DIGI position beacon')
+        self.d_beacon_transport=self.combo(ps,'Maják DIGI: kam','DIGI beacon destination',('is','rf'),'is')
+        self.d_beacon_rf_path=self.combo(ps,'RF cesta majáku','Beacon RF path',('DIRECT','WIDE1-1'),'DIRECT')
         self.d_beacon_comment=self.field(ps,'Komentář DIGI','DIGI comment')
         self.d_beacon_interval=self.combo(ps,'DIGI interval (min)','DIGI interval (min)',('30','60','120'),'30')
         self.label(ps,'APRS-IS je jednosměrná RF → IS; automatické IS → RF není zapnuté.',
@@ -638,6 +640,8 @@ class DesktopApp:
             (self.p_lon,p['longitude'] if p['longitude'] is not None else ''),
             (self.p_comment,p['comment']), (self.p_interval,p['beacon_interval']),
             (self.d_beacon_interval,d['beacon_interval']), (self.d_beacon_comment,d['beacon_comment']),
+            (self.d_beacon_transport,d['beacon_transport']),
+            (self.d_beacon_rf_path,d['beacon_rf_path'] or 'DIRECT'),
             (self.m_target,m['target']), (self.m_path,m['path'] or 'DIRECT'),
             (self.m_aliases,', '.join(m['receive_aliases'])),
             (self.t_transport,d['telemetry_transport']), (self.t_rfpath,d['telemetry_rf_path'] or 'DIRECT'),
@@ -858,6 +862,8 @@ class DesktopApp:
             (self.t('DX značka','DX callsign'),t['dx_callsign']),
             (self.t('Předané iGate → APRS-IS','Forwarded RF → APRS-IS'),t['igate_forwarded']),
             (self.t('DIGI opakování TX','DIGI repeated TX'),t['digi_tx']),
+            (self.t('DIGI maják: transport','DIGI beacon transport'),t['digi_beacon_transport']),
+            (self.t('Poslední maják do USB','Last DIGI RF beacon USB write'),t['last_digi_rf_beacon_utc']),
             (self.t('RX paketů / min','RX packets / min'),t['rx_per_min']),
             (self.t('TX paketů / min','TX packets / min'),t['tx_per_min']),
             (self.t('Chyby USB TX','USB TX errors'),t['tx_errors']),
@@ -1052,13 +1058,22 @@ class DesktopApp:
                         'autostart':self.d_autostart.get(),
                         'beacon_enabled':self.d_beacon.get(),
                         'beacon_interval':int(self.d_beacon_interval.get()),
-                        'beacon_comment':self.d_beacon_comment.get()},
+                        'beacon_comment':self.d_beacon_comment.get(),
+                        'beacon_transport':self.d_beacon_transport.get(),
+                        'beacon_rf_path':self.d_beacon_rf_path.get()},
                 'position':{'latitude':latitude,'longitude':longitude,
                             'comment':self.p_comment.get(),
                             'beacon_enabled':self.p_beacon.get(),
                             'beacon_interval':int(self.p_interval.get())}}
         except (ValueError,TypeError) as exc:
             messagebox.showerror('OK5TVR APRS',str(exc))
+            return
+        rf_beacon=self.d_beacon.get() and self.d_beacon_transport.get()=='rf'
+        if rf_beacon and not self._confirm(
+                'Povolit automatický RF maják DIGI při spuštění a pak nejvýše každých ' +
+                str(self.d_beacon_interval.get()) + ' minut? Vysílání bude veřejné.',
+                'Enable automatic DIGI RF position beacon at DIGI start and no more often than every ' +
+                str(self.d_beacon_interval.get()) + ' minutes? The transmission is public.'):
             return
         if self.d_autostart.get():
             if not self._confirm('Opravdu povolit automatický DIGI RF TX po startu? '
@@ -1071,6 +1086,7 @@ class DesktopApp:
                                  'Enable automatic RF-to-APRS-IS forwarding after startup?'):
                 return
         payload={'config':data,'confirm_auto_tx':self.d_autostart.get(),
+                 'confirm_rf_beacon':rf_beacon,
                  'confirm_rf_telemetry':self.config.data['digi']['telemetry_enabled'] and
                                           self.config.data['digi']['telemetry_transport']=='rf'}
         if self.i_pass.get().strip():payload['passcode']=self.i_pass.get().strip()

@@ -106,7 +106,9 @@ class APRSService:
         self.telemetry_metadata_at = {}
         self.telemetry_last_sent = {}
         self.last_manual_telemetry = float('-inf')
-        self.digi_last_position = float('-inf')
+        self.digi_last_position = float('-inf')  # APRS-IS position
+        self.digi_last_rf_position = float('-inf')  # RF KISS position
+        self.last_digi_rf_beacon_utc = None  # USB write success, not proof of RF transmission
         self.rf_telemetry_pending = collections.deque(maxlen=8)
         self.rf_telemetry_next_tx = 0.0
         self.next_telemetry_ui = 0.0
@@ -180,6 +182,7 @@ class APRSService:
             'recent_objects':list(self.object_history),
             'telemetry': self.telemetry_snapshot(),
             'last_telemetry_utc':dict(self.telemetry_last_sent),
+            'last_digi_rf_beacon_utc':self.last_digi_rf_beacon_utc,
         }
 
     def telemetry_snapshot(self):
@@ -188,6 +191,9 @@ class APRSService:
         m['digi_enabled'] = self.config.data['digi']['telemetry_enabled']
         m['interval_minutes'] = self.config.data['telemetry']['interval_minutes']
         m['digi_beacon_enabled'] = self.config.data['digi']['beacon_enabled']
+        m['digi_beacon_transport'] = self.config.data['digi']['beacon_transport']
+        m['digi_beacon_rf_path'] = self.config.data['digi']['beacon_rf_path']
+        m['last_digi_rf_beacon_utc'] = self.last_digi_rf_beacon_utc
         return m
 
     def journal_snapshot(self, limit=100, category=''):
@@ -273,6 +279,7 @@ class APRSService:
             self.telemetry_epoch = -1
             self.rf_telemetry_pending.clear()
             self.digi_last_position = float('-inf')
+            self.digi_last_rf_position = float('-inf')
             self.digi=self._make_digi()
             self.state.update_digi(self.digi.snapshot())
             if old_port!=self.config.data['serial']['port']:
@@ -348,6 +355,12 @@ class APRSService:
                 raise ValueError('Nastavení DIGI a zpráv musí být objekt.')
             updated_digi = changes.get('digi', {})
             requested_digi_autostart = updated_digi.get('autostart', False)
+            rf_beacon_enabled = (updated_digi.get('beacon_enabled',self.config.data['digi']['beacon_enabled']) and
+                                 updated_digi.get('beacon_transport',self.config.data['digi']['beacon_transport']) == 'rf')
+            if rf_beacon_enabled and any(field in updated_digi for field in
+                                         ('beacon_enabled','beacon_transport','beacon_rf_path')) and \
+                    data.get('confirm_rf_beacon') is not True:
+                raise ValueError('Automatic DIGI RF position beacon requires explicit confirmation.')
             rf_telem_enabled = (updated_digi.get('telemetry_enabled',self.config.data['digi']['telemetry_enabled']) and
                                 updated_digi.get('telemetry_transport',self.config.data['digi']['telemetry_transport']) == 'rf')
             if rf_telem_enabled and data.get('confirm_rf_telemetry') is not True:
@@ -375,6 +388,7 @@ class APRSService:
             self.telemetry_metadata_at.clear()
             self.rf_telemetry_pending.clear()
             self.digi_last_position = float('-inf')
+            self.digi_last_rf_position = float('-inf')
             # No silent change to an already-running RF DIGI configuration.
             if self.want_digi:
                 self._disable_digi()
@@ -471,6 +485,7 @@ class APRSService:
         self.reader.digi_allowed.set()
         self.state.update_digi(self.digi.snapshot())
         self.digi_last_position=float('-inf')
+        self.digi_last_rf_position=float('-inf')
         self._update_position()
         LOG.warning('RF DIGI ZAPNUTO: %s %s', self.digi.config.call, self.digi.config.mode)
 
@@ -551,6 +566,10 @@ class APRSService:
                     self.telemetry.record_tx(category)
                     if category == 'telemetry_rf':
                         self.journal.log('TELEM','rf-usb-written',self.config.data['digi']['call'])
+                    if category == 'digi_beacon_rf':
+                        self.last_digi_rf_beacon_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+                        self.stats['digi_beacon_rf_written'] += 1
+                        self.journal.log('BEACON','rf-usb-written',self.config.data['digi']['call'])
                 if isinstance(value, dict) and value.get('category', '').startswith(('msg:', 'msgack:')):
                     self.messages.tx_written(value['category'])
                 if isinstance(value, dict) and value.get('category') == 'digi':
@@ -702,7 +721,7 @@ class APRSService:
                     raw=encode_ui_packet(call,'APRS',opts['telemetry_rf_path'],info)
                     self.rf_telemetry_pending.append(encode_kiss_data(raw))
                     total+=1
-                self.rf_telemetry_next_tx=now
+                self.rf_telemetry_next_tx=max(self.rf_telemetry_next_tx,now)
                 self.journal.log('TELEM','rf-scheduled',call,detail=f'{total} frames / path {opts["telemetry_rf_path"] or "DIRECT"}')
             else:
                 for line in packets:
@@ -726,12 +745,42 @@ class APRSService:
             self.rf_telemetry_pending.popleft()
             self.rf_telemetry_next_tx=now+12
 
+    def _rf_digi_beacon_tick(self):
+        """Queue a DIGI position via KISS on start and every configured interval.
+
+        This is deliberately separate from APRS-IS beacons. DIGI RF TX must
+        already have been explicitly enabled; a KISS write does not prove RF.
+        """
+        d=self.config.data['digi']
+        p=self.config.data['position']
+        if (not d['beacon_enabled'] or d['beacon_transport'] != 'rf' or
+                not self.digi.enabled or not self.radio_ready or self.reader is None or
+                p['latitude'] is None or p['longitude'] is None):
+            return
+        now=time.monotonic()
+        if now-self.digi_last_rf_position < d['beacon_interval']*60:
+            return
+        if self.rf_telemetry_pending or now < self.rf_telemetry_next_tx:
+            return  # Keep 12s spacing; no interleaving with T# metadata.
+        symbol=symbol_code(d['symbol_table'],d['symbol'],d['overlay'])
+        line=aprsis_position(d['call'],p['latitude'],p['longitude'],d['beacon_comment'],symbol)
+        # Only the APRS information field belongs in an RF AX.25 UI frame;
+        # APRS-IS TCPIP* headers and q constructs must NEVER be put on RF.
+        info=line.split(':',1)[1]
+        raw=encode_ui_packet(d['call'],'APRS',d['beacon_rf_path'],info)
+        if self.reader.send(encode_kiss_data(raw),category='digi_beacon_rf'):
+            self.digi_last_rf_position=now
+            self.rf_telemetry_next_tx=max(self.rf_telemetry_next_tx,now+12)
+            self.journal.log('BEACON','rf-queued',d['call'],
+                             detail=d['beacon_rf_path'] or 'DIRECT')
+
     def _telemetry_tick(self):
         now=time.monotonic()
         if now >= self.next_telemetry_ui:
             self.state.set_telemetry(self.telemetry_snapshot())
             self.next_telemetry_ui = now + 2
         self._rf_telemetry_tick()
+        self._rf_digi_beacon_tick()
         now=time.monotonic()
         if now >= self.telemetry_next:
             self._telemetry_send()
@@ -746,7 +795,8 @@ class APRSService:
             self.telemetry_metadata_at.clear()
             self.digi_last_position=float('-inf')
         d=self.config.data['digi'];p=self.config.data['position']
-        if (d['beacon_enabled'] and self.digi.enabled and self.radio_ready and
+        if (d['beacon_enabled'] and d['beacon_transport'] == 'is' and
+            self.digi.enabled and self.radio_ready and
             p['latitude'] is not None and now-self.digi_last_position >= d['beacon_interval']*60):
             line=aprsis_position(d['call'],p['latitude'],p['longitude'],
                    d['beacon_comment'], symbol_code(d['symbol_table'],d['symbol'],d['overlay']))

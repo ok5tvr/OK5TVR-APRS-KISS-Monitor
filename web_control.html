@@ -49,7 +49,9 @@ button.primary{background:#167f70}button.danger{background:#9e4651}button:disabl
 <label>APRS DIGI – tabulka ikon / Symbol table</label><select id="digi_table"><option value="\">Alternativní / Alternate (\)</option><option value="/">Primární / Primary (/)</option></select>
 <label>Ikona DIGI / DIGI symbol</label><select id="digi_symbol"><option value="#"># · DIGI</option><option value="&">&amp; · iGate</option><option value="-">- · QTH house</option><option value="r">r · repeater</option><option value=">">&gt; · vehicle</option><option value="W">W · weather</option></select>
 <label>Overlay (A–Z / 0–9, only alternate table)</label><input id="digi_overlay" maxlength="1" placeholder="1" autocomplete="off">
-<label class="check"><input id="digi_beacon" type="checkbox"> Veřejný APRS-IS poziční maják DIGI (jen při zapnutém DIGI, bez RF) / DIGI position beacon</label>
+<label class="check"><input id="digi_beacon" type="checkbox"> Poziční maják DIGI / DIGI position beacon (only while DIGI is active)</label>
+<label>Kam vysílat maják DIGI / DIGI beacon destination</label><select id="digi_beacon_transport"><option value="is">APRS-IS (no RF)</option><option value="rf">RF / USB KISS (requires confirmation)</option></select>
+<label>RF cesta majáku / DIGI beacon RF path</label><select id="digi_beacon_path"><option value="">DIRECT</option><option value="WIDE1-1">WIDE1-1</option></select>
 <label>Interval majáku DIGI / DIGI beacon interval (min)</label><input id="digi_beacon_interval" type="number" min="30" max="120" value="30">
 <label>Komentář DIGI / DIGI comment (ASCII)</label><input id="digi_beacon_comment" maxlength="43" value="OK5TVR APRS DIGI">
 <label class="check"><input id="digi_telemetry" type="checkbox"> Telemetrie DIGI / DIGI telemetry (only while DIGI active)</label>
@@ -88,7 +90,8 @@ async function fetchConfig(){
   $('igate_table').value=i.symbol_table;$('igate_symbol').value=i.symbol;$('igate_overlay').value=i.overlay;
   $('igate_telemetry').checked=i.telemetry_enabled;
   $('digi_table').value=d.symbol_table;$('digi_symbol').value=d.symbol;$('digi_overlay').value=d.overlay;
-  $('digi_beacon').checked=d.beacon_enabled;$('digi_beacon_interval').value=d.beacon_interval;
+  $('digi_beacon').checked=d.beacon_enabled;$('digi_beacon_transport').value=d.beacon_transport;
+  $('digi_beacon_path').value=d.beacon_rf_path;$('digi_beacon_interval').value=d.beacon_interval;
   $('digi_beacon_comment').value=d.beacon_comment;$('digi_telemetry').checked=d.telemetry_enabled;
   $('digi_transport').value=d.telemetry_transport;$('digi_telemetry_path').value=d.telemetry_rf_path;
   $('telemetry_interval').value=c.telemetry.interval_minutes;
@@ -121,7 +124,8 @@ function collect(){const nonempty=id=>$(id).value.trim();
   digi:{call:nonempty('digi_call').toUpperCase(),mode:$('mode').value,trace:$('trace').checked,
       delay_s:Number($('delay').value),max_per_min:Number($('limit').value),min_gap_s:Number($('gap').value),autostart:$('digi_auto').checked,
       symbol_table:$('digi_table').value,symbol:$('digi_symbol').value,overlay:nonempty('digi_overlay').toUpperCase(),
-      beacon_enabled:$('digi_beacon').checked,beacon_interval:Number($('digi_beacon_interval').value),
+      beacon_enabled:$('digi_beacon').checked,beacon_transport:$('digi_beacon_transport').value,
+      beacon_rf_path:$('digi_beacon_path').value,beacon_interval:Number($('digi_beacon_interval').value),
       beacon_comment:nonempty('digi_beacon_comment'),telemetry_enabled:$('digi_telemetry').checked,
       telemetry_transport:$('digi_transport').value,telemetry_rf_path:$('digi_telemetry_path').value},
   telemetry:{interval_minutes:Number($('telemetry_interval').value)},
@@ -137,8 +141,11 @@ for(const role of ['igate','digi']){
 $('save').onclick=()=>{
  const o=collect();
  const wantsRF=o.config.digi.telemetry_enabled&&o.config.digi.telemetry_transport==='rf';
+ const wantsBeaconRF=o.config.digi.beacon_enabled&&o.config.digi.beacon_transport==='rf';
+ if(wantsBeaconRF&&!confirm(tr('POZOR: Automatický RF poziční maják DIGI po zapnutí DIGI. Povolit?')))return;
  if(wantsRF&&!confirm(tr('POZOR: Automatické RF vysílání DIGI telemetrie po zapnutí DIGI. Pokračovat?')))return;if(o.config.digi.autostart&&!confirm(tr('POZOR: Automatické vysílání DIGI po restartu. Opravdu to povolit?')))return;
- api('save',{...o,confirm_auto_tx:o.config.digi.autostart,confirm_rf_telemetry:wantsRF});
+ api('save',{...o,confirm_auto_tx:o.config.digi.autostart,confirm_rf_telemetry:wantsRF,
+             confirm_rf_beacon:wantsBeaconRF});
 };
 $('ison').onclick=()=>{if(confirm(tr('Povolit odesílání skutečně přijatých APRS paketů do veřejné APRS-IS?')))api('igate_on',{confirm:true})};
 $('isoff').onclick=()=>api('igate_off');

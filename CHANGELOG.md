@@ -1,3 +1,10 @@
+# Version 1.8.2 RC1 — DIGI RF beacon + telemetry RF verification
+
+- Audited v1.8.1: the DIGI position beacon was APRS-IS-only. Added explicitly confirmed DIGI beacon transport `is` / `rf` and RF path, retaining safe legacy `is` default.
+- Immediate position beacon over KISS on DIGI activation, then 30/60/120 minute intervals while radio and software DIGI stay active. DISABLED by default and guarded on USB TX by `digi_allowed`.
+- Verified RF telemetry T#/PARM/UNIT/EQNS/BITS remains independent and rate-limited with its 15/30/60-minute schedule and 12-second RF spacing. Prevent beacon/telemetry bursts from interleaving.
+- Exposed controls in native CZ/EN desktop tab and optional headless web UI; new journal diagnostics and RF regression tests. KISS USB TX was simulated, not over-the-air verified.
+
 # Version 1.8.1 RC1 — APRS position decoding and geographic course
 
 - Position decoding covers Mic-E, APRS uncompressed/compressed/timestamped formats, APRS objects/items, NMEA RMC/GGA/GLL (GPS fix and optional checksum verified) and valid third-party encapsulated positions. Other packet types without position are not plotted.

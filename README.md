@@ -2,9 +2,16 @@
 
 **Windows / Raspberry Pi APRS monitor, one-way iGate, digipeater and messaging over USB KISS TNC**
 
-Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.8.1-rc1**.
+Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.8.2-rc1**.
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
+
+## New in 1.8.2 RC1: DIGI RF position beacon and confirmed RF telemetry
+
+- The DIGI position beacon now supports an independent APRS-IS **or RF** transport, defaulting to the original APRS-IS behavior for existing installations. With **DIGI position beacon enabled**, **RF transport selected**, **a valid GPS position**, **KISS connected** and **DIGI ON**, one DIGI position packet is queued on start, then no more often than every 30/60/120 minutes. The RF path defaults to **DIRECT**.
+- DIGI `T#` telemetry can separately use **RF** (15/30/60-minute report interval) with its standard PARM/UNIT/EQNS/BITS metadata and 12-second spacing. An RF beacon does not interleave with the telemetry metadata burst. The iGate continues to send its own beacons and telemetry only via APRS-IS.
+- A **separate confirmation** is required to save automatic DIGI RF beacon settings. Both the beacon and RF telemetry require an enabled DIGI and are cancelled when DIGI is disabled; RF TX is OFF in new installations. Diagnostic journal entries distinguish `BEACON rf-queued` from `BEACON rf-usb-written`. **USB success does not prove RF transmission**.
+- Both options are configured in the single Windows **iGate / DIGI** tab (beacon) and **Telemetry** tab (T#); the optional headless web panel offers the same options. [Czech instructions](README_v1.8_CZ.md).
 
 ## New in 1.8.1 RC1: Position decoding, distance, bearing, DIRECT/VIA
 

@@ -53,8 +53,8 @@ class SerialReader(threading.Thread):
                         outgoing = None
                     if outgoing is not None and not self.stop.is_set():
                         payload, category = outgoing
-                        if category in ('digi', 'telemetry_rf') and not self.digi_allowed.is_set():
-                            self.emit('tx_cancelled', 'DIGI vypnuté: čekající RF rámec (včetně telemetrie) neodeslán')
+                        if category in ('digi', 'telemetry_rf', 'digi_beacon_rf') and not self.digi_allowed.is_set():
+                            self.emit('tx_cancelled', 'DIGI vypnuté: čekající RF DIGI/telemetrie/maják neodeslán')
                             continue
                         try:
                             written = conn.write(payload)

@@ -1,3 +1,9 @@
+## New in 1.8.2 RC1 — DIGI position beacon over RF
+
+In the unified Windows app, open **iGate / DIGI**, configure your GPS location, enable **DIGI position beacon**, choose **RF** for the destination, select `DIRECT` for the RF path, and save after confirming automatic RF TX. Then start DIGI with its separate confirmation. The position packet is queued to the USB KISS TNC immediately and again only after the configured interval (30/60/120 minutes). The legacy APRS-IS-only beacon remains the default for saved configurations; choosing RF is explicit.
+
+In **Telemetry**, enable **DIGI telemetry** and select **RF** with explicit confirmation. `T#` reports are sent every 15/30/60 minutes, with four metadata frames when due and at least 12 seconds between scheduled RF packets. A pending metadata burst takes priority over new RF beacons. iGate telemetry remains APRS-IS-only. The APRS journal records frames queued and successfully written to USB, but a second radio is required to confirm actual transmission. By default all automatic RF outputs remain disabled.
+
 ## New in 1.8.1 RC1 — Position formats, DIRECT reception, range and bearing
 
 The single-window desktop **Map** tab now shows callsign, DIRECT/VIA route, great-circle distance in kilometres, and initial true bearing from the configured iGate/DIGI QTH. **DIRECT** packet rows are highlighted in light blue. Position markers heard directly over RF are also light blue; clicking a station shows a course line from QTH. No web browser is required for desktop operation.

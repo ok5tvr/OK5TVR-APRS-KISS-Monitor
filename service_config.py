@@ -29,7 +29,8 @@ DEFAULT_CONFIG = {
              'delay_s': 4.0, 'max_per_min': 6, 'min_gap_s': 3.0,
              'autostart': False, 'symbol_table': '\\', 'symbol': '#',
              'overlay': '1', 'beacon_enabled': False, 'beacon_interval': 30,
-             'beacon_comment': 'OK5TVR APRS DIGI', 'telemetry_enabled': False,
+             'beacon_comment': 'OK5TVR APRS DIGI',
+             'beacon_transport': 'is', 'beacon_rf_path': '', 'telemetry_enabled': False,
              'telemetry_transport': 'is', 'telemetry_rf_path': ''},
     'messages': {'target': '', 'path': 'WIDE1-1', 'receive_aliases': [], 'auto_ack': False,
                  'retry_seconds': 45, 'max_attempts': 3},
@@ -114,7 +115,10 @@ def validate_config(candidate):
     if d['telemetry_transport'] not in ('is','rf'):
         raise ValueError('DIGI telemetry transport must be APRS-IS or RF.')
     d['telemetry_rf_path'] = normalize_path(d['telemetry_rf_path'])
-    d['beacon_enabled'] = _bool(d['beacon_enabled'], 'DIGI APRS-IS beacon')
+    d['beacon_enabled'] = _bool(d['beacon_enabled'], 'DIGI position beacon')
+    if d['beacon_transport'] not in ('is', 'rf'):
+        raise ValueError('DIGI beacon transport must be APRS-IS or RF.')
+    d['beacon_rf_path'] = normalize_path(d['beacon_rf_path'])
     d['beacon_interval'] = _int(d['beacon_interval'], 'DIGI beacon interval', 30, 120)
     if (not isinstance(d['beacon_comment'], str) or len(d['beacon_comment']) > 43
             or any(ord(c) < 32 or ord(c) > 126 for c in d['beacon_comment'])):
@@ -126,7 +130,8 @@ def validate_config(candidate):
     d['max_per_min'] = _int(d['max_per_min'], 'DIGI TX/min', 1, 12)
     DigiConfig(d['call'], d['mode'], d['trace'], d['delay_s'],
                d['max_per_min'], d['min_gap_s']).validate()
-    if ((d['telemetry_enabled'] and d['telemetry_transport'] == 'is') or d['beacon_enabled']) and i['call'].split('-')[0] != d['call'].split('-')[0]:
+    if ((d['telemetry_enabled'] and d['telemetry_transport'] == 'is') or
+            (d['beacon_enabled'] and d['beacon_transport'] == 'is')) and i['call'].split('-')[0] != d['call'].split('-')[0]:
         raise ValueError('DIGI APRS-IS beacon/telemetry requires same base callsign as the APRS-IS login.')
     if d['telemetry_enabled'] and d['telemetry_transport'] == 'is' and i['telemetry_enabled'] and d['call'] == i['call']:
         raise ValueError('iGate and DIGI telemetry cannot share the same source callsign.')
