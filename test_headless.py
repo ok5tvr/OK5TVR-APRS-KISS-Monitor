@@ -153,6 +153,30 @@ class HeadlessIntegrationTests(unittest.TestCase):
         self.assertEqual(self.api('save',config={'digi':{'delay_s':0.0}})['ok'],True)
         self.assertEqual(self.api('tx_test',expect=400)['ok'],False)
 
+    def test_unified_console_is_admin_only_and_exposes_private_frame_details(self):
+        with self.assertRaises(HTTPError) as e:
+            urlopen(self.base+'/console')
+        self.assertEqual(e.exception.code, 403)
+        with self.assertRaises(HTTPError) as e:
+            urlopen(self.base+'/api/monitor')
+        self.assertEqual(e.exception.code, 403)
+        with urlopen(self.base+'/console?admin='+self.conf.secrets['admin_token']) as response:
+            self.assertIn(b'APRS KISS Monitor', response.read())
+            self.assertEqual(response.headers.get('X-Frame-Options'), 'SAMEORIGIN')
+        raw=encode_ui_packet('OK5ABC-7','APRS','WIDE1-1','>HELLO PRIVATE HEX')
+        FakeSerial.incoming.put(encode_kiss_data(raw))
+        self.assertTrue(wait(lambda:self.service.state.rx >= 1))
+        with urlopen(self.base+'/api/monitor?admin='+self.conf.secrets['admin_token']) as response:
+            info=json.load(response)
+        self.assertEqual(info['configured_port'],'FAKEUSB')
+        self.assertTrue(info['frames'])
+        self.assertIn('HELLO PRIVATE HEX',info['frames'][0]['payload'])
+        self.assertIn(raw.hex(' ').upper(),info['frames'][0]['hex_data'])
+        with urlopen(self.base+'/api/state') as response:
+            view=json.load(response)
+        self.assertNotIn('hex_data',str(view))
+        self.assertNotIn('HELLO PRIVATE HEX',str(view.get('health',{})))
+
     def test_usb_rx_then_manual_tx_and_digi_on_off(self):
         raw=encode_ui_packet('OK5ABC-7','APRS','WIDE1-1','!4944.30N/01322.42E>TEST RF')
         FakeSerial.incoming.put(encode_kiss_data(raw))

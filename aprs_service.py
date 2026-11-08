@@ -131,6 +131,18 @@ class APRSService:
         result['viewer_token'] = self.config.secrets['viewer_token']
         return result
 
+    def monitor_snapshot(self):
+        return {'frames': self.state.monitor_snapshot(), 'ports': self.serial_ports_snapshot(),
+                'configured_port': self.config.data['serial']['port'],
+                'connected_port': self.reader.port if self.reader else None,
+                'radio_ready': self.radio_ready}
+
+    def serial_ports_snapshot(self):
+        if list_ports is None:
+            return []
+        return [{'device': p.device, 'description': (p.description or '')[:100]}
+                for p in list_ports.comports()]
+
     def messages_snapshot(self):
         result = self.messages.snapshot()
         result['default_target'] = self.config.data['messages']['target']
