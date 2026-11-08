@@ -81,6 +81,15 @@ class WebPanel:
             def do_GET(self):
                 parsed = urlsplit(self.path)
                 # Public, non-sensitive local script shared by all three pages.
+                if parsed.path in ('/assets/aprs-primary.png', '/assets/aprs-secondary.png', '/assets/aprs-overlays.png'):
+                    asset = _ASSET_DIR / 'assets' / parsed.path.rsplit('/', 1)[-1]
+                    try:
+                        contents = asset.read_bytes()
+                    except OSError:
+                        self._respond(404, '{"error":"APRS sprite missing"}')
+                        return
+                    self._respond(200, contents, 'image/png', 'public, max-age=86400')
+                    return
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
