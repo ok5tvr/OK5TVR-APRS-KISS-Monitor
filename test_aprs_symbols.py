@@ -14,7 +14,7 @@ class SymbolMapTests(unittest.TestCase):
 
     def test_compressed_symbol(self):
         # Four valid base91 digits for lat and lon, primary table, > glyph.
-        position=parse_position(b'!/!!!!!!!!!>test')
+        position=parse_position(b'!/' + b'!' * 8 + b'>test')
         self.assertIsNotNone(position)
         self.assertEqual(position['symbol'], '/>')
 
