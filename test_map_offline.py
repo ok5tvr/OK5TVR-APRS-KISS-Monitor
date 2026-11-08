@@ -11,10 +11,10 @@ class MapOfflineTests(unittest.TestCase):
         self.assertIn('geography',HTML)
         self.assertIn('map-marker',HTML)
         self.assertIn('Offline mapa',HTML)
-        self.assertIn('basemaps.cartocdn.com',HTML)
+        self.assertIn('tile.openstreetmap.org',HTML)
         self.assertNotIn('unpkg.com',HTML)
         self.assertNotIn('maplibre',HTML.lower())
-        self.assertNotIn('tile.openstreetmap.org',HTML)
+        self.assertNotIn('basemaps.cartocdn.com',HTML)
 
     def test_offline_geography_endpoint(self):
         web=WebPanel(MonitorState())
