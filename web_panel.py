@@ -19,6 +19,7 @@ ADMIN_HTML = (_ASSET_DIR / 'web_control.html').read_text(encoding='utf-8') if (_
 OPERATIONS_HTML = (_ASSET_DIR / 'web_operations.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_operations.html').exists() else ''
 MESSAGES_HTML = (_ASSET_DIR / 'web_messages.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_messages.html').exists() else ''
 LOCALE_JS = (_ASSET_DIR / 'web_locale.js').read_text(encoding='utf-8')
+UNIFIED_HTML = (_ASSET_DIR / 'web_unified.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_unified.html').exists() else ''
 
 
 class WebPanel:
@@ -83,11 +84,22 @@ class WebPanel:
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/control', '/api/config', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup'):
+                if parsed.path in ('/unified', '/control', '/api/config', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
-                    if parsed.path == '/control':
+                    if parsed.path == '/unified':
+                        self._respond(200, UNIFIED_HTML, 'text/html; charset=utf-8')
+                    elif parsed.path == '/api/ports':
+                        try:
+                            from serial.tools import list_ports
+                            ports = [{'device': p.device, 'description': p.description or ''}
+                                     for p in list_ports.comports()]
+                        except ImportError:
+                            ports = []
+                        self._respond(200, json.dumps({'ports': ports,
+                             'selected': operator.config.data['serial']['port']}, ensure_ascii=False))
+                    elif parsed.path == '/control':
                         self._respond(200, ADMIN_HTML, 'text/html; charset=utf-8')
                     elif parsed.path == '/operations':
                         self._respond(200, OPERATIONS_HTML, 'text/html; charset=utf-8')
