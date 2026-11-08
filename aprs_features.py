@@ -147,6 +147,14 @@ def _third_party_position(info: bytes) -> dict[str, Any] | None:
     return position
 
 
+def _symbol_from_bytes(table: int, glyph: int) -> str | None:
+    """APRS table/code pair; overlays use the table byte in place of backslash."""
+    valid_table = table in (ord('/'), ord('\\')) or (
+        ord('0') <= table <= ord('9') or ord('A') <= table <= ord('Z')
+        or ord('a') <= table <= ord('z'))
+    return chr(table) + chr(glyph) if valid_table and 33 <= glyph <= 126 else None
+
+
 def parse_position(info: bytes, destination: str = "") -> dict[str, Any] | None:
     """Position-bearing APRS types: normal, compressed, Mic-E, objects,
     items, NMEA GPS sentences and third-party nested positions.
@@ -187,7 +195,7 @@ def parse_position(info: bytes, destination: str = "") -> dict[str, Any] | None:
                         and (la_deg < 90 or la_min == 0) and (lo_deg < 180 or lo_min == 0)):
                     lat = (la_deg + la_min / 60) * (-1 if lat_match[3] == b"S" else 1)
                     lon = (lo_deg + lo_min / 60) * (-1 if lon_match[3] == b"W" else 1)
-                    return dict(lat=round(lat, 6), lon=round(lon, 6), format="nekomprimovaná", label=label, kind=kind)
+                    return dict(lat=round(lat, 6), lon=round(lon, 6), format="nekomprimovaná", label=label, kind=kind, symbol=_symbol_from_bytes(p[8], p[18]))
         # An uncompressed report starts with digits; never reinterpret an invalid
         # DDMM.mmN report as compressed coordinates (would put bogus pins on map).
         if len(p) >= 10 and (p[0] in b"/\\" or p[0] in b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
@@ -195,7 +203,7 @@ def parse_position(info: bytes, destination: str = "") -> dict[str, Any] | None:
             if a is not None and b is not None and 33 <= p[9] <= 126:
                 lat, lon = 90 - a / 380926.0, -180 + b / 190463.0
                 if -90 <= lat <= 90 and -180 <= lon <= 180:
-                    return dict(lat=round(lat, 6), lon=round(lon, 6), format="komprimovaná", label=label, kind=kind)
+                    return dict(lat=round(lat, 6), lon=round(lon, 6), format="komprimovaná", label=label, kind=kind, symbol=_symbol_from_bytes(p[0], p[9]))
 
     if info[:1] in (b"'", b"`") and len(info) >= 9:
         dest = destination.split("-", 1)[0].upper().ljust(6)
@@ -220,7 +228,7 @@ def parse_position(info: bytes, destination: str = "") -> dict[str, Any] | None:
                     lat = (lat_deg + lat_mins/60) * (1 if "P" <= dest[3] <= "Y" else -1)
                     lon = (lon_deg + (lon_min + lon_hund/100)/60) * (-1 if "P" <= dest[5] <= "Y" else 1)
                     if -90 <= lat <= 90 and -180 <= lon <= 180:
-                        return dict(lat=round(lat, 6), lon=round(lon, 6), format="Mic-E", label=label, kind=kind)
+                        return dict(lat=round(lat, 6), lon=round(lon, 6), format="Mic-E", label=label, kind=kind, symbol=_symbol_from_bytes(info[8], info[7]))
     return None
 
 
@@ -310,7 +318,7 @@ class MonitorState:
     def _new_station(call):
         return dict(call=call,count=0,last='',lat=None,lon=None,kind='',summary='',
                     direct=None,position_direct=None,direct_count=0,via_count=0,
-                    is_object=False,source_call=None,position_format=None)
+                    is_object=False,source_call=None,position_format=None,symbol=None)
 
     def add(self, packet):
         with self.lock:
@@ -349,6 +357,8 @@ class MonitorState:
                               summary=packet.summary[:180],position_direct=position_direct,
                               is_object=object_point,source_call=packet.source,
                               position_format=packet.position_format)
+                if packet.symbol:
+                    target['symbol'] = packet.symbol
                 if third_party:
                     target['direct']=False  # A nested origin was not heard directly.
             if len(self.stations)>1000:
