@@ -16,6 +16,20 @@ class MapOfflineTests(unittest.TestCase):
         self.assertNotIn('maplibre',HTML.lower())
         self.assertNotIn('basemaps.cartocdn.com',HTML)
 
+    def test_local_symbol_sprites_are_served_without_external_network(self):
+        import urllib.request
+        self.assertIn('aprs-primary.png', HTML)
+        self.assertIn('aprs-secondary.png', HTML)
+        web=WebPanel(MonitorState())
+        try:
+            port=web.start(port=0)
+            for path in ('aprs-primary.png', 'aprs-secondary.png', 'aprs-overlays.png'):
+                with urllib.request.urlopen(f'http://127.0.0.1:{port}/assets/{path}') as r:
+                    self.assertEqual(r.headers['Content-Type'], 'image/png')
+                    self.assertTrue(r.read().startswith(b'\x89PNG\r\n\x1a\n'))
+        finally:
+            web.close()
+
     def test_offline_geography_endpoint(self):
         web=WebPanel(MonitorState())
         try:
