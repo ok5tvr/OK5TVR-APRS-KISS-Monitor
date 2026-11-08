@@ -33,6 +33,14 @@ V záložce **Mapa** vyber **Mapa ulic (OpenStreetMap)** nebo **Tmavá mapa (Ope
 
 Veřejný tile server OpenStreetMap je určen pro přiměřený provoz; respektuj jeho podmínky, atribuci a zákaz hromadného stahování. Pro větší počet uživatelů / komerční nasazení použij vlastní či smluvně provozovaný mapový podklad. Po aktualizaci vynuceně obnov stránku (Ctrl+F5), aby se nepoužil starý JavaScript.
 
+## Grafické APRS symboly (PNG, offline)
+
+Na mapě se podle dvouznakového APRS symbolového kódu automaticky zobrazují originální rastrové ikonky (například auto, digipeater, iGate, meteorologická stanice, dům, letadlo). Používají se místní PNG atlasové soubory v `assets/`, takže zobrazení ikon nepotřebuje internet. K dispozici je primární tabulka `/`, alternativní tabulka `\\` i překryvná písmena/číslice pro symboly alternativní tabulky. Pokud paket symbol neobsahuje, zobrazí se původní obecná značka. U nekomprimovaných, komprimovaných a Mic-E pozic i APRS objektů se zachová symbol z přijatého paketu; při příjmu statusu bez polohy se symbol nemaže.
+
+Před aktualizací zkontroluj a případně zazálohuj nastavení: `cp -a ~/.config/ok5tvr-aprs ~/ok5tvr-aprs-backup-$(date +%Y%m%d)`. Instalace provádí aktualizaci bez vymazání existující konfigurace.
+
+Zdroj grafiky: [OH7LZB/aprs.fi APRS symbols](https://github.com/hessu/aprs-symbols), podrobnosti o autorství a licencích jednotlivých ikon jsou uvedeny v [COPYRIGHT.md](https://github.com/hessu/aprs-symbols/blob/master/COPYRIGHT.md). Nepoužívej tyto značky k domněnce o potvrzení RF příjmu; jde o data přenesená v APRS paketu.
+
 ## Důležité
 
 - Port 8765 a administrátorský odkaz nevystavuj přímo do internetu. Používej důvěryhodnou LAN nebo VPN s vhodně zabezpečeným přístupem.
