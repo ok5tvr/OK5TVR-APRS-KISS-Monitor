@@ -27,6 +27,12 @@ Před reinstalací existující služby zazálohuj soubory ve složce ~/.config/
 
 6. V Příjem / TX obnov USB porty, vyber zařízení, připoj a zkontroluj tabulku přijatých rámců. Nastavení iGate/DIGI je v příslušné záložce.
 
+## Online mapa bez API klíče
+
+V záložce **Mapa** vyber **Mapa ulic (OpenStreetMap)** nebo **Tmavá mapa (OpenStreetMap)**. Oba režimy využívají dlaždice OpenStreetMap bez API klíče; tmavý režim je barevná úprava stejných dlaždic v prohlížeči. Offline mapa dál funguje i bez internetu.
+
+Veřejný tile server OpenStreetMap je určen pro přiměřený provoz; respektuj jeho podmínky, atribuci a zákaz hromadného stahování. Pro větší počet uživatelů / komerční nasazení použij vlastní či smluvně provozovaný mapový podklad. Po aktualizaci vynuceně obnov stránku (Ctrl+F5), aby se nepoužil starý JavaScript.
+
 ## Důležité
 
 - Port 8765 a administrátorský odkaz nevystavuj přímo do internetu. Používej důvěryhodnou LAN nebo VPN s vhodně zabezpečeným přístupem.
