@@ -19,6 +19,7 @@ ADMIN_HTML = (_ASSET_DIR / 'web_control.html').read_text(encoding='utf-8') if (_
 MESSAGES_HTML = (_ASSET_DIR / 'web_messages.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_messages.html').exists() else ''
 OPERATIONS_HTML = (_ASSET_DIR / 'web_operations.html').read_text(encoding='utf-8')
 DIAGNOSTICS_HTML = (_ASSET_DIR / 'web_diagnostics.html').read_text(encoding='utf-8')
+CONSOLE_HTML = (_ASSET_DIR / 'web_console.html').read_text(encoding='utf-8')
 LOCALE_JS = (_ASSET_DIR / 'web_locale.js').read_text(encoding='utf-8')
 
 
@@ -86,13 +87,17 @@ class WebPanel:
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/control','/api/config','/messages','/api/messages',
+                if parsed.path in ('/console','/api/monitor','/control','/api/config','/messages','/api/messages',
                                     '/operations','/api/objects','/diagnostics', '/api/diagnostics',
                                     '/api/backup', '/api/journal.csv'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
-                    if parsed.path == '/control':
+                    if parsed.path == '/console':
+                        self._respond(200, CONSOLE_HTML, 'text/html; charset=utf-8')
+                    elif parsed.path == '/api/monitor':
+                        self._respond(200, json.dumps(operator.monitor_snapshot(), ensure_ascii=False))
+                    elif parsed.path == '/control':
                         self._respond(200, ADMIN_HTML, 'text/html; charset=utf-8')
                     elif parsed.path == '/operations':
                         self._respond(200, OPERATIONS_HTML, 'text/html; charset=utf-8')
