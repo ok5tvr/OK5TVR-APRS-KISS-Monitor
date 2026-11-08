@@ -145,6 +145,7 @@ class Packet:
     position_label: str | None = None
     position_source: str | None = None
     position_format: str | None = None
+    symbol: str | None = None
     heard_direct: bool | None = None
     control: int | None = None
     pid: int | None = None
@@ -209,6 +210,7 @@ def decode_ax25(raw: bytes, simulated: bool = False) -> Packet:
                 packet.position_label = pos.get("label")
                 packet.position_source = pos.get('source')
                 packet.position_format = pos['format']
+                packet.symbol = pos.get('symbol')
                 if "GPS " not in packet.summary:
                     packet.summary = (f"GPS {packet.latitude:.5f}, {packet.longitude:.5f}"
                                       f" ({pos['format']}) | {packet.summary[:110]}")
