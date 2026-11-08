@@ -37,6 +37,10 @@ for f in aprs_service.py service_config.py aprs_protocol.py aprs_serial.py \
          web_dashboard.html web_control.html web_messages.html web_operations.html web_unified.html web_locale.js offline_geography.json; do
   sudo install -m 644 "$SRC_DIR/$f" "$INSTALL_DIR/$f"
 done
+sudo install -d -m 755 "$INSTALL_DIR/assets"
+for f in aprs-primary.png aprs-secondary.png aprs-overlays.png; do
+  sudo install -m 644 "$SRC_DIR/assets/$f" "$INSTALL_DIR/assets/$f"
+done
 sudo chmod 755 "$INSTALL_DIR/aprs_service.py"
 python3 "$INSTALL_DIR/aprs_service.py" --config "$CONFIG_PATH" --init
 if [ "$ENABLE_LAN" -eq 1 ]; then
