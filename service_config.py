@@ -200,16 +200,17 @@ def _upgrade_v16_config(raw, config_path: Path):
     if not legacy:
         return validate_config(raw)
 
-    compatible = {k: v for k, v in raw.items() if k not in _LEGACY_SECTIONS}
-    upgraded = validate_config(compatible)  # reject any other unsupported values first
-    upgraded['igate']['autostart'] = False
-    upgraded['digi']['autostart'] = False
-    upgraded['messages']['auto_ack'] = False
-    # Avoid preserving scheduled automatic radio/network beacons from mixed versions.
-    upgraded['digi']['beacon_enabled'] = False
-    upgraded['digi']['telemetry_enabled'] = False
-    upgraded['igate']['telemetry_enabled'] = False
-    upgraded['position']['beacon_enabled'] = False
+    compatible = copy.deepcopy({k: v for k, v in raw.items() if k not in _LEGACY_SECTIONS})
+    # Disable automatic actions before validating the migrated state, so a legacy
+    # configuration cannot reactivate RF transmissions and does not require old
+    # position-beacon dependencies merely to complete a safe migration.
+    for section, key in (('igate', 'autostart'), ('digi', 'autostart'),
+                         ('messages', 'auto_ack'), ('digi', 'beacon_enabled'),
+                         ('digi', 'telemetry_enabled'), ('igate', 'telemetry_enabled'),
+                         ('position', 'beacon_enabled')):
+        if isinstance(compatible.get(section), dict) and key in compatible[section]:
+            compatible[section][key] = False
+    upgraded = validate_config(compatible)  # reject other unsupported values
 
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
     suffix = secrets.token_hex(4)
