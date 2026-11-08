@@ -34,7 +34,7 @@ sudo install -d -m 755 "$INSTALL_DIR"
 # Only runtime files, no tests or credentials in /opt.
 for f in aprs_service.py service_config.py aprs_protocol.py aprs_serial.py \
          aprs_digi.py aprs_features.py aprs_station.py aprs_messages.py aprs_operations.py aprs_journal.py web_panel.py \
-         web_dashboard.html web_control.html web_messages.html web_operations.html web_diagnostics.html web_locale.js offline_geography.json; do
+         web_dashboard.html web_control.html web_messages.html web_operations.html web_diagnostics.html web_console.html web_locale.js offline_geography.json; do
   sudo install -m 644 "$SRC_DIR/$f" "$INSTALL_DIR/$f"
 done
 sudo chmod 755 "$INSTALL_DIR/aprs_service.py"
