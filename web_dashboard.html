@@ -35,6 +35,14 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 .map-marker{pointer-events:auto;position:absolute;transform:translate(-50%,-100%);display:flex;align-items:center;gap:5px;white-space:nowrap;
   background:#083b43;border:1px solid #75ecd7;border-radius:6px;padding:3px 7px;color:#f2fff9;box-shadow:0 2px 9px #0009;font-size:12px;font-weight:750}
 .map-marker:before{content:'';width:8px;height:8px;border-radius:50%;background:#5affcf;border:1px solid #0a6a54}
+.map-marker.has-symbol:before{display:none}
+.aprs-icon{display:inline-block;position:relative;flex:none;width:24px;height:24px;
+ background-repeat:no-repeat;image-rendering:auto}
+.aprs-icon.primary{background-image:url('/assets/aprs-primary.png')}
+.aprs-icon.secondary{background-image:url('/assets/aprs-secondary.png')}
+.aprs-icon .overlay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+ font:bold 13px/1 system-ui,sans-serif;color:white;text-shadow:-1px -1px 1px #000,1px 1px 1px #000,
+ 1px -1px 1px #000,-1px 1px 1px #000;pointer-events:none}
 .map-marker:after{content:'';position:absolute;top:100%;left:calc(50% - 5px);border:5px solid transparent;border-top-color:#75ecd7}
 .map-marker.active{background:#146b65}
 .map-marker.direct{background:#c4edff;border-color:#7dd7ff;color:#12344b}
@@ -295,6 +303,20 @@ function drawTiles(){
   if(epoch===tileEpoch&&success===0)activateOffline('online mapový server neodpověděl do 8 sekund');
  },8000);
 }
+function aprsIcon(code){
+ if(typeof code!=='string'||code.length!==2)return null;
+ const table=code[0],glyph=code[1],index=glyph.charCodeAt(0)-33;
+ if(index<0||index>=94||!(table==='/'||table==='\\'||/^[A-Za-z0-9]$/.test(table)))return null;
+ const ico=document.createElement('span');
+ ico.className='aprs-icon '+(table==='/'?'primary':'secondary');
+ ico.style.backgroundPosition=-(index%16*24)+'px '+-(Math.floor(index/16)*24)+'px';
+ ico.setAttribute('role','img');ico.setAttribute('aria-label','APRS '+code);
+ if(table!=='/'&&table!=='\\'){
+  const overlay=document.createElement('span');overlay.className='overlay';
+  overlay.textContent=table.toUpperCase();ico.appendChild(overlay);
+ }
+ return ico;
+}
 function updateMarkers(){
  const {w,h}=pixels(),holder=$('markers');holder.replaceChildren();
  let active=null;
@@ -307,11 +329,9 @@ function updateMarkers(){
   const p=project(s.lat,s.lon);
   if(p.x<-120||p.x>w+120||p.y<-60||p.y>h+50)continue;
   const pin=document.createElement('button');pin.type='button';pin.className='map-marker'+(s.own?' own':s.digiOwn?' digi-own':s.position_direct===true?' direct':'');
-  pin.textContent=s.call+(s.own?' · iGate':s.digiOwn?' · DIGI':'');
-  if ((s.own||s.digiOwn) && s.symbol) {
-   const sym=document.createElement('span');sym.className='aprs-symbol-code';
-   sym.textContent=s.symbol;pin.appendChild(sym);
-  }
+  const icon=aprsIcon(s.symbol);
+  if(icon){pin.classList.add('has-symbol');pin.appendChild(icon);}
+  pin.appendChild(document.createTextNode(s.call+(s.own?' · iGate':s.digiOwn?' · DIGI':'')));
   pin.style.left=(p.x+(s.digiOwn?18:0))+'px';pin.style.top=(p.y+(s.digiOwn?-20:0))+'px';
   pin.title=s.call+' · '+s.lat.toFixed(5)+', '+s.lon.toFixed(5)+' · '+
             (s.position_direct===true?'DIRECT':s.position_direct===false?'VIA DIGI':'')+' · '+
@@ -330,7 +350,7 @@ function updateMarkers(){
       ...(s.direct==null?[]:[s.direct?'DIRECT':'VIA DIGI']),
       ...(s.distance_km==null?[]:[`${s.distance_km.toFixed(1)} km / ${s.bearing_deg==null?'—':s.bearing_deg.toFixed(0)+'°'} ${s.compass_en||''}`]),
       `${tr('Poslední')}: ${s.last}`,
-      ...((s.own||s.digiOwn)&&s.symbol?[`APRS symbol: ${s.symbol}`]:[])]){
+      ...(s.symbol?[`APRS symbol: ${s.symbol}`]:[])]){
    const row=document.createElement('div');row.textContent=line;pop.appendChild(row);
   }
   holder.appendChild(pop);
