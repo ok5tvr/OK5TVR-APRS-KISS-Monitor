@@ -72,6 +72,41 @@ class ConfigTests(unittest.TestCase):
         if os.name != 'nt':
             self.assertEqual(self.conf.path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(self.conf.secret_path.stat().st_mode & 0o777, 0o600)
+    def test_legacy_v16_config_migrates_with_backup_and_tx_disabled(self):
+        previous = self.conf.data.copy()
+        previous['igate'] = dict(previous['igate'], autostart=True)
+        previous['digi'] = dict(previous['digi'], autostart=True,
+                                beacon_enabled=True, beacon_transport='rf')
+        previous['messages'] = dict(previous['messages'], auto_ack=True)
+        previous['health'] = {'quiet_warning_minutes': 30, 'disconnect_warning_seconds': 15}
+        previous['objects'] = {'path': 'WIDE1-1', 'entries': [
+            {'name': 'TEST', 'kind': 'object', 'latitude': 49.7,
+             'longitude': 13.3, 'comment': 'kept in backup'}]}
+        self.conf.path.write_text(json.dumps(previous), encoding='utf-8')
+        original_token = self.conf.secrets['admin_token']
+        loaded = ServiceConfig(self.conf.path).load_or_create()
+        backups = list(self.conf.path.parent.glob('config.before-v19-*.json'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(json.loads(backups[0].read_text(encoding='utf-8')), previous)
+        self.assertEqual(loaded.secrets['admin_token'], original_token)
+        self.assertFalse(loaded.data['igate']['autostart'])
+        self.assertFalse(loaded.data['digi']['autostart'])
+        self.assertFalse(loaded.data['messages']['auto_ack'])
+        self.assertFalse(loaded.data['digi']['beacon_enabled'])
+        self.assertNotIn('health', loaded.data)
+        self.assertNotIn('objects', loaded.data)
+
+    def test_unknown_config_still_fails_without_rewriting(self):
+        raw = dict(self.conf.data)
+        raw['health'] = {}
+        raw['unexpected_section'] = {'foo': 1}
+        before = json.dumps(raw)
+        self.conf.path.write_text(before, encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'Nepodporovaná sekce'):
+            ServiceConfig(self.conf.path).load_or_create()
+        self.assertEqual(self.conf.path.read_text(encoding='utf-8'), before)
+        self.assertFalse(list(self.conf.path.parent.glob('config.before-v19-*.json')))
+
     def test_validation_rejects_and_preserves_config(self):
         good = self.conf.data['position']['latitude']
         for bad in ({'position': {'latitude': 91, 'longitude': 13}},

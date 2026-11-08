@@ -6,6 +6,8 @@ Sensitive credentials are stored in a separate 0600 file (never in web API outpu
 from __future__ import annotations
 import copy
 import json
+import logging
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
@@ -179,6 +181,50 @@ def validate_config(candidate):
     return v
 
 
+
+# v1.6 used these sections; v1.9 no longer supports their schema.
+# Never silently drop arbitrary unknown configuration fields.
+_LEGACY_SECTIONS = frozenset(('health', 'objects'))
+
+
+def _upgrade_v16_config(raw, config_path: Path):
+    """Backup and convert known v1.6-only settings, disabling automatic TX.
+
+    Unrecognized non-legacy values still fail strict validation.
+    Legacy APRS objects remain recoverable in a private backup because v1.9
+    uses a different object workflow and cannot import the old scheduler safely.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError('Konfigurace musi byt objekt JSON.')
+    legacy = sorted(_LEGACY_SECTIONS.intersection(raw))
+    if not legacy:
+        return validate_config(raw)
+
+    compatible = copy.deepcopy({k: v for k, v in raw.items() if k not in _LEGACY_SECTIONS})
+    # Disable automatic actions before validating the migrated state, so a legacy
+    # configuration cannot reactivate RF transmissions and does not require old
+    # position-beacon dependencies merely to complete a safe migration.
+    for section, key in (('igate', 'autostart'), ('digi', 'autostart'),
+                         ('messages', 'auto_ack'), ('digi', 'beacon_enabled'),
+                         ('digi', 'telemetry_enabled'), ('igate', 'telemetry_enabled'),
+                         ('position', 'beacon_enabled')):
+        if isinstance(compatible.get(section), dict) and key in compatible[section]:
+            compatible[section][key] = False
+    upgraded = validate_config(compatible)  # reject other unsupported values
+
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+    suffix = secrets.token_hex(4)
+    backup = config_path.with_name(f'{config_path.stem}.before-v19-{stamp}-{suffix}.json')
+    _atomic_json(backup, raw)
+    _atomic_json(config_path, upgraded)
+    logging.getLogger('ok5tvr.aprs').warning(
+        'Konfigurace v1.6 prevedena do v1.9; nekompatibilni sekce %s zalohovany do %s. '
+        'Automaticke iGate/DIGI/ACK a majaky jsou vypnute; '
+        'stare APRS objekty zustaly pouze v zaloze.',
+        ', '.join(legacy), backup)
+    return upgraded
+
+
 class ServiceConfig:
     def __init__(self, path: str | Path = DEFAULT_PATH):
         self.path = Path(path).expanduser().resolve()
@@ -188,7 +234,7 @@ class ServiceConfig:
 
     def load_or_create(self):
         if self.path.exists():
-            self.data = validate_config(json.loads(self.path.read_text(encoding='utf-8')))
+            self.data = _upgrade_v16_config(json.loads(self.path.read_text(encoding='utf-8')), self.path)
         else:
             self.data = validate_config({})
             _atomic_json(self.path, self.data)

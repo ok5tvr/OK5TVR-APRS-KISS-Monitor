@@ -30,6 +30,8 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 #geography,#tiles,#markers{position:absolute;inset:0;overflow:hidden}
 #geography{pointer-events:none}#tiles{pointer-events:none}#markers{pointer-events:none}
 .map-tile{position:absolute;width:256px;height:256px;border:0;max-width:none;image-rendering:auto}
+/* Dark-mode rendering uses the same OSM raster tiles; markers stay unfiltered. */
+.map-tile.dark{filter:invert(.92) hue-rotate(180deg) brightness(.86) contrast(.9) saturate(.8)}
 .map-marker{pointer-events:auto;position:absolute;transform:translate(-50%,-100%);display:flex;align-items:center;gap:5px;white-space:nowrap;
   background:#083b43;border:1px solid #75ecd7;border-radius:6px;padding:3px 7px;color:#f2fff9;box-shadow:0 2px 9px #0009;font-size:12px;font-weight:750}
 .map-marker:before{content:'';width:8px;height:8px;border-radius:50%;background:#5affcf;border:1px solid #0a6a54}
@@ -89,7 +91,7 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <div class="grid">
 <section class="panel">
 <h2 class="map-header"><span>Mapa přijatých APRS pozic</span><span>
-<select id="mapstyle" aria-label="Mapový podklad"><option value="carto-light">Mapa ulic (CARTO)</option><option value="carto-dark">Tmavá (CARTO)</option><option value="offline" selected>Offline mapa – bez internetu</option></select>
+<select id="mapstyle" aria-label="Mapový podklad"><option value="osm-light">Mapa ulic (OpenStreetMap)</option><option value="osm-dark">Tmavá mapa (OpenStreetMap)</option><option value="offline" selected>Offline mapa – bez internetu</option></select>
 <button id="reset">Zobrazit všechny</button></span></h2>
 <div id="map" role="region" aria-label="Interaktivní mapa APRS stanic" tabindex="0">
 <canvas id="geography"></canvas><div id="tiles"></div><div id="markers"></div>
@@ -106,7 +108,7 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <section class="panel" id="events"><h2>Poslední přijaté rámce <small>(DEMO se neodesílají do APRS-IS)</small></h2>
 <div class="scroll"><table><thead><tr><th>Čas</th><th>Zdroj</th><th>Typ</th><th>APRS cesta</th><th>Dekódováno</th></tr></thead><tbody id="rows"></tbody></table></div></section>
 <p class="muted" style="font-size:12px">Web pouze pro čtení · nedovoluje vysílat ani měnit nastavení iGate. <span id="update">—</span> ·
-Mapová data © OpenStreetMap contributors; online dlaždice © <a href="https://carto.com/" target="_blank" rel="noopener" style="color:inherit">CARTO</a>;
+Online mapa: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:inherit">OpenStreetMap contributors</a>;
 offline geografie: GSHHG / WDBII / basemap_data (LGPL-3.0-or-later).</p>
 </main>
 <script src="/assets/web_locale.js"></script>
@@ -149,8 +151,8 @@ capabilities().then(cap=>{if(!cap.admin_enabled)navInfo('Pro zprávy a objekty s
  .catch(()=>navInfo('Nepodařilo se ověřit stav webové služby.'));
 const TILE=256, MAX_ZOOM=16;
 const templates={
- 'carto-light':'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
- 'carto-dark':'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+ 'osm-light':'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+ 'osm-dark':'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 };
 let positions=[], ownPosition=null, ownDigi=null, chosen=null, firstPosition=true, geo=null;
 let view={lat:49.7384,lon:13.3736,z:8}, effectiveProvider=$('mapstyle').value;
@@ -272,11 +274,11 @@ function drawTiles(){
  for(let y=startY;y<=endY;y++){
   for(let x=startX;x<=endX;x++){
    const modX=((x%n)+n)%n;
-   const img=new Image();img.className='map-tile';img.alt='';img.referrerPolicy='strict-origin-when-cross-origin';
+   const img=new Image();img.className='map-tile'+(src==='osm-dark'?' dark':'');img.alt='';img.referrerPolicy='strict-origin-when-cross-origin';
    img.style.left=Math.round(w/2+x*TILE-c.x)+'px';img.style.top=Math.round(h/2+y*TILE-c.y)+'px';
    requested++;
    img.onload=()=>{if(epoch!==tileEpoch)return;success++;
-    if(success===1){setNotice('Online mapa CARTO · podklad načten');setHint('');}
+    if(success===1){setNotice('Online mapa OpenStreetMap · podklad načten');setHint('');}
    };
    img.onerror=()=>{if(epoch!==tileEpoch)return;failure++;
     if(failure>=requested&&success===0)activateOffline('online dlaždice byly odmítnuty nebo nejsou dostupné');
@@ -286,8 +288,8 @@ function drawTiles(){
   }
  }
  $('tiles').appendChild(root);
- $('attribution').textContent='© CARTO · © OpenStreetMap contributors';
- setNotice('Načítám online mapu CARTO… mezitím je vidět offline geografie.');
+ $('attribution').textContent='© OpenStreetMap contributors';
+ setNotice('Načítám online mapu OpenStreetMap… mezitím je vidět offline geografie.');
  // Offline background remains drawn even if some or all tile requests are blocked.
  tileWatchdog=setTimeout(()=>{
   if(epoch===tileEpoch&&success===0)activateOffline('online mapový server neodpověděl do 8 sekund');

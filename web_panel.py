@@ -70,7 +70,7 @@ class WebPanel:
                 self.send_header('Referrer-Policy', 'strict-origin-when-cross-origin')
                 self.send_header('Content-Security-Policy',
                                  "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-                                 "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://basemaps.cartocdn.com; "
+                                 "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; "
                                  "connect-src 'self'; frame-ancestors 'none'")
                 self.end_headers()
                 try:
