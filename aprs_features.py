@@ -205,6 +205,8 @@ class MonitorState:
     def __init__(self):
         self.lock = threading.RLock()
         self.history = collections.deque(maxlen=220)
+        # HEX/payload details are kept for the authenticated operator only.
+        self.private_history = collections.deque(maxlen=220)
         self.stations: dict[str, dict] = {}
         self.type_counts = collections.Counter()
         self.rx = self.demo = self.tx_requests = self.igate_sent = self.igate_rejected = 0
@@ -220,10 +222,13 @@ class MonitorState:
             if packet.simulated: self.demo += 1
             else: self.rx += 1
             self.type_counts[packet.kind] += 1
-            self.history.appendleft(dict(time=packet.timestamp, source=packet.source,
-                                         destination=packet.destination, path=packet.path,
-                                         kind=packet.kind, summary=packet.summary,
-                                         demo=bool(packet.simulated), gate=getattr(packet,"gate", "")))
+            row = dict(time=packet.timestamp, source=packet.source,
+                       destination=packet.destination, path=packet.path,
+                       kind=packet.kind, summary=packet.summary,
+                       demo=bool(packet.simulated), gate=getattr(packet,"gate", ""))
+            self.history.appendleft(row)
+            self.private_history.appendleft({**row, 'hex_data': packet.hex_data,
+                                             'payload': packet.payload})
             if packet.source == "?" or packet.simulated:
                 return
             entry = self.stations.setdefault(packet.source, dict(call=packet.source, count=0, last="",
@@ -242,6 +247,11 @@ class MonitorState:
             if len(self.stations) > 1000:
                 drop = min(self.stations, key=lambda k: self.stations[k]["last"])
                 del self.stations[drop]
+
+    def monitor_snapshot(self):
+        """Detailed frames for the authenticated operator; not the public map."""
+        with self.lock:
+            return list(self.private_history)
 
     def set_own_position(self, position):
         with self.lock:
