@@ -63,7 +63,7 @@ class WebLoginTests(unittest.TestCase):
 
     def test_login_required_and_clean_navigation(self):
         with self.fetch('/') as response:
-            self.assertIn(b'PÅihl', response.read())
+            self.assertIn('Přihlášení'.encode('utf-8'), response.read())
             self.assertEqual(response.geturl().split('/')[-1], 'login')
         with self.assertRaises(HTTPError) as ctx:
             self.fetch('/app')
