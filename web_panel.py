@@ -12,6 +12,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+from web_auth import SessionAuth, LoginThrottle
 
 _ASSET_DIR = Path(__file__).resolve().parent
 HTML = (_ASSET_DIR / 'web_dashboard.html').read_text(encoding='utf-8')
@@ -20,6 +21,7 @@ OPERATIONS_HTML = (_ASSET_DIR / 'web_operations.html').read_text(encoding='utf-8
 MESSAGES_HTML = (_ASSET_DIR / 'web_messages.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_messages.html').exists() else ''
 LOCALE_JS = (_ASSET_DIR / 'web_locale.js').read_text(encoding='utf-8')
 UNIFIED_HTML = (_ASSET_DIR / 'web_unified.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_unified.html').exists() else ''
+LOGIN_HTML = (_ASSET_DIR / 'web_login.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_login.html').exists() else ''
 
 
 class WebPanel:
@@ -37,16 +39,23 @@ class WebPanel:
         self.close()
         state, operator = self.state, self.operator
         viewer_key, admin_key, allow_lan = self.token, self.admin_token, lan
+        session_auth = SessionAuth(admin_key)
+        throttle = LoginThrottle()
+        login_name = str(getattr(getattr(operator, 'config', None), 'secrets', {}).get('web_username', 'ok5tvr'))
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, format, *args):
                 pass  # Never write bearer tokens to access logs.
 
+            def _signed_in(self):
+                return session_auth.from_header(self.headers.get('Cookie', ''))
+
             def _allowed_viewer(self, parsed):
                 if self.client_address[0] in ('127.0.0.1', '::1'):
                     return True
                 return allow_lan and (
-                    secrets.compare_digest(parse_qs(parsed.query).get('key', [''])[0], viewer_key)
+                    self._signed_in()
+                    or secrets.compare_digest(parse_qs(parsed.query).get('key', [''])[0], viewer_key)
                     or secrets.compare_digest(parse_qs(parsed.query).get('admin', [''])[0], admin_key)
                 )
 
@@ -55,10 +64,10 @@ class WebPanel:
                     return False
                 if not allow_lan and self.client_address[0] not in ('127.0.0.1', '::1'):
                     return False
-                return secrets.compare_digest(
+                return self._signed_in() or secrets.compare_digest(
                     parse_qs(parsed.query).get('admin', [''])[0], admin_key)
 
-            def _respond(self, code, contents, mime='application/json; charset=utf-8', cache='no-store'):
+            def _respond(self, code, contents, mime='application/json; charset=utf-8', cache='no-store', cookie=None):
                 if isinstance(contents, str):
                     contents = contents.encode('utf-8')
                 self.send_response(code)
@@ -66,12 +75,14 @@ class WebPanel:
                 self.send_header('Content-Length', str(len(contents)))
                 self.send_header('Cache-Control', cache)
                 self.send_header('X-Content-Type-Options', 'nosniff')
-                self.send_header('X-Frame-Options', 'DENY')
+                self.send_header('X-Frame-Options', 'SAMEORIGIN')
                 self.send_header('Referrer-Policy', 'strict-origin-when-cross-origin')
                 self.send_header('Content-Security-Policy',
                                  "default-src 'self'; script-src 'self' 'unsafe-inline'; "
                                  "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; "
-                                 "connect-src 'self'; frame-ancestors 'none'")
+                                 "connect-src 'self'; frame-ancestors 'self'")
+                if cookie is not None:
+                    self.send_header('Set-Cookie', cookie)
                 self.end_headers()
                 try:
                     self.wfile.write(contents)
@@ -113,6 +124,32 @@ class WebPanel:
                     }
                     self._respond(200, json.dumps(display, ensure_ascii=False))
                     return
+                if parsed.path == '/login':
+                    if operator is None:
+                        self._respond(404, '{"error":"Admin panel disabled"}')
+                    elif self._signed_in():
+                        self.send_response(302)
+                        self.send_header('Location', '/app')
+                        self.send_header('Content-Length', '0')
+                        self.send_header('Cache-Control', 'no-store')
+                        self.end_headers()
+                    else:
+                        self._respond(200, LOGIN_HTML, 'text/html; charset=utf-8')
+                    return
+                if parsed.path == '/api/session':
+                    self._respond(200, json.dumps({'authenticated': self._allowed_admin(parsed),
+                        'username': login_name if self._allowed_admin(parsed) else None}))
+                    return
+                if parsed.path == '/' and operator is not None and not parse_qs(parsed.query).get('key'):
+                    if self._allowed_admin(parsed):
+                        self._respond(200, UNIFIED_HTML, 'text/html; charset=utf-8')
+                    else:
+                        self.send_response(302)
+                        self.send_header('Location', '/login')
+                        self.send_header('Cache-Control', 'no-store')
+                        self.send_header('Content-Length', '0')
+                        self.end_headers()
+                    return
                 # Public, non-sensitive local script shared by all three pages.
                 if parsed.path in ('/assets/aprs-primary.png', '/assets/aprs-secondary.png', '/assets/aprs-overlays.png'):
                     asset = _ASSET_DIR / 'assets' / parsed.path.rsplit('/', 1)[-1]
@@ -126,11 +163,11 @@ class WebPanel:
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/unified', '/control', '/api/config', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
+                if parsed.path in ('/app', '/unified', '/control', '/api/config', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
-                    if parsed.path == '/unified':
+                    if parsed.path in ('/app', '/unified'):
                         self._respond(200, UNIFIED_HTML, 'text/html; charset=utf-8')
                     elif parsed.path == '/api/ports':
                         try:
@@ -164,7 +201,7 @@ class WebPanel:
                     return
                 if parsed.path == '/api/capabilities':
                     self._respond(200, json.dumps({'admin_enabled': operator is not None}))
-                elif parsed.path == '/':
+                elif parsed.path in ('/', '/map'):
                     self._respond(200, HTML, 'text/html; charset=utf-8')
                 elif parsed.path == '/api/state':
                     self._respond(200, json.dumps(state.snapshot(), ensure_ascii=False))
@@ -182,6 +219,46 @@ class WebPanel:
 
             def do_POST(self):
                 parsed = urlsplit(self.path)
+                # Same-origin checks are mandatory for every state-changing request.
+                origin = self.headers.get('Origin', '')
+                expected = f'http://{self.headers.get("Host", "")}'
+                if origin and origin != expected:
+                    self._respond(403, '{"error":"Cizi Origin je zakazany."}')
+                    return
+                if parsed.path == '/api/login':
+                    if operator is None or not allow_lan and self.client_address[0] not in ('127.0.0.1', '::1'):
+                        self._respond(403, '{"error":"Prihlaseni neni dostupne."}')
+                        return
+                    if not throttle.allowed(self.client_address[0]):
+                        self._respond(429, '{"error":"Prilis mnoho pokusu."}')
+                        return
+                    if self.headers.get('Content-Type', '').split(';', 1)[0].strip().lower() != 'application/json':
+                        self._respond(415, '{"error":"Expected JSON"}')
+                        return
+                    try:
+                        size = int(self.headers.get('Content-Length', '0'))
+                        if not 0 < size <= 1024:
+                            raise ValueError()
+                        payload = json.loads(self.rfile.read(size).decode('utf-8'))
+                        username, token = payload.get('username'), payload.get('token')
+                        valid = (isinstance(username, str) and isinstance(token, str)
+                                 and secrets.compare_digest(username, login_name)
+                                 and secrets.compare_digest(token, admin_key))
+                    except (ValueError, TypeError, KeyError, AttributeError, UnicodeError):
+                        valid = False
+                    if not valid:
+                        throttle.failure(self.client_address[0])
+                        self._respond(401, '{"error":"Neplatne prihlasovaci udaje."}')
+                        return
+                    throttle.success(self.client_address[0])
+                    self._respond(200, '{"ok":true}', cookie=session_auth.cookie(session_auth.issue()))
+                    return
+                if parsed.path == '/api/logout':
+                    if not self._signed_in() or self.headers.get('X-APRS-CSRF') != '1':
+                        self._respond(403, '{"error":"Unauthorized"}')
+                    else:
+                        self._respond(200, '{"ok":true}', cookie=session_auth.clear_cookie())
+                    return
                 if parsed.path != '/api/control' or operator is None:
                     self._respond(404, '{"error":"Neznámá cesta."}')
                     return
@@ -190,14 +267,11 @@ class WebPanel:
                     return
                 # Token must be sent in a non-simple custom header: cross-site
                 # forms cannot trigger actions; the server has no CORS support.
-                if not secrets.compare_digest(self.headers.get('X-APRS-Admin', ''), admin_key):
+                if not ((self._signed_in() and self.headers.get('X-APRS-CSRF') == '1')
+                        or secrets.compare_digest(self.headers.get('X-APRS-Admin', ''), admin_key)):
                     self._respond(403, '{"error":"Neplatný administrátorský klíč."}')
                     return
-                origin = self.headers.get('Origin', '')
-                expected = f'http://{self.headers.get("Host", "")}'
-                if origin and origin != expected:
-                    self._respond(403, '{"error":"Cizí Origin je zakázaný."}')
-                    return
+
                 if self.headers.get('Content-Type', '').split(';', 1)[0].strip().lower() != 'application/json':
                     self._respond(415, '{"error":"Vyžaduji application/json."}')
                     return
