@@ -114,6 +114,8 @@ def classify_aprs(data: bytes) -> tuple[str, str]:
         return "Telemetrie", text
     if data.startswith(b"_"):
         return "Počasí", text
+    if data.startswith(b"$"):
+        return "NMEA GPS", text
     if data.startswith(b";"):
         return "Objekt", text
     if data.startswith(b")"):
@@ -141,6 +143,10 @@ class Packet:
     latitude: float | None = None
     longitude: float | None = None
     position_label: str | None = None
+    position_source: str | None = None
+    position_format: str | None = None
+    symbol: str | None = None
+    heard_direct: bool | None = None
     control: int | None = None
     pid: int | None = None
     raw_info: bytes = b""
@@ -175,6 +181,9 @@ def decode_ax25(raw: bytes, simulated: bool = False) -> Packet:
         if used:
             hops = [x.rstrip('*') if i != used[-1] else x for i,x in enumerate(hops)]
         path = ",".join(hops)
+        # The AX.25 H-bit is authoritative for whether an RF frame was
+        # digipeated. An unused WIDE1-1 in the path does NOT make it VIA.
+        repeated_by_digi = any(raw[20+i*7] & 0x80 for i in range(len(addresses)-2))
         control = raw[offset]
         pid = None
         if control == 0x03 and offset + 1 < len(raw):
@@ -192,12 +201,16 @@ def decode_ax25(raw: bytes, simulated: bool = False) -> Packet:
             info = raw[offset + 1:]
         packet = Packet(timestamp, src, dst, path, kind, summary, display_bytes(info), hexdump, simulated,
                         control=control, pid=pid, raw_info=info)
+        packet.heard_direct = (not repeated_by_digi and not info.startswith(b'}')) if control == 0x03 and pid == 0xF0 else None
         packet.raw_ax25 = raw
         if control == 0x03 and pid == 0xF0:
             pos = parse_position(info, dst)
             if pos:
                 packet.latitude, packet.longitude = pos["lat"], pos["lon"]
                 packet.position_label = pos.get("label")
+                packet.position_source = pos.get('source')
+                packet.position_format = pos['format']
+                packet.symbol = pos.get('symbol')
                 if "GPS " not in packet.summary:
                     packet.summary = (f"GPS {packet.latitude:.5f}, {packet.longitude:.5f}"
                                       f" ({pos['format']}) | {packet.summary[:110]}")

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>OK5TVR APRS · Přihlášení</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{min-height:100vh;margin:0;display:grid;place-items:center;font:15px system-ui,"Segoe UI",sans-serif;background:radial-gradient(ellipse at 85% 10%,#194e64,#0a1424 68%);color:#eef8ff}
+main{width:min(420px,calc(100vw - 32px));border:1px solid #426779;border-radius:18px;background:#15283aea;padding:32px;box-shadow:0 20px 65px #0007}
+.brand{letter-spacing:.5px;font-size:27px;font-weight:800;color:#63e9c7}
+h1{font-size:20px;margin:12px 0 5px}
+p{color:#b4cddd;font-size:13px;line-height:1.5;margin:5px 0 22px}
+label{display:block;font-size:13px;color:#d7ebf6;margin-top:16px;margin-bottom:6px}
+input{display:block;width:100%;background:#0d1e2c;border:1px solid #68889a;border-radius:9px;color:white;padding:13px;font:inherit}
+input:focus-visible{outline:2px solid #50d9c0}
+button{width:100%;margin-top:24px;border:0;border-radius:9px;background:#17a58c;color:#052820;font:700 16px system-ui;padding:13px;cursor:pointer}
+button:disabled{opacity:.5}
+small{display:block;margin-top:15px;line-height:1.5;color:#abc6d8}
+#error{min-height:20px;color:#ffc0be;font-size:13px;margin-top:11px}
+</style>
+</head><body>
+<main>
+<div class="brand">OK5TVR / APRS</div>
+<h1>Přihlášení do webové konzole</h1>
+<p>Stejné prostředí pro Raspberry Pi a Windows. Přístupový token vygeneroval program při prvním spuštění.</p>
+<form id="login">
+<label for="username">Uživatelské jméno</label>
+<input id="username" name="username" value="ok5tvr" autocomplete="username" maxlength="32" required>
+<label for="token">Přístupový token</label>
+<input id="token" name="token" type="password" autocomplete="off" spellcheck="false" required>
+<button id="submit" type="submit">Přihlásit se</button>
+<div id="error" role="status" aria-live="polite"></div>
+</form>
+<small>Údaje najdeš v souboru <code>~/.config/ok5tvr-aprs/secrets.json</code> (Windows: <code>%USERPROFILE%\.config\ok5tvr-aprs\secrets.json</code>). Používej pouze důvěryhodnou LAN nebo zabezpečenou VPN; HTTP není šifrované.</small>
+</main>
+<script>
+"use strict";
+document.getElementById("login").addEventListener("submit",async(e)=>{
+ e.preventDefault();
+ const btn=document.getElementById("submit"),error=document.getElementById("error");
+ btn.disabled=true;error.textContent="";
+ try{
+  const r=await fetch("/api/login",{method:"POST",credentials:"same-origin",
+   headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({username:document.getElementById("username").value,
+                        token:document.getElementById("token").value})});
+  if(!r.ok)throw Error(r.status===429?"Příliš mnoho pokusů. Zkus to za dvě minuty.":"Nesprávné uživatelské jméno nebo token.");
+  document.getElementById("token").value="";
+  location.replace("/app");
+ }catch(ex){error.textContent=ex.message}
+ finally{btn.disabled=false}
+});
+</script></body></html>

@@ -72,6 +72,41 @@ class ConfigTests(unittest.TestCase):
         if os.name != 'nt':
             self.assertEqual(self.conf.path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(self.conf.secret_path.stat().st_mode & 0o777, 0o600)
+    def test_legacy_v16_config_migrates_with_backup_and_tx_disabled(self):
+        previous = self.conf.data.copy()
+        previous['igate'] = dict(previous['igate'], autostart=True)
+        previous['digi'] = dict(previous['digi'], autostart=True,
+                                beacon_enabled=True, beacon_transport='rf')
+        previous['messages'] = dict(previous['messages'], auto_ack=True)
+        previous['health'] = {'quiet_warning_minutes': 30, 'disconnect_warning_seconds': 15}
+        previous['objects'] = {'path': 'WIDE1-1', 'entries': [
+            {'name': 'TEST', 'kind': 'object', 'latitude': 49.7,
+             'longitude': 13.3, 'comment': 'kept in backup'}]}
+        self.conf.path.write_text(json.dumps(previous), encoding='utf-8')
+        original_token = self.conf.secrets['admin_token']
+        loaded = ServiceConfig(self.conf.path).load_or_create()
+        backups = list(self.conf.path.parent.glob('config.before-v19-*.json'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(json.loads(backups[0].read_text(encoding='utf-8')), previous)
+        self.assertEqual(loaded.secrets['admin_token'], original_token)
+        self.assertFalse(loaded.data['igate']['autostart'])
+        self.assertFalse(loaded.data['digi']['autostart'])
+        self.assertFalse(loaded.data['messages']['auto_ack'])
+        self.assertFalse(loaded.data['digi']['beacon_enabled'])
+        self.assertNotIn('health', loaded.data)
+        self.assertNotIn('objects', loaded.data)
+
+    def test_unknown_config_still_fails_without_rewriting(self):
+        raw = dict(self.conf.data)
+        raw['health'] = {}
+        raw['unexpected_section'] = {'foo': 1}
+        before = json.dumps(raw)
+        self.conf.path.write_text(before, encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'Nepodporovaná sekce'):
+            ServiceConfig(self.conf.path).load_or_create()
+        self.assertEqual(self.conf.path.read_text(encoding='utf-8'), before)
+        self.assertFalse(list(self.conf.path.parent.glob('config.before-v19-*.json')))
+
     def test_validation_rejects_and_preserves_config(self):
         good = self.conf.data['position']['latitude']
         for bad in ({'position': {'latitude': 91, 'longitude': 13}},
@@ -134,7 +169,7 @@ class HeadlessIntegrationTests(unittest.TestCase):
             return json.load(e)
 
     def test_api_auth_config_and_browser(self):
-        with urlopen(self.base+'/') as r:
+        with urlopen(self.base+'/map') as r:
             self.assertIn(b'Offline mapa', r.read())
         with self.assertRaises(HTTPError) as e:
             urlopen(self.base+'/control')
@@ -146,12 +181,27 @@ class HeadlessIntegrationTests(unittest.TestCase):
         with urlopen(self.base+'/api/config?admin='+self.conf.secrets['admin_token']) as r:
             view=json.load(r)
         self.assertNotIn('igate_passcode',str(view))
-        self.assertEqual(view['viewer_token'],self.conf.secrets['viewer_token'])
+        self.assertNotIn('viewer_token', view)
         self.assertIn('error', self.api('digi_on', expect=403, auth=False))
         self.assertEqual(self.api('digi_on', expect=400)['ok'],False)
         self.assertEqual(self.api('save',config={'digi':{'autostart':True}},expect=400)['ok'],False)
         self.assertEqual(self.api('save',config={'digi':{'delay_s':0.0}})['ok'],True)
         self.assertEqual(self.api('tx_test',expect=400)['ok'],False)
+
+    def test_hdmi_display_toggle_has_no_radio_side_effects(self):
+        self.assertFalse(self.conf.data['display']['enabled'])
+        before = self.conf.data['igate']['autostart'], self.conf.data['digi']['autostart']
+        self.assertTrue(self.service.radio_ready)
+        self.assertEqual(self.api('display_set', enabled=True)['ok'], True)
+        self.assertTrue(self.conf.data['display']['enabled'])
+        self.assertEqual((self.conf.data['igate']['autostart'],
+                          self.conf.data['digi']['autostart']), before)
+        self.assertTrue(self.service.radio_ready)
+        self.assertTrue(FakeSerial.outgoing.empty())
+        self.assertEqual(self.api('display_set', enabled="yes", expect=400)['ok'], False)
+        self.assertTrue(self.conf.data['display']['enabled'])
+        self.assertEqual(self.api('display_set', enabled=False)['ok'], True)
+        self.assertFalse(self.conf.data['display']['enabled'])
 
     def test_usb_rx_then_manual_tx_and_digi_on_off(self):
         raw=encode_ui_packet('OK5ABC-7','APRS','WIDE1-1','!4944.30N/01322.42E>TEST RF')
@@ -225,7 +275,7 @@ class HeadlessIntegrationTests(unittest.TestCase):
         packet=encode_ui_packet('OK5ABC-7','APRS','WIDE1-1','>RF-to-IS TEST')
         FakeSerial.incoming.put(encode_kiss_data(packet))
         self.assertTrue(ready.wait(5), 'Local APRS-IS server received no RF packet')
-        self.assertIn('vers OK5TVR-KISS 1.6',received[0])
+        self.assertIn('vers OK5TVR-KISS 1.7',received[0])
         self.assertIn(',qAO,OK5TVR-10:>RF-to-IS TEST', received[1])
         self.assertTrue(FakeSerial.outgoing.empty(), 'Internet test unexpectedly emitted RF')
 

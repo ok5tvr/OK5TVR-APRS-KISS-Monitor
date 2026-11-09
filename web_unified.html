@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>OK5TVR APRS KISS · Webová konzole</title>
+<style>
+:root {color-scheme:dark;--bg:#101925;--panel:#1a2a3b;--panel2:#233a50;--border:#3a5166;--ink:#e8f4ff;--muted:#afc7d9;--accent:#55ddc5;--amber:#ffd28a;--blue:#93cced}
+* {box-sizing:border-box}
+body {margin:0;background:var(--bg);color:var(--ink);font:14px system-ui,"Segoe UI",sans-serif}
+header {display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 22px;background:#142538;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.brand {font-size:21px;font-weight:760;letter-spacing:.15px}.brand b{color:var(--accent)}
+.sub {font-size:12px;color:var(--muted);margin-top:4px}
+.health {display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pill {border:1px solid var(--border);background:#102333;border-radius:99px;padding:6px 10px;font-size:12px}
+.pill.ok {border-color:#2e917d;color:#92ffe0}
+.pill.bad {border-color:#9a5657;color:#ffafaa}
+nav.tabs {display:flex;gap:6px;padding:10px 16px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:#182739}
+.tabs button {margin:0;background:transparent;border:1px solid transparent;border-radius:9px;color:var(--muted);padding:10px 13px;font-size:14px;cursor:pointer}
+.tabs button[aria-selected=true] {color:var(--accent);background:var(--panel2);border-color:#4b7186;font-weight:700}
+.tabs button:hover,.tabs button:focus-visible {border-color:#75bfb3;color:var(--ink)}
+main {max-width:1550px;margin:auto;padding:16px}
+section.view[hidden] {display:none}
+h1 {font-size:23px;margin:3px 0 12px}
+h2 {font-size:16px;color:var(--accent);margin:0 0 12px}
+h3 {font-size:14px;margin:0 0 8px}
+.muted {color:var(--muted)}.note {font-size:12px;color:var(--amber);line-height:1.5}
+.panel {background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin:0 0 14px}
+.metric-list {display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:10px 0 15px}
+.metric {background:#122537;border:1px solid var(--border);border-radius:10px;padding:12px}
+.metric span {display:block;color:var(--muted);font-size:12px}
+.metric strong {display:block;font-size:24px;color:var(--accent);margin-top:5px;font-variant-numeric:tabular-nums}
+label {display:block;color:var(--muted);margin-bottom:4px;font-size:12px}
+input,select,textarea {background:#112338;color:var(--ink);border:1px solid #57738b;border-radius:7px;padding:9px;font:inherit;max-width:100%}
+input[type=checkbox] {width:17px;height:17px}
+button {background:#2d5269;color:#f1fcff;border:1px solid #52768b;border-radius:8px;padding:9px 12px;cursor:pointer;font:inherit}
+button.primary {background:#117b6c;border-color:#24ae99}
+button.warn {background:#75542c;border-color:#bb8648}
+button.stop {background:#713c46;border-color:#c17781}
+button:disabled {opacity:.5;cursor:default}
+.toolbar {display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.toolbar>*{flex-shrink:0}
+.toolbar .select-serial {min-width:220px;max-width:350px;flex:1 1 220px}
+.toolbar select {width:100%}
+.scroll {overflow-x:auto}
+table {width:100%;border-collapse:collapse;font-size:13px}
+th,td {border-bottom:1px solid #354b60;padding:9px 10px;text-align:left;vertical-align:top}
+th {color:var(--accent);white-space:nowrap}
+tr.direct {background:#1e4553}
+tbody tr.clickable {cursor:pointer}
+tbody tr.clickable:hover,tbody tr.chosen {background:#27516b}
+.details {font:12px/1.6 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;min-height:85px;background:#102133;padding:12px;border-radius:8px}
+.two {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.form-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.check {display:flex;gap:8px;align-items:center;padding:6px 0;color:var(--ink)}
+.check label {margin:0;font-size:14px;color:inherit}
+.message {margin:10px 0;white-space:pre-wrap;color:var(--muted);min-height:20px}
+.frame {width:100%;border:0;background:var(--bg);min-height:720px;display:block}
+.home-intro{padding:24px;background:linear-gradient(110deg,#1b3d4b,#163149);border:1px solid #416e76;border-radius:14px;margin-bottom:15px}
+.home-intro h1{color:#eafff9;margin:0 0 7px}
+.home-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin:14px 0}
+.home-link{display:block;min-height:122px;padding:18px;background:var(--panel);border:1px solid #46677e;border-radius:12px;text-align:left;color:var(--ink)}
+.home-link:hover,.home-link:focus-visible{border-color:var(--accent);background:#243e50}
+.home-link strong{font-size:17px;display:block;margin-bottom:6px;color:var(--accent)}
+.home-link span{display:block;font-size:12px;line-height:1.5;color:var(--muted)}
+.section-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#logout{background:#3d384b;color:#ffe7df}
+nav.tabs{position:sticky;top:0;z-index:9;overflow-x:auto}
+
+footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
+@media(max-width:750px){main{padding:9px}.two{grid-template-columns:1fr}header{padding:13px}nav.tabs{padding:7px}.tabs button{padding:9px}.panel{padding:12px}.metric-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header>
+  <div><div class="brand"><b>OK5TVR</b> APRS KISS Monitor</div><div class="sub" data-cs="Jednotné webové ovládání · Windows / Raspberry Pi" data-en="Unified web console · Windows / Raspberry Pi">Jednotné webové ovládání · Windows / Raspberry Pi</div></div>
+  <div class="health">
+    <span id="usb-status" class="pill">USB: —</span>
+    <span id="is-status" class="pill">APRS-IS: —</span>
+    <span id="digi-status" class="pill">DIGI: —</span>
+    <select id="language" aria-label="Language"><option value="cs">Čeština</option><option value="en">English</option></select>
+    <button id="logout" type="button" data-cs="Odhlásit" data-en="Log out">Odhlásit</button>
+  </div>
+</header>
+<nav class="tabs" role="tablist" aria-label="APRS Monitor">
+  <button type="button" data-tab="home" role="tab" aria-selected="true" data-cs="Přehled" data-en="Overview">Přehled</button>
+  <button type="button" data-tab="rx" role="tab" aria-selected="true" data-cs="Příjem / TX" data-en="Receive / TX">Příjem / TX</button>
+  <button type="button" data-tab="map" role="tab" aria-selected="false" data-cs="Mapa" data-en="Map">Mapa</button>
+  <button type="button" data-tab="messages" role="tab" aria-selected="false" data-cs="Zprávy" data-en="Messages">Zprávy</button>
+  <button type="button" data-tab="objects" role="tab" aria-selected="false" data-cs="Objekty" data-en="Objects">Objekty</button>
+  <button type="button" data-tab="igate" role="tab" aria-selected="false" data-cs="Nastavení / iGate / DIGI" data-en="Settings / iGate / DIGI">Nastavení / iGate / DIGI</button>
+  <button type="button" data-tab="telemetry" role="tab" aria-selected="false" data-cs="Telemetrie" data-en="Telemetry">Telemetrie</button>
+  <button type="button" data-tab="diagnostics" role="tab" aria-selected="false" data-cs="Diagnostika / deník" data-en="Diagnostics / log">Diagnostika / deník</button>
+</nav>
+<main>
+<section class="view" id="tab-home">
+  <div class="home-intro">
+    <div class="section-row"><div>
+      <h1 data-cs="Přehled stanice" data-en="Station overview">Přehled stanice</h1>
+      <p class="muted" data-cs="Aktuální provoz USB KISS, APRS-IS a DIGI. Pro práci přejdi na jednu z následujících stránek."
+         data-en="Live USB KISS, APRS-IS and DIGI status. Open one of the pages below to manage your station.">Aktuální provoz USB KISS, APRS-IS a DIGI. Pro práci přejdi na jednu z následujících stránek.</p>
+    </div><span class="pill" id="home-clock">—</span></div>
+    <div class="metric-list">
+      <div class="metric"><span>RX rámce</span><strong id="home-rx">0</strong></div>
+      <div class="metric"><span>TX USB</span><strong id="home-tx">0</strong></div>
+      <div class="metric"><span>RF → APRS-IS</span><strong id="home-gate">0</strong></div>
+      <div class="metric"><span>DIGI TX</span><strong id="home-digi">0</strong></div>
+      <div class="metric"><span>Stanice</span><strong id="home-stations">0</strong></div>
+    </div>
+    <div id="home-status" class="muted">Načítám stav stanice…</div>
+  </div>
+  <div class="home-links">
+    <button class="home-link" data-open="rx"><strong>01 · Příjem / TX</strong><span>USB KISS, poslední rámce, dekódování AX.25 a volba místního HDMI panelu.</span></button>
+    <button class="home-link" data-open="map"><strong>02 · APRS mapa</strong><span>Online a offline mapy, APRS symboly, polohy a přímý příjem.</span></button>
+    <button class="home-link" data-open="igate"><strong>03 · Nastavení</strong><span>iGate, DIGI, USB, GPS, symboly, majáky a připojení k APRS-IS.</span></button>
+    <button class="home-link" data-open="messages"><strong>04 · Zprávy</strong><span>Inbox, Outbox, potvrzení ACK/REJ a odeslání RF zpráv.</span></button>
+    <button class="home-link" data-open="objects"><strong>05 · APRS objekty</strong><span>Správa objektů a ruční vysílání polohových rámců.</span></button>
+    <button class="home-link" data-open="telemetry"><strong>06 · Telemetrie</strong><span>Statistiky za posledních 15 minut a nastavení T#.</span></button>
+    <button class="home-link" data-open="diagnostics"><strong>07 · Diagnostika</strong><span>Provozní deník, chyby USB a APRS-IS, export a zálohy.</span></button>
+  </div>
+</section>
+<section class="view" id="tab-rx" hidden>
+  <div class="panel">
+    <h2 data-cs="USB KISS · Quansheng UV-K1(8)" data-en="USB KISS · Quansheng UV-K1(8)">USB KISS · Quansheng UV-K1(8)</h2>
+    <div class="toolbar">
+      <div class="select-serial"><label for="serial-port" data-cs="Port USB KISS" data-en="USB KISS port">Port USB KISS</label><select id="serial-port"><option value="auto">auto</option></select></div>
+      <button id="ports-refresh" data-cs="Obnovit porty" data-en="Refresh ports">Obnovit porty</button>
+      <button id="serial-connect" class="primary" data-cs="Připojit" data-en="Connect">Připojit</button>
+      <button id="serial-disconnect" data-cs="Odpojit" data-en="Disconnect">Odpojit</button>
+      <button id="rf-test" class="warn" data-cs="Test RF TX" data-en="RF TX test">Test RF TX</button>
+      <button id="rx-csv" data-cs="Export CSV" data-en="Export CSV">Export CSV</button>
+    </div>
+    <p class="note" data-cs="Změna USB portu při ukládání bezpečně vypne aktivní iGate/DIGI. Zápis do USB KISS není důkazem skutečného RF vysílání." data-en="Saving a changed USB port safely stops active iGate/DIGI. Writing to USB KISS does not prove actual RF transmission.">Změna USB portu při ukládání bezpečně vypne aktivní iGate/DIGI. Zápis do USB KISS není důkazem skutečného RF vysílání.</p>
+    <div class="message" id="rx-notice" role="status" aria-live="polite"></div>
+    <div class="toolbar" style="margin-top:8px;padding:10px;border:1px solid #335a70;border-radius:8px">
+      <label class="check" for="hdmi-display" style="flex:1">
+        <input id="hdmi-display" type="checkbox">
+        <span data-cs="Místní panel na HDMI displeji Raspberry Pi (800 × 480)" data-en="Raspberry Pi local HDMI status panel (800 × 480)">Místní panel na HDMI displeji Raspberry Pi (800 × 480)</span>
+      </label>
+      <span id="hdmi-display-status" class="message" role="status" aria-live="polite" style="margin:0"></span>
+    </div>
+    <p class="note" data-cs="Zobrazí okno na ploše Raspberry Pi. Vyžaduje spuštěné grafické prostředí a automatické přihlášení. Příjem APRS a RF provoz zůstávají nezávislé." data-en="Displays a window on the Raspberry Pi desktop. Requires an active graphical session with auto-login. APRS receive and RF operations remain independent.">Zobrazí okno na ploše Raspberry Pi. Vyžaduje spuštěné grafické prostředí a automatické přihlášení. Příjem APRS a RF provoz zůstávají nezávislé.</p>
+  </div>
+  <div class="metric-list">
+    <div class="metric"><span>RX</span><strong id="rx-count">0</strong></div>
+    <div class="metric"><span>TX USB</span><strong id="tx-count">0</strong></div>
+    <div class="metric"><span>DIGI TX</span><strong id="digi-count">0</strong></div>
+    <div class="metric"><span>RF → APRS-IS</span><strong id="gate-count">0</strong></div>
+    <div class="metric"><span>KISS errors</span><strong id="error-count">0</strong></div>
+  </div>
+  <div class="panel">
+    <h2 data-cs="Přijaté AX.25/APRS rámce" data-en="Received AX.25/APRS frames">Přijaté AX.25/APRS rámce</h2>
+    <div class="scroll"><table><thead><tr>
+      <th>UTC / local</th><th data-cs="Zdroj" data-en="Source">Zdroj</th><th data-cs="Cíl" data-en="Destination">Cíl</th><th data-cs="Cesta" data-en="Path">Cesta</th><th data-cs="Typ" data-en="Type">Typ</th><th data-cs="Obsah" data-en="Content">Obsah</th>
+    </tr></thead><tbody id="rx-rows"></tbody></table></div>
+  </div>
+  <div class="panel"><h2 data-cs="Detail rámce · dekódování / HEX" data-en="Frame details · decode / HEX">Detail rámce · dekódování / HEX</h2><div id="rx-details" class="details" data-cs="Vyber přijatý rámec v tabulce." data-en="Select a received frame.">Vyber přijatý rámec v tabulce.</div></div>
+</section>
+<section class="view" id="tab-map" hidden></section>
+<section class="view" id="tab-messages" hidden></section>
+<section class="view" id="tab-objects" hidden></section>
+<section class="view" id="tab-igate" hidden></section>
+<section class="view" id="tab-telemetry" hidden>
+  <div class="panel">
+    <h2 data-cs="Odesílání APRS telemetrie T#" data-en="APRS T# telemetry transmission">Odesílání APRS telemetrie T#</h2>
+    <div class="two">
+      <div>
+        <div class="check"><input type="checkbox" id="telem-igate"><label for="telem-igate" data-cs="iGate telemetrie → APRS-IS" data-en="iGate telemetry → APRS-IS">iGate telemetrie → APRS-IS</label></div>
+        <div class="check"><input type="checkbox" id="telem-digi"><label for="telem-digi" data-cs="DIGI telemetrie" data-en="DIGI telemetry">DIGI telemetrie</label></div>
+      </div>
+      <div class="form-grid">
+        <div><label for="telem-transport" data-cs="DIGI transport" data-en="DIGI transport">DIGI transport</label><select id="telem-transport"><option value="is">APRS-IS</option><option value="rf">RF / KISS TNC</option></select></div>
+        <div><label for="telem-path" data-cs="DIGI RF cesta" data-en="DIGI RF path">DIGI RF cesta</label><select id="telem-path"><option value="">DIRECT</option><option value="WIDE1-1">WIDE1-1</option><option value="WIDE2-1">WIDE2-1</option></select></div>
+        <div><label for="telem-interval" data-cs="Interval (min)" data-en="Interval (min)">Interval (min)</label><select id="telem-interval"><option>15</option><option>30</option><option>60</option></select></div>
+      </div>
+    </div>
+    <div class="toolbar"><button class="primary" id="telem-save" data-cs="Uložit telemetrii" data-en="Save telemetry">Uložit telemetrii</button><button class="warn" id="telem-now" data-cs="Vyslat nyní" data-en="Send now">Vyslat nyní</button><button id="telem-reload" data-cs="Načíst nastavení" data-en="Reload settings">Načíst nastavení</button></div>
+    <div id="telem-notice" class="message" role="status" aria-live="polite"></div>
+    <p class="note" data-cs="Statistiky jsou za klouzavých 15 minut. Vysílání telemetrie vyžaduje potvrzení; RF DIGI může odeslat několik rámců T#/PARM/UNIT/EQNS/BITS." data-en="Statistics use a rolling 15-minute window. Telemetry requires confirmation; RF DIGI may transmit several T#/PARM/UNIT/EQNS/BITS frames.">Statistiky jsou za klouzavých 15 minut. Vysílání telemetrie vyžaduje potvrzení; RF DIGI může odeslat několik rámců T#/PARM/UNIT/EQNS/BITS.</p>
+  </div>
+  <div class="panel"><h2 data-cs="Statistiky za posledních 15 minut" data-en="Statistics for the last 15 minutes">Statistiky za posledních 15 minut</h2><div class="metric-list" id="telem-metrics"></div><div class="details" id="telem-extras">—</div></div>
+</section>
+<section class="view" id="tab-diagnostics" hidden></section>
+</main>
+<footer data-cs="Lokální webové ovládání. Administrátorský odkaz umožňuje RF vysílání – nepublikuj jej na internetu. Přístup zvenčí pouze přes důvěryhodnou VPN s HTTPS." data-en="Local web control. The admin link permits RF TX – never publish it to the Internet. Use a trusted VPN with HTTPS for remote access.">Lokální webové ovládání. Administrátorský odkaz umožňuje RF vysílání – nepublikuj jej na internetu. Přístup zvenčí pouze přes důvěryhodnou VPN s HTTPS.</footer>
+<script src="/assets/web_locale.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const key = params.get("admin") || "";
+const tr = (cs,en) => language === "en" ? en : cs;
+let language = window.OK5TVRLocale ? window.OK5TVRLocale.language : "cs";
+let currentTab = "rx", lastState = {}, lastDiagnostics = {}, rxHistory = [];
+let rxSignature = "", selectedFrame = null, configLoaded = false, pollBusy = false;
+const tabIds = ["home","rx","map","messages","objects","igate","telemetry","diagnostics"];
+const destinations = {
+  map:"/map", messages:"/messages", objects:"/operations",
+  igate:"/control", diagnostics:"/operations"
+};
+const auth = path => key ? path + (path.includes("?") ? "&" : "?") + "admin=" + encodeURIComponent(key) : path;
+function notice(id,text) { $(id).textContent = text; }
+function setLanguage(value) {
+  language = value === "en" ? "en" : "cs";
+  document.documentElement.lang = language;
+  $("language").value = language;
+  if (window.OK5TVRLocale) window.OK5TVRLocale.setLanguage(language);
+  document.querySelectorAll("[data-cs][data-en]").forEach(el => { el.textContent = el.dataset[language]; });
+  for (const name of Object.keys(destinations)) {
+    const frame = document.querySelector("#tab-" + name + " iframe");
+    if (frame && frame.contentWindow && frame.contentWindow.OK5TVRLocale) {
+      frame.contentWindow.OK5TVRLocale.setLanguage(language);
+    }
+  }
+}
+function showTab(name) {
+  if (!tabIds.includes(name)) name = "rx";
+  currentTab = name;
+  for (const tab of tabIds) {
+    $("tab-" + tab).hidden = tab !== name;
+    const btn = document.querySelector('[data-tab="' + tab + '"]');
+    btn.setAttribute("aria-selected", tab === name ? "true" : "false");
+    btn.tabIndex = tab === name ? 0 : -1;
+  }
+  if (destinations[name]) {
+    const container = $("tab-" + name);
+    let frame = container.querySelector("iframe");
+    if (!frame) {
+      frame = document.createElement("iframe");
+      frame.className = "frame";
+      frame.title = name;
+      frame.referrerPolicy = "no-referrer";
+      frame.src = auth(destinations[name]) + (name === "objects" ? "#objects" : name === "diagnostics" ? "#diagnostics" : "");
+      frame.addEventListener("load", () => { trimEmbedded(frame,name); resizeFrame(frame); });
+      container.appendChild(frame);
+    } else { setTimeout(() => resizeFrame(frame),40); }
+  }
+  if (name === "telemetry" && !configLoaded) loadTelemetryConfig();
+  history.replaceState(null,"","#" + name);
+}
+function trimEmbedded(frame,name) {
+  try {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    const css = doc.createElement("style");
+    css.textContent = "body{padding:5px!important;background:#101925!important} main{max-width:100%!important;margin:0!important}nav,.app-nav{display:none!important}header{display:none!important}";
+    doc.head.appendChild(css);
+    if (name === "objects") {
+      const objs = doc.querySelector("#objects");
+      Array.from(doc.querySelectorAll("main > section,main > .grid")).forEach(el => {
+        if (el !== objs && !el.contains(objs)) el.hidden = true;
+      });
+    }
+    if (name === "diagnostics") {
+      const objs = doc.querySelector("#objects"); if (objs) objs.hidden = true;
+      const telem = doc.querySelector("#telemetry_stats");
+      if (telem) {const section = telem.closest("section");if(section)section.hidden=true;}
+    }
+    const title = doc.querySelector("main > h1");
+    if (title) title.hidden = true;
+    if (name === "map") {
+      const top = doc.querySelector("body > header");
+      if (top) top.hidden = true;
+    }
+    if (doc.defaultView && doc.defaultView.OK5TVRLocale) doc.defaultView.OK5TVRLocale.setLanguage(language);
+  } catch (err) { console.warn("Embedded view:",err); }
+}
+function resizeFrame(frame) {
+  try {
+    const doc=frame.contentDocument;
+    if (!doc) return;
+    frame.style.height=Math.max(720,doc.documentElement.scrollHeight+25)+"px";
+    if(frame.contentWindow)frame.contentWindow.dispatchEvent(new Event("resize"));
+  }catch(_){}
+}
+document.querySelectorAll("nav.tabs button").forEach(btn => btn.addEventListener("click",() => showTab(btn.dataset.tab)));
+document.querySelectorAll("[data-open]").forEach(btn=>btn.addEventListener("click",()=>showTab(btn.dataset.open)));
+$("logout").addEventListener("click",async()=>{
+ try{await fetch("/api/logout",{method:"POST",headers:{"X-APRS-CSRF":"1"}});}finally{location.replace("/login");}
+});
+$("language").addEventListener("change",e=>setLanguage(e.target.value));
+async function get(path) {
+  const r=await fetch(auth(path),{cache:"no-store"});
+  if(!r.ok) throw Error("HTTP "+r.status);
+  return r.json();
+}
+async function command(action,data={}) {
+  const r=await fetch("/api/control",{
+    method:"POST",headers:{"Content-Type":"application/json","X-APRS-Admin":key,"X-APRS-CSRF":"1"},
+    body:JSON.stringify({action,...data})
+  });
+  const result=await r.json();
+  if(!r.ok||!result.ok)throw Error(result.error || "HTTP "+r.status);
+  return result.result;
+}
+async function act(action,data,id) {
+  try {const result=await command(action,data);notice(id,String(result));}
+  catch(e){notice(id,tr("CHYBA: ","ERROR: ")+e.message);}
+}
+async function reloadPorts() {
+  try {
+    const p=await get("/api/ports"),s=$("serial-port"),previous=s.value;
+    const opts=[{device:"auto",description:"Auto"}].concat(p.ports||[]);
+    s.replaceChildren();
+    for(const item of opts) {
+      const o=document.createElement("option");
+      o.value=item.device;
+      o.textContent=item.device + (item.description ? " · "+item.description : "");
+      s.appendChild(o);
+    }
+    if(opts.some(o=>o.device===previous))s.value=previous;
+    else if(p.selected && opts.some(o=>o.device===p.selected))s.value=p.selected;
+  }catch(e){notice("rx-notice",tr("Porty: ","Ports: ")+e.message);}
+}
+$("ports-refresh").onclick=reloadPorts;
+$("serial-connect").onclick=async()=>{
+  const port=$("serial-port").value;
+  try{
+    const cfg=await get("/api/config");
+    if(port!==cfg.serial.port){
+      if(!confirm(tr("Uložit nový port? Aktivní iGate/DIGI bude bezpečně vypnutá. Znovu ji zapni ručně.","Save new port? Active iGate/DIGI will stop safely and must be restarted manually.")))return;
+      await command("save",{config:{serial:{port}}});
+      notice("rx-notice",await command("serial_reconnect"));
+    }else notice("rx-notice",await command("serial_connect"));
+  }catch(e){notice("rx-notice",tr("CHYBA: ","ERROR: ")+e.message);}
+};
+$("serial-disconnect").onclick=()=>act("serial_disconnect",{},"rx-notice");
+$("rf-test").onclick=()=>{
+  if(confirm(tr("Odeslat JEDEN APRS testovací rámec přes RF? Nejdříve připoj anténu a zkontroluj nastavení KISS TX.","Transmit ONE APRS test frame over RF? Connect the antenna and check KISS TX settings first.")))
+    act("tx_test",{confirm:true},"rx-notice");
+};
+function safeCSV(v) {
+  let s=String(v===undefined||v===null?"":v).replace(/[\r\n]+/g," ");
+  if (/^[\s]*[=+\-@]/.test(s))s="'"+s;
+  return '"'+s.replace(/"/g,'""')+'"';
+}
+function downloadCSV(filename,columns,rows) {
+  const content="\ufeff"+[columns].concat(rows).map(row=>row.map(safeCSV).join(";")).join("\r\n");
+  const url=URL.createObjectURL(new Blob([content],{type:"text/csv;charset=utf-8"}));
+  const a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$("rx-csv").onclick=()=>downloadCSV("ok5tvr-aprs-rx.csv",
+  ["time","source","destination","path","type","summary","payload","hex","direct"],
+  rxHistory.map(r=>[r.time,r.source,r.destination,r.path,r.kind,r.summary,r.payload,r.hex_data,r.direct]));
+function frameDetails(row) {
+  if(!row)return;
+  const route=row.direct===true?"DIRECT":row.direct===false?"VIA DIGI":"?";
+  $("rx-details").textContent=(row.time||"")+"  "+(row.source||"")+" > "+(row.destination||"")+"  ["+route+"]\n"+
+    tr("Cesta: ","Path: ")+(row.path||"DIRECT")+"\n"+(row.kind||"")+": "+(row.summary||"")+"\n"+
+    (row.payload||"")+"\nHEX: "+(row.hex_data||"");
+}
+function renderRx(history) {
+  rxHistory=Array.isArray(history)?history:[];
+  const signature=String(lastState.rx)+"/"+String(lastState.demo)+"/"+(rxHistory[0]?.time||"");
+  if (signature===rxSignature)return;
+  rxSignature=signature;
+  const tbody=$("rx-rows");tbody.replaceChildren();
+  rxHistory.forEach((r,index)=>{
+    const trEl=document.createElement("tr");
+    trEl.className="clickable"+(r.direct===true&&!r.demo?" direct":"");
+    for(const field of ["time","source","destination","path","kind","summary"]){
+      const td=document.createElement("td");td.textContent=String(r[field]??"");trEl.appendChild(td);
+    }
+    trEl.onclick=()=>{selectedFrame=r;tbody.querySelectorAll(".chosen").forEach(el=>el.classList.remove("chosen"));trEl.classList.add("chosen");frameDetails(r);};
+    if(selectedFrame&&selectedFrame.time===r.time&&selectedFrame.hex_data===r.hex_data)trEl.classList.add("chosen");
+    tbody.appendChild(trEl);
+  });
+  if(selectedFrame)frameDetails(selectedFrame);
+}
+let hdmiLoaded = false;
+async function loadHdmiDisplay(){
+  try {
+    const cfg = await get("/api/config");
+    $("hdmi-display").checked = !!(cfg.display && cfg.display.enabled);
+    hdmiLoaded = true;
+  }catch(e){
+    notice("hdmi-display-status",tr("Chyba načtení: ","Load error: ")+e.message);
+  }
+}
+$("hdmi-display").addEventListener("change",async()=>{
+  const wanted = $("hdmi-display").checked;
+  $("hdmi-display").disabled = true;
+  try{
+    await command("display_set",{enabled:wanted});
+    notice("hdmi-display-status",wanted?
+      tr("Zapnuto. Pokud je Raspberry přihlášené do plochy, panel se objeví.","Enabled. The panel will appear when the Raspberry desktop session is active."):
+      tr("Vypnuto.","Disabled."));
+  }catch(e){
+    $("hdmi-display").checked = !wanted;
+    notice("hdmi-display-status",tr("Chyba: ","Error: ")+e.message);
+  }finally{
+    $("hdmi-display").disabled = false;
+  }
+});
+function updateHealth(state,diag) {
+  $("home-rx").textContent=String(state.rx||0);
+  $("home-tx").textContent=String(state.tx_requests||0);
+  $("home-gate").textContent=String(state.igate_sent||0);
+  $("home-digi").textContent=String(diag.digi?.tx_written||0);
+  $("home-stations").textContent=String(state.station_count||0);
+  $("home-clock").textContent=new Date().toLocaleString(language==="en"?"en-GB":"cs-CZ");
+  $("home-status").textContent="USB: "+(diag.usb_port||"odpojeno")+
+     "  |  "+(diag.radio_connected?"Připojeno":"Odpojeno")+
+     "  |  APRS-IS: "+(diag.igate_connected?"online":"offline")+
+     "  |  DIGI: "+(diag.digi?.enabled?"ON":"OFF");
+
+  const u=$("usb-status"),i=$("is-status"),d=$("digi-status");
+  u.textContent="USB: "+(state.rf_status||"—");
+  i.textContent="APRS-IS: "+(state.igate_status||"—");
+  d.textContent="DIGI: "+(diag.digi?.enabled?tr("Zapnuto","On"):tr("Vypnuto","Off"));
+  u.className="pill "+(diag.radio_connected?"ok":"bad");
+  i.className="pill "+(diag.igate_connected?"ok":"");
+  d.className="pill "+(diag.digi?.enabled?"ok":"");
+  $("rx-count").textContent=String(state.rx||0);
+  $("tx-count").textContent=String(state.tx_requests||0);
+  $("digi-count").textContent=String(diag.digi?.tx_written||0);
+  $("gate-count").textContent=String(state.igate_sent||0);
+  $("error-count").textContent=String(diag.counters?.invalid||0);
+}
+const metricFields=[
+ ["rx_packets","Přijaté pakety RX","RX packets"],
+ ["tx_packets","TX do USB","USB TX packets"],
+ ["unique_stations","Unikátní stanice","Unique stations"],
+ ["positioned_stations","Stanice s GPS","Stations with GPS"],
+ ["avg_distance_km","Průměrná vzdálenost (km)","Average distance (km)"],
+ ["dx_max_km","Maximální vzdálenost (km)","Maximum distance (km)"],
+ ["igate_forwarded","Předané na APRS-IS","Forwarded to APRS-IS"],
+ ["digi_tx","DIGI TX","DIGI TX"],
+ ["rx_per_min","RX za minutu","RX per minute"],
+ ["tx_per_min","TX za minutu","TX per minute"],
+ ["tx_errors","USB TX chyby","USB TX errors"],
+ ["dropped_samples","Ztracené vzorky","Dropped samples"]
+];
+function renderTelemetry(t) {
+  const root=$("telem-metrics");root.replaceChildren();
+  for(const [id,cs,en] of metricFields) {
+    const el=document.createElement("div");el.className="metric";
+    const caption=document.createElement("span");caption.textContent=tr(cs,en);
+    const v=document.createElement("strong");v.textContent=String(t[id]??"—");
+    el.append(caption,v);root.appendChild(el);
+  }
+  $("telem-extras").textContent=
+    "DX: "+(t.dx_callsign||"—")+
+    "\n"+tr("DIGI maják transport: ","DIGI beacon transport: ")+(t.digi_beacon_transport||"—")+
+    "\n"+tr("Poslední RF maják (zápis do USB): ","Last RF beacon (USB write): ")+(t.last_digi_rf_beacon_utc||"—")+
+    "\n"+tr("GPS vzdálenost není měření přímého RF dosahu.","GPS distance is not a measurement of direct RF range.");
+}
+async function loadTelemetryConfig(){
+  try{
+    const c=await get("/api/config");
+    $("telem-igate").checked=!!c.igate.telemetry_enabled;
+    $("telem-digi").checked=!!c.digi.telemetry_enabled;
+    $("telem-transport").value=c.digi.telemetry_transport;
+    $("telem-path").value=c.digi.telemetry_rf_path;
+    $("telem-interval").value=String(c.telemetry.interval_minutes);
+    configLoaded=true;
+    notice("telem-notice",tr("Nastavení načteno.","Settings loaded."));
+  }catch(e){notice("telem-notice",e.message);}
+}
+$("telem-reload").onclick=loadTelemetryConfig;
+$("telem-save").onclick=async()=>{
+  const rf=$("telem-digi").checked&&$("telem-transport").value==="rf";
+  if(rf&&!confirm(tr("Povolit automatické RF telemetrické rámce při zapnutém DIGI?","Allow automatic RF telemetry packets while DIGI is running?")))return;
+  try{
+    const result=await command("save",{
+      config:{
+        igate:{telemetry_enabled:$("telem-igate").checked},
+        digi:{telemetry_enabled:$("telem-digi").checked,telemetry_transport:$("telem-transport").value,telemetry_rf_path:$("telem-path").value},
+        telemetry:{interval_minutes:Number($("telem-interval").value)}
+      },
+      confirm_rf_telemetry:rf
+    });
+    notice("telem-notice",String(result));
+  }catch(e){notice("telem-notice",e.message);}
+};
+$("telem-now").onclick=()=>{
+  if(confirm(tr("Odeslat APRS telemetrii (APRS-IS nebo RF podle konfigurace)?","Send APRS telemetry (APRS-IS or RF per configuration)?")))
+    act("telemetry_send_now",{confirm:true},"telem-notice");
+};
+async function refresh() {
+  if(pollBusy)return;pollBusy=true;
+  try{
+    const [s,d]=await Promise.all([get("/api/state"),get("/api/diagnostics")]);
+    lastState=s;lastDiagnostics=d;
+    updateHealth(s,d);renderRx(s.history);renderTelemetry(d.telemetry||{});
+    if(currentTab in destinations){
+      const f=$("tab-"+currentTab).querySelector("iframe");
+      if(f)resizeFrame(f);
+    }
+  }catch(e){ if(currentTab==="rx")notice("rx-notice",tr("Spojení se službou: ","Service connection: ")+e.message); }
+  finally{pollBusy=false;}
+}
+reloadPorts();loadHdmiDisplay();setLanguage(language);showTab(location.hash.slice(1)||"home");refresh();
+setInterval(refresh,3000);
+</script>
+</body>
+</html>

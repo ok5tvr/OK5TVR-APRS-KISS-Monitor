@@ -1,14 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-echo OK5TVR APRS v1.4 - headless rezim (web)
-where py >nul 2>nul
-if errorlevel 1 (
-  echo Chybi Python 3 a py launcher.
-  pause
-  exit /b 1
-)
-py -3 -m pip show pyserial >nul 2>nul
-if errorlevel 1 py -3 -m pip install "pyserial>=3.5"
-py -3 aprs_service.py
-pause
+echo OK5TVR APRS: jednotna webova konzole pro Windows i Raspberry Pi.
+echo Po spusteni otevri http://127.0.0.1:8765/
+echo Samostatny nativni monitor je stale dostupny pres spustit.bat.
+call "%~dp0spustit_headless_server_windows.bat"

@@ -9,6 +9,7 @@ HTTP handlers use a lock. Restart never resumes unattended message transmissions
 from __future__ import annotations
 
 import os
+from collections import deque
 import re
 import sqlite3
 import threading
@@ -118,7 +119,7 @@ class MessageManager:
     """SQLite message history, matching ACKs, strictly bounded RF TX/retry."""
 
     def __init__(self, db_path: str | Path, own_call: str, path='WIDE1-1',
-                 auto_ack=False, retry_seconds=45, max_attempts=3):
+                 auto_ack=False, retry_seconds=45, max_attempts=3, receive_aliases=None):
         self.db_path = Path(db_path).resolve()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         # Restrict only the application's own config directory. A custom
@@ -130,8 +131,9 @@ class MessageManager:
         self.db.row_factory = sqlite3.Row
         self.ack_queue: list[dict] = []
         self.ack_last: dict[tuple, float] = {}
+        self.heard = deque(maxlen=60)  # Recent addressed messages heard on RF, including other addressees.
         self._last_tx_at = float('-inf')
-        self.configure(own_call, path, auto_ack, retry_seconds, max_attempts)
+        self.configure(own_call, path, auto_ack, retry_seconds, max_attempts, receive_aliases)
         with self.lock, self.db:
             self.db.execute('''CREATE TABLE IF NOT EXISTS inbox (
                 id INTEGER PRIMARY KEY, arrived_at TEXT NOT NULL, last_seen REAL NOT NULL,
@@ -152,8 +154,20 @@ class MessageManager:
         if os.name != 'nt':
             os.chmod(self.db_path, 0o600)
 
-    def configure(self, own_call, path, auto_ack=False, retry_seconds=45, max_attempts=3):
+    def configure(self, own_call, path, auto_ack=False, retry_seconds=45, max_attempts=3,
+                  receive_aliases=None):
         self.own_call = normalize_call(own_call)
+        base = self.own_call.split('-')[0]
+        if receive_aliases is None:
+            receive_aliases = []
+        if not isinstance(receive_aliases, list) or len(receive_aliases) > 6:
+            raise ValueError('Přijímané APRS značky musejí být seznam (max. 6 dalších SSID).')
+        aliases = [normalize_call(call) for call in receive_aliases]
+        if any(call.split('-')[0] != base for call in aliases):
+            raise ValueError('Přijímané značky musí mít stejný základ jako vlastní iGate značka.')
+        self.receive_aliases = list(dict.fromkeys(aliases))
+        # In APRS it is common to address the operator's base call without SSID.
+        self.receive_calls = sorted({self.own_call, base, *self.receive_aliases})
         self.default_path = normalize_path(path)
         if type(auto_ack) is not bool or type(retry_seconds) is not int or type(max_attempts) is not int:
             raise ValueError('Neplatné parametry zpráv.')
@@ -179,8 +193,9 @@ class MessageManager:
                        WHERE status IN ('queued','usb_queued','waiting_ack')''').fetchone()[0]}
         return {'call': self.own_call, 'default_path': self.default_path,
                 'auto_ack': self.auto_ack, 'retry_seconds': self.retry_seconds,
-                'max_attempts': self.max_attempts, 'stats': stats,
-                'inbox': inbox, 'outbox': outbox}
+                'max_attempts': self.max_attempts, 'receive_aliases': list(self.receive_aliases),
+                'receive_calls': list(self.receive_calls), 'heard_messages': list(self.heard),
+                'stats': stats, 'inbox': inbox, 'outbox': outbox}
 
     def _next_id(self):
         # 3-digit rotating ID stored on disk; avoid in-flight IDs for the same own call.
@@ -245,13 +260,14 @@ class MessageManager:
         if type(identifier) is not int or identifier < 1:
             raise ValueError('Neplatné číslo zprávy.')
         with self.lock:
-            row = self.db.execute('SELECT id,sender,message_id FROM inbox WHERE id=?',
+            row = self.db.execute('SELECT id,sender,recipient,message_id FROM inbox WHERE id=?',
                                   (identifier,)).fetchone()
         if row is None or not row['message_id']:
             raise ValueError('Zpráva neexistuje nebo neobsahuje identifikátor pro ACK.')
         if len(self.ack_queue) >= 20:
             raise ValueError('Fronta potvrzení ACK je zaplněná.')
         self.ack_queue.append({'inbox_id':identifier,'target':row['sender'],
+                               'source_call':row['recipient'],
                                'message_id':row['message_id'], 'reject':reject})
         return ('REJ' if reject else 'ACK') + ' zařazeno do RF fronty. Zápis do TNC ověř v počítadle RX/TX.'
 
@@ -267,21 +283,39 @@ class MessageManager:
         return True
 
     def receive(self, packet, radio_ready: bool) -> dict | None:
-        if getattr(packet,'simulated',False) or packet.control != 0x03 or packet.pid != 0xF0:
+        '''Store an addressed RF message or ACK and explain why others were skipped.
+
+        Normal AX.25 destination is often APRS and is NOT the APRS message
+        addressee. The actual recipient is the 9-character field in raw_info.
+        '''
+        if getattr(packet, 'simulated', False) or packet.control != 0x03 or packet.pid != 0xF0:
             return None
-        decoded = parse_message(packet.raw_info)
-        if decoded is None or decoded['target'] != self.own_call:
+        info = getattr(packet, 'raw_info', b'')
+        if not isinstance(info, bytes) or not info.startswith(b':'):
+            return None
+        decoded = parse_message(info)
+        sender = getattr(packet, 'source', '?')
+        if decoded is None:
+            self._heard(sender, '?', 'invalid', 'Neplatný formát APRS zprávy / bulletin')
+            return None
+        target = decoded['target']
+        if target not in self.receive_calls:
+            self._heard(sender, target, 'other', 'Zpráva jiné stanici')
             return None
         try:
-            from_call = normalize_call(packet.source)
+            from_call = normalize_call(sender)
         except ValueError:
+            self._heard(sender, target, 'invalid', 'Neplatná zdrojová značka')
             return None
-        if from_call == self.own_call:
+        if from_call == target:
+            self._heard(from_call, target, 'self', 'Vlastní rámec')
             return None
         if decoded['kind'] in ('ack','rej'):
             matched = self._acknowledge_outgoing(from_call, decoded['id'], decoded['kind'])
+            self._heard(from_call, target, decoded['kind'],
+                        'Potvrzeno v Outboxu' if matched else 'ACK/REJ bez čekající zprávy')
             return {'kind':decoded['kind'], 'matched':matched, 'from':from_call,
-                    'message_id':decoded['id']}
+                    'to': target, 'message_id':decoded['id']}
         if decoded['reply_ack']:
             self._acknowledge_outgoing(from_call, decoded['reply_ack'], 'ack')
         now = time.time()
@@ -290,7 +324,7 @@ class MessageManager:
             if decoded['id']:
                 match = self.db.execute('''SELECT id FROM inbox WHERE sender=? AND recipient=?
                   AND message_id=? AND text=? AND last_seen>? ORDER BY id DESC LIMIT 1''',
-                  (from_call,self.own_call,decoded['id'],decoded['text'],now-900)).fetchone()
+                  (from_call,target,decoded['id'],decoded['text'],now-900)).fetchone()
             if match:
                 self.db.execute('UPDATE inbox SET duplicates=duplicates+1,last_seen=? WHERE id=?',
                                 (now,match['id']))
@@ -299,19 +333,28 @@ class MessageManager:
                 cursor = self.db.execute('''INSERT INTO inbox
                   (arrived_at,last_seen,sender,recipient,text,message_id,path)
                   VALUES (?,?,?,?,?,?,?)''',
-                  (utc_now(),now,from_call,self.own_call,decoded['text'],decoded['id'],packet.path))
+                  (utc_now(),now,from_call,target,decoded['text'],decoded['id'],packet.path))
                 inbox_id = cursor.lastrowid; duplicate = False
                 self._prune('inbox', 500)
+        self._heard(from_call, target, 'inbox',
+                    'Přijato do Inboxu' + (' (duplicita)' if duplicate else ''))
         if decoded['id'] and self.auto_ack and radio_ready:
-            key = (from_call, decoded['id'])
+            key = (from_call, target, decoded['id'])
             if now - self.ack_last.get(key, 0) >= 45 and len(self.ack_queue) < 20:
                 self.ack_queue.append({'inbox_id': inbox_id, 'target': from_call,
-                                       'message_id': decoded['id']})
+                                       'source_call': target, 'message_id': decoded['id']})
                 self.ack_last[key] = now
             if len(self.ack_last) > 1000:
                 self.ack_last = {key:t for key,t in self.ack_last.items() if now-t < 900}
-        return {'kind':'message','from':from_call,'duplicate':duplicate,
+        return {'kind':'message','from':from_call,'to':target,'duplicate':duplicate,
                 'message_id':decoded['id'],'inbox_id':inbox_id}
+
+    def _heard(self, sender: str, target: str, result: str, note: str):
+        # Memory-only diagnostic: public RF headers, bounded history.
+        with self.lock:
+            self.heard.appendleft({'time':utc_now(), 'sender':str(sender)[:12],
+                                   'recipient':str(target)[:12], 'result':result,
+                                   'note':note})
 
     def tx_tick(self, reader, radio_ready: bool) -> str | None:
         """At most one queued frame per interval; no TX without a working USB reader.
@@ -323,7 +366,7 @@ class MessageManager:
         # Queue ACK first so distant stations need fewer retries.
         if self.ack_queue:
             item = self.ack_queue[0]
-            frame = encode_ui_packet(self.own_call, 'APRS', self.default_path,
+            frame = encode_ui_packet(item.get('source_call', self.own_call), 'APRS', self.default_path,
                                      ack_info(item['target'],item['message_id'],item.get('reject', False)))
             if reader.send(encode_kiss_data(frame), category=f'msgack:{item["inbox_id"]}'):
                 self.ack_queue.pop(0)

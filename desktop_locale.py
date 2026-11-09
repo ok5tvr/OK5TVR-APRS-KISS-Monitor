@@ -7,7 +7,9 @@ from __future__ import annotations
 EN = {
     'Sériový port': 'Serial port', 'Připojit': 'Connect', 'Odpojit': 'Disconnect',
     'Ukázkový rámec': 'Demo frame', 'Export CSV': 'Export CSV',
-    'APRS mapa / web': 'APRS map / web', 'Otestovat TX...': 'Test TX...',
+    'APRS mapa / web': 'APRS map / web', 'APRS zprávy': 'APRS messages',
+    'APRS objekty': 'APRS objects', 'Diagnostika': 'Diagnostics',
+    'Otestovat TX...': 'Test TX...',
     'iGate APRS-IS...': 'APRS-IS iGate...', 'APRS DIGI...': 'APRS DIGI...',
     'Pozice iGate / GPS...': 'iGate / GPS position...', 'Web v LAN...': 'Web on LAN...',
     'PŘIJATÉ AX.25 / APRS RÁMCE': 'RECEIVED AX.25 / APRS FRAMES',

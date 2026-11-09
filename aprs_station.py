@@ -51,8 +51,11 @@ def aprsis_position(call: str, lat: float, lon: float, comment: str='OK5TVR RX i
     if not CALL_RE.fullmatch(call):
         raise ValueError('Neplatná značka iGate. Použij např. OK5TVR-10.')
     lat=decimal_coordinate(lat,True); lon=decimal_coordinate(lon,False)
-    if symbol not in ('R&','I&','I#','1#','/#'):
-        raise ValueError('Nepodporovaný APRS symbol')
+    from aprs_telemetry import symbol_code
+    if not isinstance(symbol, str) or len(symbol) != 2:
+        raise ValueError('Invalid APRS symbol code.')
+    symbol_code('\\' if symbol[0].isalnum() else symbol[0], symbol[1],
+                symbol[0] if symbol[0].isalnum() else '')
     comment=comment.strip()
     if len(comment)>43 or any(ord(c)<32 or ord(c)>126 for c in comment):
         raise ValueError('Komentář: maximálně 43 znaků ASCII bez diakritiky.')

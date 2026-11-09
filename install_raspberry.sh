@@ -1,5 +1,5 @@
 #!/bin/sh
-# OK5TVR APRS v1.5: install headless service on Raspberry Pi OS/Debian.
+# OK5TVR APRS v1.9: install unified web headless service on Raspberry Pi OS/Debian.
 # Run as the normal account: sh install_raspberry.sh [--lan].
 set -eu
 
@@ -29,15 +29,20 @@ UNIT_FILE=/etc/systemd/system/ok5tvr-aprs.service
 
 printf 'Instaluji pro uzivatele %s do %s\n' "$SERVICE_USER" "$INSTALL_DIR"
 sudo apt-get update
-sudo apt-get install -y python3 python3-serial
+sudo apt-get install -y python3 python3-serial python3-tk
 sudo install -d -m 755 "$INSTALL_DIR"
 # Only runtime files, no tests or credentials in /opt.
 for f in aprs_service.py service_config.py aprs_protocol.py aprs_serial.py \
-         aprs_digi.py aprs_features.py aprs_station.py aprs_messages.py aprs_operations.py aprs_journal.py web_panel.py \
-         web_dashboard.html web_control.html web_messages.html web_operations.html web_diagnostics.html web_locale.js offline_geography.json; do
+         aprs_digi.py aprs_features.py aprs_geo.py aprs_journal.py aprs_station.py aprs_messages.py aprs_operations.py aprs_telemetry.py web_panel.py web_auth.py \
+         web_dashboard.html web_control.html web_messages.html web_operations.html web_unified.html web_login.html web_locale.js offline_geography.json local_display.py; do
   sudo install -m 644 "$SRC_DIR/$f" "$INSTALL_DIR/$f"
 done
+sudo install -d -m 755 "$INSTALL_DIR/assets"
+for f in aprs-primary.png aprs-secondary.png aprs-overlays.png; do
+  sudo install -m 644 "$SRC_DIR/assets/$f" "$INSTALL_DIR/assets/$f"
+done
 sudo chmod 755 "$INSTALL_DIR/aprs_service.py"
+sudo chmod 755 "$INSTALL_DIR/local_display.py"
 python3 "$INSTALL_DIR/aprs_service.py" --config "$CONFIG_PATH" --init
 if [ "$ENABLE_LAN" -eq 1 ]; then
   PYTHONPATH="$SRC_DIR" CONFIG_PATH="$CONFIG_PATH" python3 - <<'PY'
@@ -51,6 +56,23 @@ fi
 # User owns USB CDC ttyACM devices via dialout, service gets this group even
 # before the next interactive login.
 sudo usermod -a -G dialout "$SERVICE_USER"
+# XDG autostart belongs to the logged-in graphical user, NOT the system service.
+# On a headless Pi OS Lite installation this file remains inert until a desktop
+# is installed and graphical auto-login is configured.
+install -d -m 700 "$USER_HOME/.config/autostart"
+AUTOSTART_FILE="$USER_HOME/.config/autostart/ok5tvr-aprs-hdmi.desktop"
+cat > "$AUTOSTART_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Name=OK5TVR APRS HDMI Panel
+Comment=Optional read-only APRS receive/status panel
+Exec=/usr/bin/python3 $INSTALL_DIR/local_display.py --config $CONFIG_PATH
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+EOF
+chmod 600 "$AUTOSTART_FILE"
+
 
 TMP_UNIT=$(mktemp)
 trap 'rm -f "$TMP_UNIT"' EXIT HUP INT TERM
@@ -87,4 +109,7 @@ sudo systemctl restart ok5tvr-aprs.service
 printf '\nSluzba: sudo systemctl status ok5tvr-aprs\n'
 printf 'Log: sudo journalctl -u ok5tvr-aprs -f\n'
 printf 'Soukrome URL: python3 %s/aprs_service.py --config %s --links\n' "$INSTALL_DIR" "$CONFIG_PATH"
+printf 'Unified web: http://IP_ADRESA:8765/ (username and token via --links).\n'
 printf 'Auto iGate i auto RF DIGI jsou vychozim stavem VYPNUTY.\n'
+printf 'HDMI panel: v grafickem desktopu Raspberry Pi automaticky startuje skryty; povolis jej webovou volbou.\n'
+printf 'Po prvni instalaci panelu se odhlas/prihlas do graficke plochy (nebo reboot).\n'

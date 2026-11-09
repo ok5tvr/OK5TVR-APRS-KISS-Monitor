@@ -10,7 +10,6 @@
 header{padding:16px clamp(14px,3vw,35px);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--edge)}
 .brand{font-weight:800;font-size:19px;letter-spacing:.2px}.brand b{color:var(--mint)}small,.muted{color:var(--muted)}
 main{padding:20px clamp(12px,3vw,35px);max-width:1850px;margin:0 auto}
-#healthbanner{margin-bottom:12px;padding:9px 13px;border:1px solid #9b713c;background:#44331b;color:#ffe9b5;border-radius:8px}#healthbanner[hidden]{display:none}
 .cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .card,.panel{border:1px solid var(--edge);border-radius:12px;background:var(--pane)}.card{padding:14px 15px}
 .metric{font-size:26px;font-weight:750;font-variant-numeric:tabular-nums}.caption{font-size:12px;color:var(--muted)}
@@ -18,23 +17,40 @@ main{padding:20px clamp(12px,3vw,35px);max-width:1850px;margin:0 auto}
 .panel h2{font-size:14px;margin:0;padding:12px 16px;border-bottom:1px solid var(--edge)}
 .scroll{overflow:auto;max-height:610px}table{border-collapse:collapse;width:100%;font-size:13px}
 th{position:sticky;top:0;background:#203149;color:#c5d6e7;text-align:left}th,td{padding:10px 12px;border-bottom:1px solid #2a3b50;white-space:nowrap}tr:hover td{background:#213750}
+tr.station-direct td,tr.packet-direct td{background:#c5ecfb;color:#173148}
+tr.station-direct:hover td,tr.packet-direct:hover td{background:#a9dff7;color:#102a40}
 button,select{border:1px solid #42596e;border-radius:7px;padding:7px 10px;background:#24384f;color:var(--fg);cursor:pointer;font:inherit}
 button:hover{background:#305572}button:focus-visible,select:focus-visible{outline:2px solid var(--mint)}
 .pill{font-size:12px;padding:3px 9px;border-radius:99px;background:#1d433f;color:#81efd6}.pill.off{background:#4e3734;color:#ffd0b8}
 .stations{max-height:604px}input{padding:9px 12px;color:var(--fg);background:#09192a;border:1px solid var(--edge);border-radius:6px;width:100%;margin:10px 0}
 #events{margin-top:16px}#events td:last-child{white-space:normal;min-width:150px;word-break:break-word}
-.map-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.map-header select,.map-header button{font-size:12px}
+.app-nav{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px clamp(14px,3vw,35px);border-bottom:1px solid var(--edge);background:#111f31}.app-nav a{color:#e6f7ff;text-decoration:none;font-weight:650;padding:8px 13px;border:1px solid #45647f;border-radius:8px;background:#21394f}.app-nav a:hover,.app-nav a:focus-visible{background:#26665e;outline:2px solid var(--mint);outline-offset:1px}.app-nav .nav-link-primary{background:#15685d;border-color:#399c90}#nav-info{margin:0;padding:8px clamp(14px,3vw,35px);background:#283449;color:#ffdf9a;font-size:13px}.map-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.map-header select,.map-header button{font-size:12px}
 #map{position:relative;height:clamp(330px,55vh,650px);overflow:hidden;touch-action:none;cursor:grab;background:#1b3345;border-radius:0 0 12px 12px;user-select:none}
 #map.dragging{cursor:grabbing}
 #geography,#tiles,#markers{position:absolute;inset:0;overflow:hidden}
 #geography{pointer-events:none}#tiles{pointer-events:none}#markers{pointer-events:none}
 .map-tile{position:absolute;width:256px;height:256px;border:0;max-width:none;image-rendering:auto}
+/* Dark-mode rendering uses the same OSM raster tiles; markers stay unfiltered. */
+.map-tile.dark{filter:invert(.92) hue-rotate(180deg) brightness(.86) contrast(.9) saturate(.8)}
 .map-marker{pointer-events:auto;position:absolute;transform:translate(-50%,-100%);display:flex;align-items:center;gap:5px;white-space:nowrap;
   background:#083b43;border:1px solid #75ecd7;border-radius:6px;padding:3px 7px;color:#f2fff9;box-shadow:0 2px 9px #0009;font-size:12px;font-weight:750}
 .map-marker:before{content:'';width:8px;height:8px;border-radius:50%;background:#5affcf;border:1px solid #0a6a54}
+.map-marker.has-symbol:before{display:none}
+.aprs-icon{display:inline-block;position:relative;flex:none;width:24px;height:24px;
+ background-repeat:no-repeat;image-rendering:auto}
+.aprs-icon.primary{background-image:url('/assets/aprs-primary.png')}
+.aprs-icon.secondary{background-image:url('/assets/aprs-secondary.png')}
+.aprs-icon .overlay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+ font:bold 13px/1 system-ui,sans-serif;color:white;text-shadow:-1px -1px 1px #000,1px 1px 1px #000,
+ 1px -1px 1px #000,-1px 1px 1px #000;pointer-events:none}
 .map-marker:after{content:'';position:absolute;top:100%;left:calc(50% - 5px);border:5px solid transparent;border-top-color:#75ecd7}
 .map-marker.active{background:#146b65}
+.map-marker.direct{background:#c4edff;border-color:#7dd7ff;color:#12344b}
+.map-marker.direct:before{background:#4ca9ed;border-color:#e7f7ff}
+.map-marker.direct:after{border-top-color:#7dd7ff}
 .map-marker.own{background:#6b491d;border-color:#ffd480;color:#fff3d1}.map-marker.own:before{background:#ffc875;border-color:#fff3d1}
+.aprs-symbol-code{display:inline-block;margin-left:3px;padding:1px 4px;border:1px solid currentColor;border-radius:4px;font-size:11px;opacity:.88;font-family:monospace}
+.map-marker.digi-own{background:#16395f;border-color:#80bfff;color:#e3f3ff}.map-marker.digi-own:before{background:#5faeff;border-color:#f1f9ff}
 .map-popup{pointer-events:auto;position:absolute;min-width:195px;max-width:240px;background:#0f2132;color:#e7f4ff;border:1px solid #6b91aa;border-radius:8px;
   padding:10px 12px;box-shadow:0 6px 28px #0009;z-index:5;transform:translate(-50%,calc(-100% - 28px));font-size:12px}
 .map-popup strong{font-size:14px;color:#76f4dc}.map-popup button{float:right;background:transparent;border:0;padding:0 3px}
@@ -52,8 +68,15 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <body>
 <header><div class="brand"><b>OK5TVR</b> APRS KISS <span class="muted">· živá mapa</span></div>
 <div><span id="rf" class="pill off">Rádio: odpojeno</span> &nbsp; <span id="igate" class="pill off">iGate: vypnuto</span> &nbsp; <span id="digi" class="pill off">DIGI: vypnuto</span></div></header>
+<nav class="app-nav" aria-label="APRS navigace">
+<a href="/" id="nav-map" aria-current="page" class="nav-link-primary">Mapa / Map</a>
+<a href="/control" id="nav-control" data-admin-target="control">Nastavení</a>
+<a href="/messages" id="nav-messages" data-admin-target="messages">APRS zprávy</a>
+<a href="/operations#objects" id="nav-objects" data-admin-target="operations" data-section="objects">APRS objekty</a>
+<a href="/operations#diagnostics" id="nav-diagnostics" data-admin-target="operations" data-section="diagnostics">Diagnostika</a>
+</nav>
+<p id="nav-info" aria-live="polite" hidden></p>
 <main>
-<div id="healthbanner" hidden role="status"></div>
 <div class="cards">
 <div class="card"><div class="caption">Přijaté RF rámce</div><div class="metric" id="rx">0</div></div>
 <div class="card"><div class="caption">Slyšené stanice</div><div class="metric" id="stations">0</div></div>
@@ -63,10 +86,20 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <div class="card"><div class="caption">DIGI TX (USB)</div><div class="metric" id="digi_tx">0</div></div>
 <div class="card"><div class="caption">Vlastní APRS-IS majáky</div><div class="metric" id="beacons">0</div></div>
 </div>
+<section class="panel" style="margin-bottom:16px"><h2>Statistiky za posledních 15 minut / Last 15 minutes</h2>
+<div class="cards" style="padding:14px;margin:0">
+<div class="card"><div class="caption">RX / 15 min</div><div class="metric" id="rx15">0</div></div>
+<div class="card"><div class="caption">TX / 15 min (USB)</div><div class="metric" id="tx15">0</div></div>
+<div class="card"><div class="caption">Unikátní stanice / Unique stations</div><div class="metric" id="unique15">0</div></div>
+<div class="card"><div class="caption">Průměrná vzdálenost / Average (km)</div><div class="metric" id="avg15">–</div></div>
+<div class="card"><div class="caption">Max. vzdálenost / DX (km)</div><div class="metric" id="dx15">–</div></div>
+<div class="card"><div class="caption">iGate → IS / 15 min</div><div class="metric" id="gate15">0</div></div>
+<div class="card"><div class="caption">DIGI TX / 15 min</div><div class="metric" id="digi15">0</div></div>
+</div><p class="muted" style="padding:0 16px;font-size:12px">Vzdálenost je vypočtena z GPS poloh unikátních stanic vůči vlastní poloze. Není to měření přímého dosahu RF. / Distances are derived from reported positions, not measured RF range.</p></section>
 <div class="grid">
 <section class="panel">
 <h2 class="map-header"><span>Mapa přijatých APRS pozic</span><span>
-<select id="mapstyle" aria-label="Mapový podklad"><option value="carto-light">Mapa ulic (CARTO)</option><option value="carto-dark">Tmavá (CARTO)</option><option value="offline" selected>Offline mapa – bez internetu</option></select>
+<select id="mapstyle" aria-label="Mapový podklad"><option value="osm-light">Mapa ulic (OpenStreetMap)</option><option value="osm-dark">Tmavá mapa (OpenStreetMap)</option><option value="offline" selected>Offline mapa – bez internetu</option></select>
 <button id="reset">Zobrazit všechny</button></span></h2>
 <div id="map" role="region" aria-label="Interaktivní mapa APRS stanic" tabindex="0">
 <canvas id="geography"></canvas><div id="tiles"></div><div id="markers"></div>
@@ -78,27 +111,59 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <div id="maphint" hidden></div>
 </section>
 <section class="panel"><h2>Poslední slyšené stanice</h2><div style="padding:0 12px"><input id="search" placeholder="Filtrovat podle značky…" autocomplete="off"></div>
-<div class="scroll stations"><table><thead><tr><th>Stanice</th><th>Pakety</th><th>Poslední příjem</th></tr></thead><tbody id="stationrows"></tbody></table></div></section>
+<div class="scroll stations"><table><thead><tr><th>Stanice</th><th>Cesta</th><th>km</th><th>Azimut</th><th>Pakety</th></tr></thead><tbody id="stationrows"></tbody></table></div></section>
 </div>
 <section class="panel" id="events"><h2>Poslední přijaté rámce <small>(DEMO se neodesílají do APRS-IS)</small></h2>
 <div class="scroll"><table><thead><tr><th>Čas</th><th>Zdroj</th><th>Typ</th><th>APRS cesta</th><th>Dekódováno</th></tr></thead><tbody id="rows"></tbody></table></div></section>
 <p class="muted" style="font-size:12px">Web pouze pro čtení · nedovoluje vysílat ani měnit nastavení iGate. <span id="update">—</span> ·
-Mapová data © OpenStreetMap contributors; online dlaždice © <a href="https://carto.com/" target="_blank" rel="noopener" style="color:inherit">CARTO</a>;
-offline geografie: GSHHG / WDBII / basemap_data (LGPL-3.0-or-later).</p>
+Online mapa: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:inherit">OpenStreetMap contributors</a>;
+offline geografie: GSHHG / WDBII / basemap_data (LGPL-3.0-or-later).<br>
+APRS ikony: <a href="https://github.com/hessu/aprs-symbols" target="_blank" rel="noopener" style="color:inherit">OH7LZB / aprs.fi symbol set</a> (licence jednotlivých symbolů viz zdroj).</p>
 </main>
 <script src="/assets/web_locale.js"></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
 const tr=value=>window.OK5TVRLocale.tr(value);
-const token=new URLSearchParams(location.search).get('key')||'';
-const authPath=(path)=>path+(token?(path.includes('?')?'&':'?')+'key='+encodeURIComponent(token):'');
+const urlParams=new URLSearchParams(location.search);
+const token=urlParams.get('key')||'';
+const adminToken=urlParams.get('admin')||'';
+const authPath=(path)=>path+(adminToken?'?admin='+encodeURIComponent(adminToken):token?'?key='+encodeURIComponent(token):'');
+let capabilityPromise=null;
+function navInfo(message){const box=$('nav-info');box.hidden=false;const prefix='Nelze otevřít administrátorskou stránku: ';box.textContent=message.startsWith(prefix)?tr(prefix)+message.slice(prefix.length):tr(message);}
+async function capabilities(){
+ if(!capabilityPromise){capabilityPromise=fetch(authPath('/api/capabilities'),{cache:'no-store'})
+   .then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()});}
+ return capabilityPromise;
+}
+function adminFromInput(value){
+ const typed=value.trim(); if(!typed)return '';
+ if(typed.includes('?')||typed.includes('/')){try{return new URL(typed,location.origin).searchParams.get('admin')||''}catch(e){return ''}}
+ return typed;
+}
+async function openProtectedPage(event){
+ event.preventDefault();
+ let enabled=false;try{enabled=Boolean((await capabilities()).admin_enabled)}catch(e){navInfo('Nepodařilo se ověřit stav webové služby.');return}
+ if(!enabled){navInfo('Toto je pouze mapa klasického monitoru. Pro zprávy a objekty ukonči monitor a spusť spustit_sluzbu_windows.bat.');return}
+ let supplied=adminToken;
+ if(!supplied){const entry=window.prompt(tr('Vlož administrátorský odkaz nebo klíč z příkazu zobrazit_odkazy_windows.bat:'));
+  if(entry===null)return;supplied=adminFromInput(entry);if(!supplied){navInfo('Administrátorský klíč nebyl zadán.');return}}
+ if(!/^[A-Za-z0-9_-]{20,128}$/.test(supplied)){navInfo('Neplatný formát administrátorského klíče.');return}
+ try{const response=await fetch('/api/config?admin='+encodeURIComponent(supplied),{cache:'no-store'});
+  if(!response.ok){navInfo('Administrátorský klíč není platný.');return}
+  const target=event.currentTarget.dataset.adminTarget,section=event.currentTarget.dataset.section;
+  location.assign('/'+target+'?admin='+encodeURIComponent(supplied)+(section?'#'+section:''));
+ }catch(e){navInfo('Nelze otevřít administrátorskou stránku: '+e.message)}
+}
+for(const link of document.querySelectorAll('[data-admin-target]'))link.addEventListener('click',openProtectedPage);
+capabilities().then(cap=>{if(!cap.admin_enabled)navInfo('Pro zprávy a objekty spusť plnou webovou službu; klasický monitor poskytuje jen mapu.');})
+ .catch(()=>navInfo('Nepodařilo se ověřit stav webové služby.'));
 const TILE=256, MAX_ZOOM=16;
 const templates={
- 'carto-light':'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
- 'carto-dark':'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+ 'osm-light':'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+ 'osm-dark':'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 };
-let positions=[], ownPosition=null, chosen=null, firstPosition=true, geo=null;
+let positions=[], ownPosition=null, ownDigi=null, chosen=null, firstPosition=true, geo=null;
 let view={lat:49.7384,lon:13.3736,z:8}, effectiveProvider=$('mapstyle').value;
 let tileEpoch=0, mapRedrawTimer=null, pointer=null, tileWatchdog=null, success=0, requested=0, failure=0;
 const mapNode=$('map'), canvas=$('geography'), context=canvas.getContext('2d');
@@ -218,11 +283,11 @@ function drawTiles(){
  for(let y=startY;y<=endY;y++){
   for(let x=startX;x<=endX;x++){
    const modX=((x%n)+n)%n;
-   const img=new Image();img.className='map-tile';img.alt='';img.referrerPolicy='strict-origin-when-cross-origin';
+   const img=new Image();img.className='map-tile'+(src==='osm-dark'?' dark':'');img.alt='';img.referrerPolicy='strict-origin-when-cross-origin';
    img.style.left=Math.round(w/2+x*TILE-c.x)+'px';img.style.top=Math.round(h/2+y*TILE-c.y)+'px';
    requested++;
    img.onload=()=>{if(epoch!==tileEpoch)return;success++;
-    if(success===1){setNotice('Online mapa CARTO · podklad načten');setHint('');}
+    if(success===1){setNotice('Online mapa OpenStreetMap · podklad načten');setHint('');}
    };
    img.onerror=()=>{if(epoch!==tileEpoch)return;failure++;
     if(failure>=requested&&success===0)activateOffline('online dlaždice byly odmítnuty nebo nejsou dostupné');
@@ -232,24 +297,46 @@ function drawTiles(){
   }
  }
  $('tiles').appendChild(root);
- $('attribution').textContent='© CARTO · © OpenStreetMap contributors';
- setNotice('Načítám online mapu CARTO… mezitím je vidět offline geografie.');
+ $('attribution').textContent='© OpenStreetMap contributors';
+ setNotice('Načítám online mapu OpenStreetMap… mezitím je vidět offline geografie.');
  // Offline background remains drawn even if some or all tile requests are blocked.
  tileWatchdog=setTimeout(()=>{
   if(epoch===tileEpoch&&success===0)activateOffline('online mapový server neodpověděl do 8 sekund');
  },8000);
 }
+function aprsIcon(code){
+ if(typeof code!=='string'||code.length!==2)return null;
+ const table=code[0],glyph=code[1],index=glyph.charCodeAt(0)-33;
+ if(index<0||index>=94||!(table==='/'||table==='\\'||/^[A-Za-z0-9]$/.test(table)))return null;
+ const ico=document.createElement('span');
+ ico.className='aprs-icon '+(table==='/'?'primary':'secondary');
+ ico.style.backgroundPosition=-(index%16*24)+'px '+-(Math.floor(index/16)*24)+'px';
+ ico.setAttribute('role','img');ico.setAttribute('aria-label','APRS '+code);
+ if(table!=='/'&&table!=='\\'){
+  const overlay=document.createElement('span');overlay.className='overlay';
+  overlay.textContent=table.toUpperCase();ico.appendChild(overlay);
+ }
+ return ico;
+}
 function updateMarkers(){
  const {w,h}=pixels(),holder=$('markers');holder.replaceChildren();
  let active=null;
- const visible=ownPosition ? [...positions.filter(s=>s.call!==ownPosition.call),
-   {...ownPosition,own:true,count:tr('vlastní'),last:tr('nastavená poloha')}] : positions;
+ const base=positions.filter(s=>s.call!==ownPosition?.call && s.call!==ownDigi?.call);
+ const visible=[...base];
+ if(ownPosition)visible.push({...ownPosition,own:true,count:tr('vlastní'),last:tr('nastavená poloha')});
+ if(ownDigi?.active)visible.push({...ownDigi,digiOwn:true,count:'–',last:tr('nastavená poloha')});
  for(const s of visible){
   if(!Number.isFinite(s.lat)||!Number.isFinite(s.lon))continue;
   const p=project(s.lat,s.lon);
   if(p.x<-120||p.x>w+120||p.y<-60||p.y>h+50)continue;
-  const pin=document.createElement('button');pin.type='button';pin.className='map-marker'+(s.own?' own':'');pin.textContent=s.call+(s.own?' · iGate':'');
-  pin.style.left=p.x+'px';pin.style.top=p.y+'px';pin.title=s.call+' · '+s.lat.toFixed(5)+', '+s.lon.toFixed(5);
+  const pin=document.createElement('button');pin.type='button';pin.className='map-marker'+(s.own?' own':s.digiOwn?' digi-own':s.position_direct===true?' direct':'');
+  const icon=aprsIcon(s.symbol);
+  if(icon){pin.classList.add('has-symbol');pin.appendChild(icon);}
+  pin.appendChild(document.createTextNode(s.call+(s.own?' · iGate':s.digiOwn?' · DIGI':'')));
+  pin.style.left=(p.x+(s.digiOwn?18:0))+'px';pin.style.top=(p.y+(s.digiOwn?-20:0))+'px';
+  pin.title=s.call+' · '+s.lat.toFixed(5)+', '+s.lon.toFixed(5)+' · '+
+            (s.position_direct===true?'DIRECT':s.position_direct===false?'VIA DIGI':'')+' · '+
+            (s.distance_km==null?'':`${s.distance_km} km / ${s.bearing_deg??'—'}°`);
   pin.addEventListener('click',e=>{e.stopPropagation();chosen=chosen===s.call?null:s.call;updateMarkers();});
   if(s.call===chosen){pin.classList.add('active');active={p,s};}
   holder.appendChild(pin);
@@ -259,7 +346,12 @@ function updateMarkers(){
   pop.style.top=clamp(p.y,120,h-20)+'px';
   const close=document.createElement('button');close.textContent='×';close.title=tr('Zavřít');close.addEventListener('click',()=>{chosen=null;updateMarkers();});pop.appendChild(close);
   const strong=document.createElement('strong');strong.textContent=s.call;pop.appendChild(strong);
-  for(const line of [`GPS: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`,`${tr('Pakety')}: ${s.count}`,`${tr('Poslední')}: ${s.last}`]){
+  for(const line of [`GPS: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`,
+      `${tr('Pakety')}: ${s.count}`,
+      ...(s.direct==null?[]:[s.direct?'DIRECT':'VIA DIGI']),
+      ...(s.distance_km==null?[]:[`${s.distance_km.toFixed(1)} km / ${s.bearing_deg==null?'—':s.bearing_deg.toFixed(0)+'°'} ${s.compass_en||''}`]),
+      `${tr('Poslední')}: ${s.last}`,
+      ...(s.symbol?[`APRS symbol: ${s.symbol}`]:[])]){
    const row=document.createElement('div');row.textContent=line;pop.appendChild(row);
   }
   holder.appendChild(pop);
@@ -284,7 +376,10 @@ function renderStations(){
  const term=$('search').value.trim().toUpperCase(),out=$('stationrows');out.replaceChildren();
  for(const s of positions.filter(s=>s.call.toUpperCase().includes(term)).slice(0,180)){
   const tr=document.createElement('tr');
-  for(const str of [s.call,s.count,s.last?.slice(11,19)||'—']){
+  if(s.direct===true&&!s.is_object)tr.classList.add('station-direct');
+  const route=s.direct===true?'DIRECT':s.direct===false?'VIA':'—';
+  const az=s.bearing_deg==null?'—':`${s.bearing_deg.toFixed(0)}° ${s.compass_en||''}`;
+  for(const str of [s.call,route,s.distance_km==null?'—':s.distance_km.toFixed(1),az,s.count]){
    const td=document.createElement('td');td.textContent=str;tr.appendChild(td);
   }
   if(Number.isFinite(s.lat)&&Number.isFinite(s.lon)){
@@ -350,8 +445,6 @@ async function refresh(){
   const response=await fetch(authPath('/api/state'),{cache:'no-store'});
   if(!response.ok)throw new Error('HTTP '+response.status);
   const st=await response.json();
-  $('healthbanner').hidden=!st.health?.warning;
-  $('healthbanner').textContent=st.health?.warning?tr(st.health.warning):'';
   $('rx').textContent=st.rx;$('stations').textContent=st.station_count;
   $('positions').textContent=st.position_count;$('gated').textContent=st.igate_sent;$('tx').textContent=st.tx_requests;
   $('digi_tx').textContent=st.digi?.tx_written||0;$('beacons').textContent=st.beacons_sent||0;
@@ -360,13 +453,21 @@ async function refresh(){
   $('digi').classList.toggle('off',!st.digi?.enabled);
   $('rf').classList.toggle('off',!st.rf_status.includes('Připojeno'));
   $('igate').classList.toggle('off',!st.igate_status.startsWith('Online'));
-  positions=st.stations.sort((a,b)=>b.last.localeCompare(a.last));ownPosition=st.own_position||null;
+  positions=st.stations.sort((a,b)=>b.last.localeCompare(a.last));
+  ownPosition=st.own_position||null;ownDigi=st.digi_position||null;
+  const met=st.telemetry||{};
+  $('rx15').textContent=met.rx_packets??0;$('tx15').textContent=met.tx_packets??0;
+  $('unique15').textContent=met.unique_stations??0;
+  $('avg15').textContent=met.avg_distance_km===null||met.avg_distance_km===undefined?'–':met.avg_distance_km;
+  $('dx15').textContent=met.dx_max_km===null||met.dx_max_km===undefined?'–':met.dx_max_km;
+  $('gate15').textContent=met.igate_forwarded??0;$('digi15').textContent=met.digi_tx??0;
   renderStations();renderMap(false);
   if(firstPosition&&(positions.some(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon))||ownPosition)){
-    fitStations([...positions,...(ownPosition?[ownPosition]:[])]);firstPosition=false;}
+    fitStations([...positions,...(ownPosition?[ownPosition]:[]),...(ownDigi?.active?[ownDigi]:[])]);firstPosition=false;}
   const rows=$('rows');rows.replaceChildren();
   for(const item of st.history.slice(0,100)){
    const tr=document.createElement('tr');
+   if(item.direct===true&&!item.demo)tr.classList.add('packet-direct');
    for(const str of [item.time?.slice(11,19)||'—',item.source+(item.demo?' [DEMO]':''),item.kind,item.path,item.summary]){
     const td=document.createElement('td');td.textContent=str||'';tr.appendChild(td);
    }

@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from aprs_geo import distance_bearing
 
 FEND, FESC, TFEND, TFESC = 0xC0, 0xDB, 0xDC, 0xDD
 BLOCKED = {"TCPIP", "TCPXX", "NOGATE", "RFONLY"}
@@ -39,7 +40,7 @@ def encode_ui_packet(source: str, destination: str, path: str, payload: str) -> 
     info = payload.encode("ascii", errors="strict")
     if not info or len(info) > 100 or any(c < 32 or c > 126 for c in info):
         raise ValueError("Obsah musí mít 1–100 tisknutelných ASCII znaků.")
-    if not info.startswith((b">", b"!", b"=", b"@", b"/", b":", b";", b")")):
+    if not info.startswith((b">", b"!", b"=", b"@", b"/", b":", b";", b"T#")):
         raise ValueError("Obsah musí začínat typem APRS (například > pro status).")
     addresses = [destination, source] + hops
     result = b"".join(address_bytes(s, last=i == len(addresses)-1)
@@ -64,13 +65,109 @@ def _base91(value: bytes) -> int | None:
     return result
 
 
-def parse_position(info: bytes, destination: str = "") -> dict[str, Any] | None:
-    """Map coords: uncompressed, compressed, Mic-E; APRS objects/items.
+def _nmea_coordinate(raw: str, hemisphere: str, latitude: bool) -> float | None:
+    """NMEA DDMM.mmmm or DDDMM.mmmm, with a valid hemisphere and degrees."""
+    deg_digits=2 if latitude else 3
+    hemi_valid='NS' if latitude else 'EW'
+    if (hemisphere not in hemi_valid or not raw or
+            not re.fullmatch(r'\d{'+str(deg_digits+2)+r',}\.\d+', raw)):
+        return None
+    integer, fract = raw.split('.',1)
+    if len(integer) != deg_digits + 2:
+        return None
+    degrees, minutes=int(integer[:deg_digits]),float(integer[deg_digits:]+'.'+fract)
+    limit=90 if latitude else 180
+    if degrees>limit or not 0<=minutes<60 or (degrees==limit and minutes!=0):
+        return None
+    value=degrees+minutes/60
+    return -value if hemisphere in 'SW' else value
 
-    Unknown/ambiguous variants intentionally do not generate coordinates.
+
+def _nmea_position(info: bytes) -> dict[str, Any] | None:
+    """APRS $GPRMC/$GNRMC, $GPGGA and $GPGLL GPS positions.
+
+    A present NMEA checksum must be correct. No fix -> no map marker.
+    """
+    if not info.startswith(b'$') or len(info)>200:
+        return None
+    try:
+        text=info.decode('ascii').strip()
+    except UnicodeDecodeError:
+        return None
+    if not text.startswith('$'):
+        return None
+    if '*' in text:
+        body,cs=text[1:].split('*',1)
+        if not re.fullmatch(r'[0-9A-Fa-f]{2}',cs):
+            return None
+        calculated=0
+        for ch in body:calculated ^= ord(ch)
+        if calculated!=int(cs,16):return None
+    else:body=text[1:]
+    fields=body.split(',')
+    if not fields or not re.fullmatch(r'[A-Z]{2}(?:RMC|GGA|GLL)',fields[0]):return None
+    typ=fields[0][-3:]
+    try:
+        if typ=='RMC':
+            if len(fields)<7 or fields[2]!='A':return None
+            lat_raw,ns,lon_raw,ew=fields[3:7]
+        elif typ=='GGA':
+            if len(fields)<7 or not fields[6].isdigit() or int(fields[6])<=0:return None
+            lat_raw,ns,lon_raw,ew=fields[2:6]
+        else:
+            if len(fields)<7 or fields[6]!='A':return None
+            lat_raw,ns,lon_raw,ew=fields[1:5]
+    except (ValueError,IndexError):return None
+    lat=_nmea_coordinate(lat_raw,ns,True)
+    lon=_nmea_coordinate(lon_raw,ew,False)
+    if lat is None or lon is None:return None
+    return dict(lat=round(lat,6),lon=round(lon,6),format='NMEA '+typ,
+                label=None,kind='stanice')
+
+
+def _third_party_position(info: bytes) -> dict[str, Any] | None:
+    """Position encapsulated as }SRC>DST,PATH:payload (not DIRECT RF)."""
+    if not info.startswith(b'}') or len(info)>512:
+        return None
+    try:
+        header,inner=info[1:].split(b':',1)
+        origin,remainder=header.split(b'>',1)
+        source=origin.decode('ascii').upper()
+        dest=remainder.split(b',',1)[0].decode('ascii').upper()
+    except (ValueError,UnicodeDecodeError):
+        return None
+    if not CALL_RE.fullmatch(source) or not re.fullmatch(r'[A-Z0-9]{1,6}(?:-\d{1,2})?',dest):
+        return None
+    if inner.startswith(b'}'):return None
+    position=parse_position(inner,dest)
+    if position:
+        position['source']=source
+        position['third_party']=True
+        position['format']='3rd-party '+position['format']
+    return position
+
+
+def _symbol_from_bytes(table: int, glyph: int) -> str | None:
+    """APRS table/code pair; overlays use the table byte in place of backslash."""
+    valid_table = table in (ord('/'), ord('\\')) or (
+        ord('0') <= table <= ord('9') or ord('A') <= table <= ord('Z')
+        or ord('a') <= table <= ord('z'))
+    return chr(table) + chr(glyph) if valid_table and 33 <= glyph <= 126 else None
+
+
+def parse_position(info: bytes, destination: str = "") -> dict[str, Any] | None:
+    """Position-bearing APRS types: normal, compressed, Mic-E, objects,
+    items, NMEA GPS sentences and third-party nested positions.
+
+    No coordinates are fabricated for status/messages/telemetry or ambiguous
+    and malformed positions.
     """
     if not info:
         return None
+    if info.startswith(b'$'):
+        return _nmea_position(info)
+    if info.startswith(b'}'):
+        return _third_party_position(info)
     data = info
     kind = "stanice"
     label = None
@@ -98,7 +195,7 @@ def parse_position(info: bytes, destination: str = "") -> dict[str, Any] | None:
                         and (la_deg < 90 or la_min == 0) and (lo_deg < 180 or lo_min == 0)):
                     lat = (la_deg + la_min / 60) * (-1 if lat_match[3] == b"S" else 1)
                     lon = (lo_deg + lo_min / 60) * (-1 if lon_match[3] == b"W" else 1)
-                    return dict(lat=round(lat, 6), lon=round(lon, 6), format="nekomprimovaná", label=label, kind=kind)
+                    return dict(lat=round(lat, 6), lon=round(lon, 6), format="nekomprimovaná", label=label, kind=kind, symbol=_symbol_from_bytes(p[8], p[18]))
         # An uncompressed report starts with digits; never reinterpret an invalid
         # DDMM.mmN report as compressed coordinates (would put bogus pins on map).
         if len(p) >= 10 and (p[0] in b"/\\" or p[0] in b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
@@ -106,7 +203,7 @@ def parse_position(info: bytes, destination: str = "") -> dict[str, Any] | None:
             if a is not None and b is not None and 33 <= p[9] <= 126:
                 lat, lon = 90 - a / 380926.0, -180 + b / 190463.0
                 if -90 <= lat <= 90 and -180 <= lon <= 180:
-                    return dict(lat=round(lat, 6), lon=round(lon, 6), format="komprimovaná", label=label, kind=kind)
+                    return dict(lat=round(lat, 6), lon=round(lon, 6), format="komprimovaná", label=label, kind=kind, symbol=_symbol_from_bytes(p[0], p[9]))
 
     if info[:1] in (b"'", b"`") and len(info) >= 9:
         dest = destination.split("-", 1)[0].upper().ljust(6)
@@ -131,7 +228,7 @@ def parse_position(info: bytes, destination: str = "") -> dict[str, Any] | None:
                     lat = (lat_deg + lat_mins/60) * (1 if "P" <= dest[3] <= "Y" else -1)
                     lon = (lon_deg + (lon_min + lon_hund/100)/60) * (-1 if "P" <= dest[5] <= "Y" else 1)
                     if -90 <= lat <= 90 and -180 <= lon <= 180:
-                        return dict(lat=round(lat, 6), lon=round(lon, 6), format="Mic-E", label=label, kind=kind)
+                        return dict(lat=round(lat, 6), lon=round(lon, 6), format="Mic-E", label=label, kind=kind, symbol=_symbol_from_bytes(info[8], info[7]))
     return None
 
 
@@ -212,8 +309,16 @@ class MonitorState:
         self.rf_status = "Odpojeno"
         self.start = datetime.now().astimezone().isoformat(timespec="seconds")
         self.own_position = None
+        self.digi_position = None
+        self.telemetry = {}
         self.digi = {"enabled":False,"last_action":"Vypnuto","tx_written":0,"pending":0}
         self.beacons_sent = 0
+
+    @staticmethod
+    def _new_station(call):
+        return dict(call=call,count=0,last='',lat=None,lon=None,kind='',summary='',
+                    direct=None,position_direct=None,direct_count=0,via_count=0,
+                    is_object=False,source_call=None,position_format=None,symbol=None)
 
     def add(self, packet):
         with self.lock:
@@ -221,31 +326,56 @@ class MonitorState:
             else: self.rx += 1
             self.type_counts[packet.kind] += 1
             self.history.appendleft(dict(time=packet.timestamp, source=packet.source,
-                                         destination=packet.destination, path=packet.path,
-                                         kind=packet.kind, summary=packet.summary,
-                                         demo=bool(packet.simulated), gate=getattr(packet,"gate", "")))
-            if packet.source == "?" or packet.simulated:
+                                         destination=packet.destination,path=packet.path,
+                                         kind=packet.kind,summary=packet.summary,
+                                         direct=packet.heard_direct,
+                                         demo=bool(packet.simulated),gate=getattr(packet,'gate',''),
+                                         payload=getattr(packet,'payload','')[:260],
+                                         hex_data=getattr(packet,'hex_data','')[:1200]))
+            if packet.source == '?' or packet.simulated:
                 return
-            entry = self.stations.setdefault(packet.source, dict(call=packet.source, count=0, last="",
-                                                                lat=None, lon=None, kind="", summary=""))
-            entry["count"] += 1; entry["last"] = packet.timestamp
-            entry["kind"] = packet.kind; entry["summary"] = packet.summary[:180]
+            entry=self.stations.setdefault(packet.source,self._new_station(packet.source))
+            entry['count']+=1;entry['last']=packet.timestamp
+            entry['kind']=packet.kind;entry['summary']=packet.summary[:180]
+            if packet.heard_direct is not None:
+                entry['direct']=packet.heard_direct
+                entry['direct_count' if packet.heard_direct else 'via_count']+=1
             if packet.latitude is not None and packet.longitude is not None:
-                # Object names are separate map markers but preserve source callsign.
-                key = packet.position_label or packet.source
-                target = self.stations.setdefault(key, dict(call=key, count=0, last="",lat=None,lon=None,kind="",summary=""))
-                if key != packet.source:
-                    target["count"] += 1
-                target.update(last=packet.timestamp, lat=packet.latitude, lon=packet.longitude,
-                              kind="Objekt" if key != packet.source else packet.kind, summary=packet.summary[:180])
-            # Bounded long-running state (prefer recent stations).
-            if len(self.stations) > 1000:
-                drop = min(self.stations, key=lambda k: self.stations[k]["last"])
+                # A Mic-E or compressed location belongs to the originating
+                # station. Objects are separate points and cannot be treated
+                # as stations directly heard over the air.
+                source=packet.position_source or packet.source
+                key=packet.position_label or source
+                target=self.stations.setdefault(key,self._new_station(key))
+                if key!=packet.source:
+                    target['count']+=1
+                object_point=bool(packet.position_label)
+                third_party=bool(packet.position_source)
+                position_direct=packet.heard_direct if not(object_point or third_party) else None
+                target.update(last=packet.timestamp,lat=packet.latitude,lon=packet.longitude,
+                              kind=('Objekt' if object_point else packet.kind),
+                              summary=packet.summary[:180],position_direct=position_direct,
+                              is_object=object_point,source_call=packet.source,
+                              position_format=packet.position_format)
+                if packet.symbol:
+                    target['symbol'] = packet.symbol
+                if third_party:
+                    target['direct']=False  # A nested origin was not heard directly.
+            if len(self.stations)>1000:
+                drop=min(self.stations,key=lambda k:self.stations[k]['last'])
                 del self.stations[drop]
 
     def set_own_position(self, position):
         with self.lock:
             self.own_position = dict(position) if position else None
+
+    def set_digi_position(self, position):
+        with self.lock:
+            self.digi_position = dict(position) if position else None
+
+    def set_telemetry(self, metrics):
+        with self.lock:
+            self.telemetry = dict(metrics)
 
     def update_digi(self, digi):
         with self.lock:
@@ -268,14 +398,37 @@ class MonitorState:
             if igate is not None: self.igate_status = igate
             if radio is not None: self.rf_status = radio
 
+    def _station_snapshot(self):
+        """Compute km and initial bearing from configurable iGate/DIGI QTH.
+
+        Our position is the shared QTH of the iGate and DIGI. Return None when
+        unset; never use a hardcoded map-centre as a geographic origin.
+        """
+        origin=self.own_position or self.digi_position
+        result=[]
+        for station in self.stations.values():
+            station=dict(station)
+            station.update(distance_km=None,bearing_deg=None,compass_cs='',compass_en='')
+            if (origin and origin.get('lat') is not None and origin.get('lon') is not None
+                    and station.get('lat') is not None and station.get('lon') is not None):
+                try:
+                    station.update(distance_bearing(origin['lat'],origin['lon'],station['lat'],station['lon']))
+                except (TypeError,ValueError):pass
+            result.append(station)
+        return result
+
     def snapshot(self):
         with self.lock:
-            return {"version":"1.6", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
+            return {"version":"1.8.1-rc1", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
                     "rf_status":self.rf_status, "igate_status":self.igate_status, "rx":self.rx, "demo":self.demo,
                     "tx_requests":self.tx_requests, "igate_sent":self.igate_sent,"igate_rejected":self.igate_rejected,
-                    "beacons_sent":self.beacons_sent, "own_position":self.own_position, "digi":dict(self.digi),
+                    "beacons_sent":self.beacons_sent, "own_position":self.own_position,
+                    "digi_position":self.digi_position, "telemetry":dict(self.telemetry),
+                    "digi":dict(self.digi),
                     "station_count":len(self.stations), "position_count":sum(1 for x in self.stations.values() if x["lat"] is not None),
-                    "types":dict(self.type_counts), "stations":list(self.stations.values()),"history":list(self.history)}
+                    "types":dict(self.type_counts), "stations":self._station_snapshot(),"history":list(self.history),
+                    "direct_count":sum(1 for x in self.stations.values() if x['direct'] is True),
+                    "via_count":sum(1 for x in self.stations.values() if x['direct'] is False)}
 
 
 class APRSISClient(threading.Thread):
@@ -291,6 +444,7 @@ class APRSISClient(threading.Thread):
         self.position_interval = 30*60
         self.last_beacon_at = float('-inf')
         self.last_beacon_line = None
+        self.connection_epoch = 0
 
     def configure_position(self, line: str | None, every_minutes: int = 30):
         if line and ('\r' in line or '\n' in line):
@@ -315,6 +469,19 @@ class APRSISClient(threading.Thread):
             self.emit("igate_error", "Fronta APRS-IS plná (200), rámec zahozen")
             return False
 
+    def enqueue_local(self, line: str, kind: str = 'telemetry') -> bool:
+        if kind not in ('telemetry', 'digi_beacon'):
+            raise ValueError('Unknown APRS-IS local packet type')
+        if not self.connected.is_set() or self.stop.is_set() or any(c in line for c in '\r\n'):
+            return False
+        try:
+            line.encode('ascii')
+            self.outgoing.put_nowait((time.monotonic(), line, kind))
+            return True
+        except (queue.Full, UnicodeEncodeError):
+            self.emit('igate_error', 'APRS-IS local telemetry/beacon queue full or invalid')
+            return False
+
     def run(self):
         backoff = 3
         while not self.stop.is_set():
@@ -328,7 +495,7 @@ class APRSISClient(threading.Thread):
                 # Read server banner when available, then send login.
                 try: conn.recv(2048)
                 except socket.timeout: pass
-                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 1.6\r\n"
+                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 1.7\r\n"
                 conn.sendall(login.encode("ascii"))
                 buffer = b""
                 verified = False
@@ -351,6 +518,7 @@ class APRSISClient(threading.Thread):
                     if verified: break
                 if not verified: raise ConnectionError("APRS-IS nepotvrdil ověřené přihlášení")
                 self.connected.set()
+                self.connection_epoch += 1
                 self.emit("igate_status", f"Online: {self.call} @ {self.host}:{self.port}")
                 backoff = 3
                 # Keep server socket alive and drain a few queued RF frames per cycle.
@@ -367,11 +535,16 @@ class APRSISClient(threading.Thread):
                             self.last_beacon_line = posline
                         self.emit('igate_beacon', posline[:110])
                     for _ in range(6):
-                        try: created, line = self.outgoing.get_nowait()
+                        try: event = self.outgoing.get_nowait()
                         except queue.Empty: break
+                        created, line = event[:2]
+                        kind = event[2] if len(event) == 3 else 'rf_forward'
                         if time.monotonic() - created > 60: continue
-                        conn.sendall(line.encode("latin-1") + b"\r\n")
-                        self.emit("igate_sent", line[:100])
+                        conn.sendall(line.encode('latin-1') + b'\r\n')
+                        if kind == 'rf_forward':
+                            self.emit('igate_sent', line[:100])
+                        else:
+                            self.emit('igate_local_sent', {'kind': kind, 'line': line[:110]})
                     try:
                         got = conn.recv(2048)
                         if not got: raise ConnectionError("APRS-IS odpojil spojení")
