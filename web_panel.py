@@ -322,7 +322,7 @@ class WebPanel:
         return f'http://{host}:{self.port}/?key={self.token}'
 
     def admin_url(self, host):
-        return f'http://{host}:{self.port}/control?admin={self.admin_token}'
+        return f'http://{host}:{self.port}/app'
 
 
 def local_ipv4():
