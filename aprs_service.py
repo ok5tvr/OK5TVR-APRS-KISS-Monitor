@@ -230,6 +230,12 @@ class APRSService:
                 response.put_nowait((False, str(exc)))
 
     def _execute(self, action, data):
+        # HDMI panel toggle does not touch USB, DIGI, iGate, RF, or messages.
+        if action == 'display_set':
+            if type(data.get('enabled')) is not bool:
+                raise ValueError('HDMI panel requires true/false.')
+            self.config.update({'display': {'enabled': data['enabled']}})
+            return 'HDMI panel povolen.' if data['enabled'] else 'HDMI panel vypnut.'
         # Native desktop UI uses the same service loop and the same USB port.
         if action == 'serial_disconnect':
             self.serial_enabled = False

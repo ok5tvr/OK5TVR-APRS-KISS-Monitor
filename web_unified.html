@@ -94,6 +94,14 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     </div>
     <p class="note" data-cs="Změna USB portu při ukládání bezpečně vypne aktivní iGate/DIGI. Zápis do USB KISS není důkazem skutečného RF vysílání." data-en="Saving a changed USB port safely stops active iGate/DIGI. Writing to USB KISS does not prove actual RF transmission.">Změna USB portu při ukládání bezpečně vypne aktivní iGate/DIGI. Zápis do USB KISS není důkazem skutečného RF vysílání.</p>
     <div class="message" id="rx-notice" role="status" aria-live="polite"></div>
+    <div class="toolbar" style="margin-top:8px;padding:10px;border:1px solid #335a70;border-radius:8px">
+      <label class="check" for="hdmi-display" style="flex:1">
+        <input id="hdmi-display" type="checkbox">
+        <span data-cs="Místní panel na HDMI displeji Raspberry Pi (800 × 480)" data-en="Raspberry Pi local HDMI status panel (800 × 480)">Místní panel na HDMI displeji Raspberry Pi (800 × 480)</span>
+      </label>
+      <span id="hdmi-display-status" class="message" role="status" aria-live="polite" style="margin:0"></span>
+    </div>
+    <p class="note" data-cs="Zobrazí okno na ploše Raspberry Pi. Vyžaduje spuštěné grafické prostředí a automatické přihlášení. Příjem APRS a RF provoz zůstávají nezávislé." data-en="Displays a window on the Raspberry Pi desktop. Requires an active graphical session with auto-login. APRS receive and RF operations remain independent.">Zobrazí okno na ploše Raspberry Pi. Vyžaduje spuštěné grafické prostředí a automatické přihlášení. Příjem APRS a RF provoz zůstávají nezávislé.</p>
   </div>
   <div class="metric-list">
     <div class="metric"><span>RX</span><strong id="rx-count">0</strong></div>
@@ -318,6 +326,31 @@ function renderRx(history) {
   });
   if(selectedFrame)frameDetails(selectedFrame);
 }
+let hdmiLoaded = false;
+async function loadHdmiDisplay(){
+  try {
+    const cfg = await get("/api/config");
+    $("hdmi-display").checked = !!(cfg.display && cfg.display.enabled);
+    hdmiLoaded = true;
+  }catch(e){
+    notice("hdmi-display-status",tr("Chyba načtení: ","Load error: ")+e.message);
+  }
+}
+$("hdmi-display").addEventListener("change",async()=>{
+  const wanted = $("hdmi-display").checked;
+  $("hdmi-display").disabled = true;
+  try{
+    await command("display_set",{enabled:wanted});
+    notice("hdmi-display-status",wanted?
+      tr("Zapnuto. Pokud je Raspberry přihlášené do plochy, panel se objeví.","Enabled. The panel will appear when the Raspberry desktop session is active."):
+      tr("Vypnuto.","Disabled."));
+  }catch(e){
+    $("hdmi-display").checked = !wanted;
+    notice("hdmi-display-status",tr("Chyba: ","Error: ")+e.message);
+  }finally{
+    $("hdmi-display").disabled = false;
+  }
+});
 function updateHealth(state,diag) {
   const u=$("usb-status"),i=$("is-status"),d=$("digi-status");
   u.textContent="USB: "+(state.rf_status||"—");
@@ -405,7 +438,7 @@ async function refresh() {
   }catch(e){ if(currentTab==="rx")notice("rx-notice",tr("Spojení se službou: ","Service connection: ")+e.message); }
   finally{pollBusy=false;}
 }
-reloadPorts();setLanguage(language);showTab(location.hash.slice(1)||"rx");refresh();
+reloadPorts();loadHdmiDisplay();setLanguage(language);showTab(location.hash.slice(1)||"rx");refresh();
 setInterval(refresh,3000);
 </script>
 </body>

@@ -41,6 +41,22 @@ Před aktualizací zkontroluj a případně zazálohuj nastavení: `cp -a ~/.con
 
 Zdroj grafiky: [OH7LZB/aprs.fi APRS symbols](https://github.com/hessu/aprs-symbols), podrobnosti o autorství a licencích jednotlivých ikon jsou uvedeny v [COPYRIGHT.md](https://github.com/hessu/aprs-symbols/blob/master/COPYRIGHT.md). Nepoužívej tyto značky k domněnce o potvrzení RF příjmu; jde o data přenesená v APRS paketu.
 
+## 5palcový HDMI displej 800 × 480: místní monitor příjmu
+
+Na Raspberry Pi 2 Model B (v1.1) lze volitelně zobrazit přehled přímo na připojeném HDMI displeji, například s řadičem dotyku XPT2046. Program používá lehký `tkinter`, nikoliv Chromium. Lokální okno zobrazuje připojení USB KISS, nastavený a skutečný port, stav APRS-IS a DIGI, čítače RX/TX, počet stanic, čas posledního RF příjmu a sedm posledních dekódovaných rámců včetně DIRECT/VIA.
+
+**Požadavky:** Raspberry Pi OS **Desktop** a přihlášená grafická relace (pro trvalý provoz doporučené automatické přihlášení). Raspberry Pi OS Lite samo o sobě nemá grafickou plochu; pouze připojení HDMI displeje nestačí. Pro XPT2046 dotykové ovládání je nutné případně samostatně nastavit SPI dotykový ovladač; **zobrazení obrazu po HDMI není na dotyku závislé**.
+
+Po aktualizaci:
+1. Spusť `sh install_raspberry.sh --lan` v nové složce projektu. Instalátor přidá `python3-tk` a soubor `~/.config/autostart/ok5tvr-aprs-hdmi.desktop` pro spuštění na grafické ploše.
+2. Přihlas se do desktopu Raspberry znovu nebo restartuj Raspberry (`sudo reboot`).
+3. Otevři webovou konzoli `/unified?admin=...`, na záložce **Příjem / TX** zaškrtni **Místní panel na HDMI displeji Raspberry Pi**.
+4. Do přibližně dvou sekund se na připojeném HDMI displeji zobrazí informační okno. Zrušením zaškrtnutí se skryje; nastavení zůstane uloženo i po restartu.
+
+Panel se spouští **nezávisle** na systému `ok5tvr-aprs.service`, který jako jediný používá USB KISS port. Pouze pro čtení dotazuje `http://127.0.0.1:8765/api/local-display` (port se bere z lokálního `config.json`); koncový bod je dostupný jen přes loopback a neobsahuje admin token ani hesla. Vypnutí či zavření grafického panelu nepřeruší příjem ani iGate/DIGI.
+
+Režim celé obrazovky přepne klávesa **F11**, **Esc** zobrazuje okno. Pro první nastavení rozlišení HDMI připojený panel ověř pomocí `xrandr` (X11) nebo odpovídajících nástrojů Wayland/compositoru. Displej označený 5inch HDMI Display 800 × 480 / XPT2046 se pro zobrazení připojuje HDMI a samostatné SPI piny jsou určeny pro dotyk.
+
 ## Důležité
 
 - Port 8765 a administrátorský odkaz nevystavuj přímo do internetu. Používej důvěryhodnou LAN nebo VPN s vhodně zabezpečeným přístupem.

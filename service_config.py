@@ -24,6 +24,7 @@ DEFAULT_PATH = Path.home() / '.config' / 'ok5tvr-aprs' / 'config.json'
 DEFAULT_CONFIG = {
     'serial': {'port': 'auto', 'baud': 115200, 'retry_seconds': 4},
     'web': {'port': 8765, 'lan': False},
+    'display': {'enabled': False},  # optional HDMI desktop panel; no RF side effects
     'igate': {'call': 'OK5TVR-10', 'host': 'rotate.aprs2.net', 'port': 14580,
               'autostart': False, 'symbol_table': '\\', 'symbol': '&',
               'overlay': 'R', 'telemetry_enabled': False},
@@ -98,6 +99,7 @@ def validate_config(candidate):
     w = v['web']
     w['port'] = _int(w['port'], 'Web port', 1024, 65535)
     w['lan'] = _bool(w['lan'], 'Přístup z LAN')
+    v['display']['enabled'] = _bool(v['display']['enabled'], 'HDMI panel')
     i = v['igate']
     if not isinstance(i['call'], str) or not CALL_RE.fullmatch(i['call'].upper()):
         raise ValueError('Zadej platnou AX.25 značku iGate, např. OK5TVR-10.')
