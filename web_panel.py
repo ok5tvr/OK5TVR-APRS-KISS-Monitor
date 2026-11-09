@@ -80,6 +80,39 @@ class WebPanel:
 
             def do_GET(self):
                 parsed = urlsplit(self.path)
+                # Loopback-only, read-only endpoint for the optional HDMI desktop.
+                # Never return access tokens, credentials, detailed configuration,
+                # or RF controls. This cannot be opened from the LAN.
+                if parsed.path == '/api/local-display':
+                    if self.client_address[0] not in ('127.0.0.1', '::1') or operator is None:
+                        self._respond(403, '{"error":"Pouze lokalni Raspberry panel."}')
+                        return
+                    snapshot = state.snapshot()
+                    diag = operator.diagnostics_snapshot()
+                    conf = operator.config.data
+                    frame_history = [
+                        {k: entry.get(k) for k in ('time', 'source', 'kind', 'path', 'direct', 'summary')}
+                        for entry in snapshot.get('history', [])[:8]
+                        if isinstance(entry, dict) and not entry.get('demo')
+                    ]
+                    display = {
+                        'enabled': conf.get('display', {}).get('enabled', False),
+                        'usb_connected': bool(diag.get('radio_connected')),
+                        'port_configured': conf['serial']['port'],
+                        'port_actual': diag.get('usb_port') or '',
+                        'usb_connections': diag.get('usb_connections', 0),
+                        'igate_connected': bool(diag.get('igate_connected')),
+                        'digi_enabled': bool(diag.get('digi', {}).get('enabled')),
+                        'rx': snapshot.get('rx', 0),
+                        'tx_usb': snapshot.get('tx_requests', 0),
+                        'igate_sent': snapshot.get('igate_sent', 0),
+                        'digi_tx': diag.get('digi', {}).get('tx_written', 0),
+                        'station_count': snapshot.get('station_count', 0),
+                        'last_rf_frame_utc': diag.get('last_rf_frame_utc'),
+                        'history': frame_history,
+                    }
+                    self._respond(200, json.dumps(display, ensure_ascii=False))
+                    return
                 # Public, non-sensitive local script shared by all three pages.
                 if parsed.path in ('/assets/aprs-primary.png', '/assets/aprs-secondary.png', '/assets/aprs-overlays.png'):
                     asset = _ASSET_DIR / 'assets' / parsed.path.rsplit('/', 1)[-1]
