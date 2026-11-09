@@ -199,7 +199,7 @@ const destinations = {
   map:"/map", messages:"/messages", objects:"/operations",
   igate:"/control", diagnostics:"/operations"
 };
-const auth = path => path + (path.indexOf("?") >= 0 ? "&" : "?") + "admin=" + encodeURIComponent(key);
+const auth = path => key ? path + (path.includes("?") ? "&" : "?") + "admin=" + encodeURIComponent(key) : path;
 function notice(id,text) { $(id).textContent = text; }
 function setLanguage(value) {
   language = value === "en" ? "en" : "cs";
