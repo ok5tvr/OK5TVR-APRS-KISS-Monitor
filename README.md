@@ -6,6 +6,15 @@ Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplika
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
 
+## Jednotné webové rozhraní (vývojová větev)
+
+Pro Windows i Raspberry Pi je nyní připravena **jedna přihlašovaná webová aplikace**. Otevři `http://IP_ADRESA:8765/` (na místním Windows počítači `http://127.0.0.1:8765/`), přihlas se jménem `ok5tvr` a vygenerovaným `admin_token`. Hlavní stránka ukazuje stav stanice a nabízí přehledné navigační karty: Příjem/TX, Mapa, Nastavení iGate/DIGI, Zprávy, Objekty, Telemetrie, Diagnostika. Bezpečná cookie relace brání posílání přihlašovacího tokenu v URL. Původní přímé odkazy ještě fungují pro kompatibilitu, ale nové přihlášení je doporučené. Server používá HTTP, proto port nevystavuj do internetu.
+
+- **Windows:** `spustit_web_windows.bat` nebo `spustit_sluzbu_windows.bat` (samostatné nativní okno `spustit.bat` stále existuje). Jedna služba může mít připojený USB KISS COM port pouze jednou.
+- **Raspberry Pi:** `sh install_raspberry.sh --lan`. HDMI monitor 800×480 je volitelný v Příjem/TX a potřebuje přihlášenou grafickou plochu.
+- **Přihlašovací údaje:** `secrets.json` v uživatelské `.config/ok5tvr-aprs/`, případně lokálně `python3 aprs_service.py --links`.
+- **Podrobný návod:** [README_RASPBERRY_WEB_CZ.md](README_RASPBERRY_WEB_CZ.md).
+
 ## New in 1.8.2 RC1: DIGI RF position beacon and confirmed RF telemetry
 
 - The DIGI position beacon now supports an independent APRS-IS **or RF** transport, defaulting to the original APRS-IS behavior for existing installations. With **DIGI position beacon enabled**, **RF transport selected**, **a valid GPS position**, **KISS connected** and **DIGI ON**, one DIGI position packet is queued on start, then no more often than every 30/60/120 minutes. The RF path defaults to **DIRECT**.

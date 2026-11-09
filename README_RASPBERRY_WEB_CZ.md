@@ -27,6 +27,22 @@ Před reinstalací existující služby zazálohuj soubory ve složce ~/.config/
 
 6. V Příjem / TX obnov USB porty, vyber zařízení, připoj a zkontroluj tabulku přijatých rámců. Nastavení iGate/DIGI je v příslušné záložce.
 
+## Nový jednotný web pro Windows a Raspberry Pi
+
+Nové přihlášení a hlavní přehled fungují na **obou platformách stejně**. Nejdříve se zobrazí přihlašovací stránka s uživatelským jménem `ok5tvr` (lze změnit ve `secrets.json`) a dlouhým náhodně generovaným tokenem `admin_token`. Token se nezadává do URL. Po úspěšném přihlášení prohlížeč dostane časově omezenou `HttpOnly; SameSite=Strict` cookie na 12 hodin. Změnová API vyžadují další ochrannou hlavičku a kontrolu původu požadavku. Neautorizovaný návštěvník hlavní stránky je přesměrován na `/login`. Starší přímé odkazy s tokeny zůstávají přechodně podporované pro kompatibilitu; pro nový provoz používej čistou přihlašovací adresu.
+
+**Úvodní adresa webu:** `http://IP_RASPBERRY:8765/` (Windows na stejném počítači `http://127.0.0.1:8765/`). Po přihlášení uvidíš přehled stavu USB, iGate a DIGI s čítači RX/TX, a přehledné volby **Příjem/TX, Mapa, Nastavení (iGate/DIGI), Zprávy, Objekty, Telemetrie a Diagnostika**. Stávající funkce nejsou odstraněné, jsou jen sjednocené pod jednou navigací. Přepínač lokálního HDMI panelu zůstává v Příjem/TX.
+
+Přihlašovací údaje jsou dostupné **pouze v soukromém konfiguračním souboru** `~/.config/ok5tvr-aprs/secrets.json` nebo pomocí lokálního příkazu:
+
+```bash
+python3 /opt/ok5tvr-aprs/aprs_service.py --links
+```
+
+Při aktualizaci se stávající `admin_token` zachová a pouze se doplní `web_username` (výchozí `ok5tvr`). Nikdy nezveřejňuj token, `secrets.json` ani APRS-IS passcode. Ochrana pomocí username+tokenu **nešifruje HTTP**: používej důvěryhodnou lokální síť nebo HTTPS přes VPN/reverzní proxy; nevystavuj port 8765 veřejně.
+
+**Windows:** rozbal ZIP do samostatné složky, spusť `spustit_web_windows.bat` nebo `spustit_sluzbu_windows.bat`, otevři `http://127.0.0.1:8765/`. Podmínkou je Python 3 a `pyserial`. Původní nativní GUI lze samostatně spustit `spustit.bat`, ale nesmí používat stejný COM port současně se serverem.
+
 ## Online mapa bez API klíče
 
 V záložce **Mapa** vyber **Mapa ulic (OpenStreetMap)** nebo **Tmavá mapa (OpenStreetMap)**. Oba režimy využívají dlaždice OpenStreetMap bez API klíče; tmavý režim je barevná úprava stejných dlaždic v prohlížeči. Offline mapa dál funguje i bez internetu.

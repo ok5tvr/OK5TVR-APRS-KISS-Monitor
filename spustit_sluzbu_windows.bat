@@ -1,6 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-echo OK5TVR APRS v1.8: vsechny moduly jsou v jednom okne se zalozkami.
-echo Spoustim jednotnou Windows aplikaci, bez prohlizece.
-call "%~dp0spustit.bat"
+echo OK5TVR APRS: jednotna webova konzole pro Windows i Raspberry Pi.
+echo Po spusteni otevri http://127.0.0.1:8765/
+echo Samostatny nativni monitor je stale dostupny pres spustit.bat.
+call "%~dp0spustit_headless_server_windows.bat"

@@ -34,7 +34,7 @@ window.addEventListener('ok5tvr:language',()=>{language=window.OK5TVRLocale.lang
 $('admin').href='/control?admin='+encodeURIComponent(key);$('messages').href='/messages?admin='+encodeURIComponent(key);$('map').href='/?admin='+encodeURIComponent(key);
 const q=p=>p+'?admin='+encodeURIComponent(key),msg=(cs,en)=>$('notice').textContent=language==='en'?en:cs;
 async function get(path){const r=await fetch(q(path),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);return r.json()}
-async function post(action,rest){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key},body:JSON.stringify({action,...rest})});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||r.status);return j.result}
+async function post(action,rest){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key,'X-APRS-CSRF':'1'},body:JSON.stringify({action,...rest})});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||r.status);return j.result}
 async function refresh(){try{let d=await get('/api/diagnostics');$('health').textContent='';
   const t=d.telemetry||{}, cs=language!=='en';
   const val=v=>v===null||v===undefined?'—':String(v);

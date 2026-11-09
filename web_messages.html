@@ -116,7 +116,7 @@ function setPath(v){const pre=['','WIDE1-1','WIDE2-1','WIDE1-1,WIDE2-1'];
  else{$('path_preset').value='custom';$('custom_path_wrap').style.display='block';$('custom_path').value=v;}}
 $('path_preset').onchange=()=>{$('custom_path_wrap').style.display=$('path_preset').value==='custom'?'block':'none';};
 $('body').oninput=()=>{$('counter').textContent=Array.from($('body').value).length+' / 67 ASCII '+tr('znaků');};
-async function request(action,data){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key},body:JSON.stringify({action,...data})});
+async function request(action,data){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key,'X-APRS-CSRF':'1'},body:JSON.stringify({action,...data})});
  const result=await r.json();if(!r.ok||!result.ok)throw new Error(result.error||'HTTP '+r.status);return result.result;}
 function appendButton(node,name,fn){const button=elem('button','',tr(name));button.onclick=fn;node.append(button);}
 function renderHeard(){

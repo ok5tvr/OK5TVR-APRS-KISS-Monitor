@@ -152,7 +152,6 @@ class APRSService:
     # service thread. Never directly mutate running RF/IGate state from HTTP.
     def public_config(self):
         result = self.config.public_view()
-        result['viewer_token'] = self.config.secrets['viewer_token']
         return result
 
     def messages_snapshot(self):
@@ -868,7 +867,9 @@ def main():
         host = local_ipv4() if conf.data['web']['lan'] or args.lan else '127.0.0.1'
         for name, url in conf.links(host).items():
             print(f'{name}: {url}')
-        print('Odkaz ADMIN poskytuje plnou správu i možnost RF TX – nesdílej jej.')
+        print('Uživatelské jméno:', conf.secrets['web_username'])
+        print('Přístupový token:', conf.secrets['admin_token'])
+        print('Tyto údaje jsou citlivé. Ukládej je bezpečně, nezveřejňuj a nepoužívej přímý HTTP přístup z internetu.')
         return
     service = APRSService(conf, force_lan=args.lan)
     def halt(*_):

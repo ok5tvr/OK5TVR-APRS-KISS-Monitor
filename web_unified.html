@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>OK5TVR APRS KISS · Raspberry Pi Web</title>
+<title>OK5TVR APRS KISS · Webová konzole</title>
 <style>
 :root {color-scheme:dark;--bg:#101925;--panel:#1a2a3b;--panel2:#233a50;--border:#3a5166;--ink:#e8f4ff;--muted:#afc7d9;--accent:#55ddc5;--amber:#ffd28a;--blue:#93cced}
 * {box-sizing:border-box}
@@ -57,31 +57,70 @@ tbody tr.clickable:hover,tbody tr.chosen {background:#27516b}
 .check label {margin:0;font-size:14px;color:inherit}
 .message {margin:10px 0;white-space:pre-wrap;color:var(--muted);min-height:20px}
 .frame {width:100%;border:0;background:var(--bg);min-height:720px;display:block}
+.home-intro{padding:24px;background:linear-gradient(110deg,#1b3d4b,#163149);border:1px solid #416e76;border-radius:14px;margin-bottom:15px}
+.home-intro h1{color:#eafff9;margin:0 0 7px}
+.home-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin:14px 0}
+.home-link{display:block;min-height:122px;padding:18px;background:var(--panel);border:1px solid #46677e;border-radius:12px;text-align:left;color:var(--ink)}
+.home-link:hover,.home-link:focus-visible{border-color:var(--accent);background:#243e50}
+.home-link strong{font-size:17px;display:block;margin-bottom:6px;color:var(--accent)}
+.home-link span{display:block;font-size:12px;line-height:1.5;color:var(--muted)}
+.section-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#logout{background:#3d384b;color:#ffe7df}
+nav.tabs{position:sticky;top:0;z-index:9;overflow-x:auto}
+
 footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
 @media(max-width:750px){main{padding:9px}.two{grid-template-columns:1fr}header{padding:13px}nav.tabs{padding:7px}.tabs button{padding:9px}.panel{padding:12px}.metric-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
 <header>
-  <div><div class="brand"><b>OK5TVR</b> APRS KISS Monitor</div><div class="sub" data-cs="Raspberry Pi / Web · společný backend s Windows v1.8.2" data-en="Raspberry Pi / Web · shared Windows v1.8.2 backend">Raspberry Pi / Web · společný backend s Windows v1.8.2</div></div>
+  <div><div class="brand"><b>OK5TVR</b> APRS KISS Monitor</div><div class="sub" data-cs="Jednotné webové ovládání · Windows / Raspberry Pi" data-en="Unified web console · Windows / Raspberry Pi">Jednotné webové ovládání · Windows / Raspberry Pi</div></div>
   <div class="health">
     <span id="usb-status" class="pill">USB: —</span>
     <span id="is-status" class="pill">APRS-IS: —</span>
     <span id="digi-status" class="pill">DIGI: —</span>
     <select id="language" aria-label="Language"><option value="cs">Čeština</option><option value="en">English</option></select>
+    <button id="logout" type="button" data-cs="Odhlásit" data-en="Log out">Odhlásit</button>
   </div>
 </header>
 <nav class="tabs" role="tablist" aria-label="APRS Monitor">
+  <button type="button" data-tab="home" role="tab" aria-selected="true" data-cs="Přehled" data-en="Overview">Přehled</button>
   <button type="button" data-tab="rx" role="tab" aria-selected="true" data-cs="Příjem / TX" data-en="Receive / TX">Příjem / TX</button>
   <button type="button" data-tab="map" role="tab" aria-selected="false" data-cs="Mapa" data-en="Map">Mapa</button>
   <button type="button" data-tab="messages" role="tab" aria-selected="false" data-cs="Zprávy" data-en="Messages">Zprávy</button>
   <button type="button" data-tab="objects" role="tab" aria-selected="false" data-cs="Objekty" data-en="Objects">Objekty</button>
-  <button type="button" data-tab="igate" role="tab" aria-selected="false" data-cs="iGate / DIGI" data-en="iGate / DIGI">iGate / DIGI</button>
+  <button type="button" data-tab="igate" role="tab" aria-selected="false" data-cs="Nastavení / iGate / DIGI" data-en="Settings / iGate / DIGI">Nastavení / iGate / DIGI</button>
   <button type="button" data-tab="telemetry" role="tab" aria-selected="false" data-cs="Telemetrie" data-en="Telemetry">Telemetrie</button>
   <button type="button" data-tab="diagnostics" role="tab" aria-selected="false" data-cs="Diagnostika / deník" data-en="Diagnostics / log">Diagnostika / deník</button>
 </nav>
 <main>
-<section class="view" id="tab-rx">
+<section class="view" id="tab-home">
+  <div class="home-intro">
+    <div class="section-row"><div>
+      <h1 data-cs="Přehled stanice" data-en="Station overview">Přehled stanice</h1>
+      <p class="muted" data-cs="Aktuální provoz USB KISS, APRS-IS a DIGI. Pro práci přejdi na jednu z následujících stránek."
+         data-en="Live USB KISS, APRS-IS and DIGI status. Open one of the pages below to manage your station.">Aktuální provoz USB KISS, APRS-IS a DIGI. Pro práci přejdi na jednu z následujících stránek.</p>
+    </div><span class="pill" id="home-clock">—</span></div>
+    <div class="metric-list">
+      <div class="metric"><span>RX rámce</span><strong id="home-rx">0</strong></div>
+      <div class="metric"><span>TX USB</span><strong id="home-tx">0</strong></div>
+      <div class="metric"><span>RF → APRS-IS</span><strong id="home-gate">0</strong></div>
+      <div class="metric"><span>DIGI TX</span><strong id="home-digi">0</strong></div>
+      <div class="metric"><span>Stanice</span><strong id="home-stations">0</strong></div>
+    </div>
+    <div id="home-status" class="muted">Načítám stav stanice…</div>
+  </div>
+  <div class="home-links">
+    <button class="home-link" data-open="rx"><strong>01 · Příjem / TX</strong><span>USB KISS, poslední rámce, dekódování AX.25 a volba místního HDMI panelu.</span></button>
+    <button class="home-link" data-open="map"><strong>02 · APRS mapa</strong><span>Online a offline mapy, APRS symboly, polohy a přímý příjem.</span></button>
+    <button class="home-link" data-open="igate"><strong>03 · Nastavení</strong><span>iGate, DIGI, USB, GPS, symboly, majáky a připojení k APRS-IS.</span></button>
+    <button class="home-link" data-open="messages"><strong>04 · Zprávy</strong><span>Inbox, Outbox, potvrzení ACK/REJ a odeslání RF zpráv.</span></button>
+    <button class="home-link" data-open="objects"><strong>05 · APRS objekty</strong><span>Správa objektů a ruční vysílání polohových rámců.</span></button>
+    <button class="home-link" data-open="telemetry"><strong>06 · Telemetrie</strong><span>Statistiky za posledních 15 minut a nastavení T#.</span></button>
+    <button class="home-link" data-open="diagnostics"><strong>07 · Diagnostika</strong><span>Provozní deník, chyby USB a APRS-IS, export a zálohy.</span></button>
+  </div>
+</section>
+<section class="view" id="tab-rx" hidden>
   <div class="panel">
     <h2 data-cs="USB KISS · Quansheng UV-K1(8)" data-en="USB KISS · Quansheng UV-K1(8)">USB KISS · Quansheng UV-K1(8)</h2>
     <div class="toolbar">
@@ -155,12 +194,12 @@ const tr = (cs,en) => language === "en" ? en : cs;
 let language = window.OK5TVRLocale ? window.OK5TVRLocale.language : "cs";
 let currentTab = "rx", lastState = {}, lastDiagnostics = {}, rxHistory = [];
 let rxSignature = "", selectedFrame = null, configLoaded = false, pollBusy = false;
-const tabIds = ["rx","map","messages","objects","igate","telemetry","diagnostics"];
+const tabIds = ["home","rx","map","messages","objects","igate","telemetry","diagnostics"];
 const destinations = {
-  map:"/", messages:"/messages", objects:"/operations",
+  map:"/map", messages:"/messages", objects:"/operations",
   igate:"/control", diagnostics:"/operations"
 };
-const auth = path => path + (path.indexOf("?") >= 0 ? "&" : "?") + "admin=" + encodeURIComponent(key);
+const auth = path => key ? path + (path.includes("?") ? "&" : "?") + "admin=" + encodeURIComponent(key) : path;
 function notice(id,text) { $(id).textContent = text; }
 function setLanguage(value) {
   language = value === "en" ? "en" : "cs";
@@ -236,6 +275,10 @@ function resizeFrame(frame) {
   }catch(_){}
 }
 document.querySelectorAll("nav.tabs button").forEach(btn => btn.addEventListener("click",() => showTab(btn.dataset.tab)));
+document.querySelectorAll("[data-open]").forEach(btn=>btn.addEventListener("click",()=>showTab(btn.dataset.open)));
+$("logout").addEventListener("click",async()=>{
+ try{await fetch("/api/logout",{method:"POST",headers:{"X-APRS-CSRF":"1"}});}finally{location.replace("/login");}
+});
 $("language").addEventListener("change",e=>setLanguage(e.target.value));
 async function get(path) {
   const r=await fetch(auth(path),{cache:"no-store"});
@@ -244,7 +287,7 @@ async function get(path) {
 }
 async function command(action,data={}) {
   const r=await fetch("/api/control",{
-    method:"POST",headers:{"Content-Type":"application/json","X-APRS-Admin":key},
+    method:"POST",headers:{"Content-Type":"application/json","X-APRS-Admin":key,"X-APRS-CSRF":"1"},
     body:JSON.stringify({action,...data})
   });
   const result=await r.json();
@@ -352,6 +395,17 @@ $("hdmi-display").addEventListener("change",async()=>{
   }
 });
 function updateHealth(state,diag) {
+  $("home-rx").textContent=String(state.rx||0);
+  $("home-tx").textContent=String(state.tx_requests||0);
+  $("home-gate").textContent=String(state.igate_sent||0);
+  $("home-digi").textContent=String(diag.digi?.tx_written||0);
+  $("home-stations").textContent=String(state.station_count||0);
+  $("home-clock").textContent=new Date().toLocaleString(language==="en"?"en-GB":"cs-CZ");
+  $("home-status").textContent="USB: "+(diag.usb_port||"odpojeno")+
+     "  |  "+(diag.radio_connected?"Připojeno":"Odpojeno")+
+     "  |  APRS-IS: "+(diag.igate_connected?"online":"offline")+
+     "  |  DIGI: "+(diag.digi?.enabled?"ON":"OFF");
+
   const u=$("usb-status"),i=$("is-status"),d=$("digi-status");
   u.textContent="USB: "+(state.rf_status||"—");
   i.textContent="APRS-IS: "+(state.igate_status||"—");
@@ -438,7 +492,7 @@ async function refresh() {
   }catch(e){ if(currentTab==="rx")notice("rx-notice",tr("Spojení se službou: ","Service connection: ")+e.message); }
   finally{pollBusy=false;}
 }
-reloadPorts();loadHdmiDisplay();setLanguage(language);showTab(location.hash.slice(1)||"rx");refresh();
+reloadPorts();loadHdmiDisplay();setLanguage(language);showTab(location.hash.slice(1)||"home");refresh();
 setInterval(refresh,3000);
 </script>
 </body>

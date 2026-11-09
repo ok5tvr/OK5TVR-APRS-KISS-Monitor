@@ -169,7 +169,7 @@ class HeadlessIntegrationTests(unittest.TestCase):
             return json.load(e)
 
     def test_api_auth_config_and_browser(self):
-        with urlopen(self.base+'/') as r:
+        with urlopen(self.base+'/map') as r:
             self.assertIn(b'Offline mapa', r.read())
         with self.assertRaises(HTTPError) as e:
             urlopen(self.base+'/control')
@@ -181,7 +181,7 @@ class HeadlessIntegrationTests(unittest.TestCase):
         with urlopen(self.base+'/api/config?admin='+self.conf.secrets['admin_token']) as r:
             view=json.load(r)
         self.assertNotIn('igate_passcode',str(view))
-        self.assertEqual(view['viewer_token'],self.conf.secrets['viewer_token'])
+        self.assertNotIn('viewer_token', view)
         self.assertIn('error', self.api('digi_on', expect=403, auth=False))
         self.assertEqual(self.api('digi_on', expect=400)['ok'],False)
         self.assertEqual(self.api('save',config={'digi':{'autostart':True}},expect=400)['ok'],False)
