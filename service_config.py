@@ -247,10 +247,14 @@ class ServiceConfig:
         else:
             secret_data = {}
         self.secrets = {
+            'web_username': secret_data.get('web_username', 'ok5tvr'),
             'viewer_token': secret_data.get('viewer_token') or secrets.token_urlsafe(32),
             'admin_token': secret_data.get('admin_token') or secrets.token_urlsafe(32),
             'igate_passcode': str(secret_data.get('igate_passcode', '')),
         }
+        username = self.secrets['web_username']
+        if not isinstance(username, str) or not re.fullmatch(r'[A-Za-z0-9_-]{3,32}', username):
+            raise ValueError('Neplatne prihlasovaci jmeno webu (3-32 znaku).')
         _atomic_json(self.secret_path, self.secrets)
         return self
 
@@ -273,7 +277,9 @@ class ServiceConfig:
 
     def links(self, host='127.0.0.1'):
         prefix=f'http://{host}:{self.data["web"]["port"]}'
-        return {'map': prefix+'/?key='+self.secrets['viewer_token'],
-                'admin':prefix+'/control?admin='+self.secrets['admin_token'],
+        return {'web': prefix+'/',
+                'login': prefix+'/login',
+                'map': prefix+'/map?key='+self.secrets['viewer_token'],
+                'admin':prefix+'/app',
                 'messages':prefix+'/messages?admin='+self.secrets['admin_token'],
                 'operations':prefix+'/operations?admin='+self.secrets['admin_token']}
