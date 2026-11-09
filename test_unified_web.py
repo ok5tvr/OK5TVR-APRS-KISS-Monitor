@@ -16,7 +16,7 @@ class DummyState:
 
 class DummyOperator:
     def __init__(self):
-        self.config = SimpleNamespace(data={"serial": {"port": "auto"}})
+        self.config = SimpleNamespace(data={"serial": {"port": "auto"}, "display": {"enabled": True}})
 
     def public_config(self):
         return {}
@@ -60,6 +60,23 @@ class UnifiedWebTest(unittest.TestCase):
         for legacy in ("/", "/control", "/messages", "/operations"):
             code, _ = self.fetch(legacy + "?admin=admin-test")
             self.assertEqual(code, 200)
+
+    def test_hdmi_toggle_exists_in_unified_web(self):
+        status, content = self.fetch("/unified?admin=admin-test")
+        self.assertEqual(status, 200)
+        self.assertIn('id="hdmi-display"', content)
+        self.assertIn('display_set', content)
+
+    def test_hdmi_status_endpoint_is_local_and_contains_no_tokens(self):
+        status, content = self.fetch("/api/local-display")
+        self.assertEqual(status, 200)
+        data = json.loads(content)
+        self.assertTrue(data["enabled"])
+        self.assertNotIn("admin", content)
+        self.assertNotIn("passcode", content)
+        self.assertNotIn("viewer", content)
+        self.assertEqual(data["port_configured"], "auto")
+        self.assertIsInstance(data["history"], list)
 
     def test_serial_ports_api(self):
         code, body = self.fetch("/api/ports?admin=admin-test")
