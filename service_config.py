@@ -281,5 +281,5 @@ class ServiceConfig:
                 'login': prefix+'/login',
                 'map': prefix+'/map?key='+self.secrets['viewer_token'],
                 'admin':prefix+'/app',
-                'messages':prefix+'/messages?admin='+self.secrets['admin_token'],
-                'operations':prefix+'/operations?admin='+self.secrets['admin_token']}
+                'messages':prefix+'/app#messages',
+                'operations':prefix+'/app#objects'}
