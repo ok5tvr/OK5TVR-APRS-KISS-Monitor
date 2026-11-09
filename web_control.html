@@ -110,7 +110,7 @@ async function fetchConfig(){
 async function api(action,data={}){
  try{
   const r=await fetch('/api/control',{
-    method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key},body:JSON.stringify({action,...data})
+    method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key,'X-APRS-CSRF':'1'},body:JSON.stringify({action,...data})
   });const v=await r.json();if(!r.ok||!v.ok)throw Error(v.error||'HTTP '+r.status);
   notify(typeof v.result==='string'?v.result:JSON.stringify(v.result,null,2));
  }catch(e){notify(tr('CHYBA: ')+e.message)}
