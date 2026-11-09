@@ -188,6 +188,21 @@ class HeadlessIntegrationTests(unittest.TestCase):
         self.assertEqual(self.api('save',config={'digi':{'delay_s':0.0}})['ok'],True)
         self.assertEqual(self.api('tx_test',expect=400)['ok'],False)
 
+    def test_hdmi_display_toggle_has_no_radio_side_effects(self):
+        self.assertFalse(self.conf.data['display']['enabled'])
+        before = self.conf.data['igate']['autostart'], self.conf.data['digi']['autostart']
+        self.assertTrue(self.service.radio_ready)
+        self.assertEqual(self.api('display_set', enabled=True)['ok'], True)
+        self.assertTrue(self.conf.data['display']['enabled'])
+        self.assertEqual((self.conf.data['igate']['autostart'],
+                          self.conf.data['digi']['autostart']), before)
+        self.assertTrue(self.service.radio_ready)
+        self.assertTrue(FakeSerial.outgoing.empty())
+        self.assertEqual(self.api('display_set', enabled="yes", expect=400)['ok'], False)
+        self.assertTrue(self.conf.data['display']['enabled'])
+        self.assertEqual(self.api('display_set', enabled=False)['ok'], True)
+        self.assertFalse(self.conf.data['display']['enabled'])
+
     def test_usb_rx_then_manual_tx_and_digi_on_off(self):
         raw=encode_ui_packet('OK5ABC-7','APRS','WIDE1-1','!4944.30N/01322.42E>TEST RF')
         FakeSerial.incoming.put(encode_kiss_data(raw))
