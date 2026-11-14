@@ -175,6 +175,7 @@ class APRSService:
     def messages_snapshot(self):
         result = self.messages.snapshot()
         result['default_target'] = self.config.data['messages']['target']
+        result['digi_call'] = self.config.data['digi']['call']
         result['radio_ready'] = self.radio_ready
         result['last_rf_frame_utc'] = self.last_rx_utc
         return result
