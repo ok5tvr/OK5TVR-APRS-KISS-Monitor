@@ -163,7 +163,7 @@ class WebPanel:
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/app', '/unified', '/control', '/api/config', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
+                if parsed.path in ('/app', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
@@ -182,6 +182,34 @@ class WebPanel:
                         self._respond(200, ADMIN_HTML, 'text/html; charset=utf-8')
                     elif parsed.path == '/operations':
                         self._respond(200, OPERATIONS_HTML, 'text/html; charset=utf-8')
+                    elif parsed.path == '/api/tnc':
+                        self._respond(200, json.dumps(operator.tnc_snapshot(),ensure_ascii=False))
+                    elif parsed.path == '/api/archive':
+                        try:
+                            args=parse_qs(parsed.query)
+                            result={'summary':operator.archive.summary(),
+                                'packets':operator.archive.packets(args.get('limit',['100'])[0],
+                                                      args.get('source',[''])[0])}
+                            self._respond(200,json.dumps(result,ensure_ascii=False))
+                        except (ValueError,TypeError) as exc:
+                            self._respond(400,json.dumps({'error':str(exc)},ensure_ascii=False))
+                    elif parsed.path == '/api/archive/positions':
+                        try:
+                            args=parse_qs(parsed.query)
+                            result={'positions':operator.archive.positions(
+                                args.get('source',[''])[0],args.get('limit',['300'])[0])}
+                            self._respond(200,json.dumps(result,ensure_ascii=False))
+                        except (ValueError,TypeError) as exc:
+                            self._respond(400,json.dumps({'error':str(exc)},ensure_ascii=False))
+                    elif parsed.path == '/api/weather':
+                        try:
+                            args=parse_qs(parsed.query)
+                            result={'stations':list(operator.latest_weather.values())[-50:],
+                                'records':operator.archive.weather_rows(
+                                    args.get('source',[''])[0],args.get('limit',['100'])[0])}
+                            self._respond(200,json.dumps(result,ensure_ascii=False))
+                        except (ValueError,TypeError) as exc:
+                            self._respond(400,json.dumps({'error':str(exc)},ensure_ascii=False))
                     elif parsed.path == '/api/diagnostics':
                         self._respond(200, json.dumps(operator.diagnostics_snapshot(),ensure_ascii=False))
                     elif parsed.path == '/api/journal':
