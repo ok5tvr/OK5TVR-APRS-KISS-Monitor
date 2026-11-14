@@ -9,10 +9,12 @@ import json
 import logging
 import re
 import sqlite3
+import threading
 from pathlib import Path
 from aprs_station import aprs_coord, decimal_coordinate
 from aprs_messages import normalize_path
 from service_config import validate_config
+from aprs_sqlite_batch import SQLiteBatcher
 
 NAME_RE = re.compile(r'^[A-Za-z0-9 _.-]{1,9}$')
 PRINTABLE = re.compile(r'^[\x20-\x7e]{0,43}$')
@@ -49,41 +51,79 @@ def validate_object_request(req: dict) -> dict:
 
 
 class Journal:
-    """Write from service thread; HTTP readers use separate SQLite connections."""
+    """Persist service events in bounded asynchronous SQLite batches.
+
+    Requesting a manual read flushes the queue first; ordinary RX/TX logging
+    stays in RAM and does not commit each received packet to the SD card.
+    """
     def __init__(self, path: Path, max_rows=20000):
         self.path=Path(path)
         self.path.parent.mkdir(parents=True,exist_ok=True)
-        self.con=sqlite3.connect(self.path,timeout=3,check_same_thread=False)
-        self.con.execute('PRAGMA journal_mode=WAL')
-        self.con.execute('CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, utc TEXT NOT NULL, category TEXT NOT NULL, outcome TEXT NOT NULL, source TEXT, target TEXT, detail TEXT)')
-        self.con.execute('CREATE INDEX IF NOT EXISTS idx_events_category ON events(category,id)')
-        self.con.commit()
+        self.con=sqlite3.connect(self.path,timeout=5,check_same_thread=False)
+        self.lock=threading.RLock()
+        with self.lock, self.con:
+            self.con.execute('PRAGMA journal_mode=WAL')
+            self.con.execute('PRAGMA synchronous=NORMAL')
+            self.con.execute('PRAGMA wal_autocheckpoint=1000')
+            self.con.execute('CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, utc TEXT NOT NULL, category TEXT NOT NULL, outcome TEXT NOT NULL, source TEXT, target TEXT, detail TEXT)')
+            self.con.execute('CREATE INDEX IF NOT EXISTS idx_events_category ON events(category,id)')
         self.max_rows=max_rows
         self.count=0
+        self._since_prune=0
+        self.batch=SQLiteBatcher(self._write_batch, name='aprs-operations-sqlite',
+                                 batch_size=100, flush_seconds=10, max_pending=1000)
+
     def log(self, category, outcome, source='', target='', detail=''):
-        cat=str(category)[:24];result=str(outcome)[:32]
+        record=(dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
+                str(category)[:24],str(outcome)[:32],str(source)[:24],
+                str(target)[:24],str(detail)[:250])
         try:
-            self.con.execute('INSERT INTO events(utc,category,outcome,source,target,detail) VALUES(?,?,?,?,?,?)',
-                             (dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),cat,result,str(source)[:24],str(target)[:24],str(detail)[:250]))
-            self.count+=1
-            if self.count%200==0:
-                self.con.execute('DELETE FROM events WHERE id <= (SELECT MAX(id)-? FROM events)',(self.max_rows,))
-            self.con.commit()
-        except sqlite3.Error as exc:
-            # Diagnostic storage must never bring down radio/I-gate operations.
+            if not self.batch.add(record):
+                drops=self.batch.stats()['dropped']
+                if drops==1 or drops%100==0:
+                    logging.getLogger('ok5tvr.aprs').warning(
+                        'Operations journal RAM queue full; %d events dropped',drops)
+            else:
+                self.count+=1
+        except RuntimeError as exc:
+            # Logging failures must not stop USB KISS / iGate / DIGI.
             logging.getLogger('ok5tvr.aprs').warning('Provozní deník nelze zapsat: %s',exc)
-            try: self.con.rollback()
-            except sqlite3.Error: pass
+
+    def _write_batch(self, records):
+        with self.lock, self.con:
+            self.con.executemany(
+                'INSERT INTO events(utc,category,outcome,source,target,detail) VALUES(?,?,?,?,?,?)',
+                records)
+            self._since_prune += len(records)
+            if self._since_prune >= 1000:
+                self.con.execute(
+                    'DELETE FROM events WHERE id <= (SELECT MAX(id)-? FROM events)',
+                    (self.max_rows,))
+                self._since_prune=0
+
     def read(self,limit=100,category=''):
         limit=min(max(int(limit),1),500)
-        with sqlite3.connect(self.path,timeout=3) as db:
+        # The journal is normally read on demand. Include the most recent
+        # events without changing the periodic 10s writer schedule.
+        self.batch.flush(timeout=10)
+        with sqlite3.connect(self.path,timeout=5) as db:
             db.row_factory=sqlite3.Row
             if category:
-                rows=db.execute('SELECT * FROM events WHERE category=? ORDER BY id DESC LIMIT ?', (category,limit)).fetchall()
+                rows=db.execute(
+                    'SELECT * FROM events WHERE category=? ORDER BY id DESC LIMIT ?',
+                    (category,limit)).fetchall()
             else:
-                rows=db.execute('SELECT * FROM events ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
+                rows=db.execute(
+                    'SELECT * FROM events ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
         return [dict(r) for r in rows]
-    def close(self):self.con.close()
+
+    def stats(self):
+        return self.batch.stats()
+
+    def close(self):
+        self.batch.close(timeout=15)
+        with self.lock:
+            self.con.close()
 
 
 def backup_document(config, include_secrets=False):

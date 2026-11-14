@@ -6,13 +6,26 @@ Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplika
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
 
+## Šetrné SQLite zápisy pro SD kartu (v2.1 optimalizace)
+
+Příjem APRS a provozní deník již **neprovádějí SQLite COMMIT po každém paketu**. Obě používané databáze (`aprs_history.sqlite3`, `operations.sqlite3`) mají samostatnou omezenou RAM frontu a zapisovací vlákno:
+
+- **Dávka:** 100 záznamů, nebo nejdéle 10 sekund od začátku aktuální fronty; zapisuje se jednou transakcí. Ruční otevření historie či deníku může frontu zapsat dříve, aby byla čerstvá data vidět.
+- **Ochrana paměti:** každá fronta má nejvýše 1000 záznamů (včetně právě zpracovávaných). Pokud SD dlouhodobě neodpovídá a fronta se zaplní, nové logy se nezapisují; počítadla `dropped` a `write_errors` jsou vidět v TNC diagnostice. RF příjem, iGate a DIGI nesmějí blokovat kvůli ukládání historie.
+- **SQLite:** režim `WAL` + `synchronous=NORMAL`, automatický checkpoint po ~1000 stránkách. Záznamy jsou uloženy společně, případné chyby transakce vedou k opakování dávky. Operace mazání starých záznamů jsou výrazně méně časté (přibližně po 1000 přijatých rámcích nebo po jedné hodině; při startu služby).
+- **Korektní ukončení:** zbývající řádky se při zastavení služby dopíšou; při nefunkční/plné SD kartě se chyba zaznamená, nicméně zápis nelze garantovat.
+- **Výpadek napájení:** může způsobit ztrátu dat dosud čekajících v RAM (a při `synchronous=NORMAL` i některých nedávno potvrzených transakcí). **Nejde o záložní napájení.** Pro ochranu posledních rámců lze používat UPS a korektní vypínání Pi.
+- **Záloha databází:** nekopíruj za běhu samotný soubor `.sqlite3`, když může obsahovat aktivní WAL. Před archivací celé konfigurační složky zastav službu, nebo použij SQLite backup API.
+
+Ve webu `TNC / Síť / Historie` najdeš přehled **čekajících paketů, počtu dávek, chyb a zahozených záznamů**. Většina manuálních dotazů na historii nebo deník si vyžádá okamžitou dávku; běžné třísekundové obnovování stavové stránky ji nevyvolává. Batching omezuje počet transakcí, nikoli zaručené fyzické opotřebení konkrétní SD karty.
+
 ## v2.1 – TNC Hub / TCP KISS / SQLite / APRS počasí (vývojová verze)
 
 Program stále používá **externí KISS TNC bez DSP modemu**. Rozšíření je společné pro Raspberry Pi a Windows webovou konzoli:
 
 1. **TNC Manager:** hlavní připojení přes USB / fyzický nebo virtuální COM, případně přes TCP KISS klienta (`host:port`). TCP/USB reconnect běží v hlavním servisním cyklu, jeden port se nikdy neotevírá dvakrát.
 2. **TCP KISS server:** jeden přijatý AX.25 rámec z fyzického TNC lze číst v až osmi síťových aplikacích. Výchozí stav je vypnuto, po zapnutí naslouchá na `127.0.0.1:8001`, **RX-only**. Port může být změněn. Na nedůvěryhodnou LAN neotevírej `0.0.0.0`: KISS TCP není šifrované a nemá vlastní přihlašování. Pro lokální loopback server lze po výslovném potvrzení v aktuální relaci zapnout RF TX (3sekundové omezení), ale po reconnectu nebo restartu se automaticky vypne. RF vysílání může nastat, jakmile lokální aplikace pošle KISS rámec. Lokální uživatelské procesy musí být důvěryhodné.
-3. **SQLite databáze:** samostatný `aprs_history.sqlite3` ve stávající konfigurační složce; přijaté pakety včetně GPS souřadnic a meteorologických dat, vyhledávání podle značky, GeoJSON export vybrané historické trasy. Ve výchozím nastavení 30 dní a maximálně 100000 rámců; staré záznamy se promazávají automaticky (po každých 250 vloženích a při spuštění). Uchovávání je konfigurovatelné v rozsahu 1–365 dní, 1000–1000000 rámců. Databáze se nemaže při restartu.
+3. **SQLite databáze:** samostatný `aprs_history.sqlite3` ve stávající konfigurační složce; přijaté pakety včetně GPS souřadnic a meteorologických dat, vyhledávání podle značky, GeoJSON export vybrané historické trasy. Ve výchozím nastavení 30 dní a maximálně 100000 rámců; staré záznamy se promazávají automaticky (po přibližně 1000 vloženích, nejméně jednou za hodinu při provozu s příjmem a při spuštění). Uchovávání je konfigurovatelné v rozsahu 1–365 dní, 1000–1000000 rámců. Databáze se nemaže při restartu.
 4. **APRS WX:** zpracování běžných meteorologických polí z APRS rámců (`c/s/g/t/r/p/P/h/b`), převody na °C, km/h, mm a hPa, přehled stanic, historie a grafy jednotlivých veličin. Nejasná nebo chybějící data se nedopočítávají.
 5. **Web:** nové záložky **TNC / Síť / Historie** a **APRS Počasí**, s diagnostikou klientů, reconnecty, databází a grafy. Stav je dostupný také přes autentizované read-only API `/api/tnc`, `/api/archive`, `/api/archive/positions` a `/api/weather`.
 

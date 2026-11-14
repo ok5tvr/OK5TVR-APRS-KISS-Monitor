@@ -580,8 +580,9 @@ async function loadTncConfig(){
 }
 async function refreshTnc(){
  try{
-  const t=await get("/api/tnc");
+  const [t,d]=await Promise.all([get("/api/tnc"),get("/api/diagnostics")]);
   const s=t.server||{};
+  const a=d.archive?.storage||{},j=d.journal_storage||{};
   $("tnc-status").textContent="Transport: "+t.transport+"  |  "+(t.connected?"ONLINE":"OFFLINE")+
     "\nTNC: "+(t.endpoint||"—")+"  |  Reconnect attempts: "+t.reconnect_attempts+
     "  |  Connections: "+t.reconnect_count+
@@ -590,7 +591,14 @@ async function refreshTnc(){
     "  |  Dropped: "+s.frames_dropped+
     "\nTCP client TX allowed: "+(t.tx_permission?"YES":"NO")+
     "  |  Rejected TX requests: "+s.tx_rejected+
-    (s.last_error?"\nError: "+s.last_error:"");
+    (s.last_error?"\nError: "+s.last_error:"")+
+    "\nSQLite APRS: čeká "+(a.pending??0)+" / "+(a.max_pending??1000)+
+    "  |  Dávky: "+(a.batches_written??0)+"  |  Ztraceno: "+(a.dropped??0)+
+    "  |  Chyby zápisu: "+(a.write_errors??0)+
+    "\nSQLite deník: čeká "+(j.pending??0)+"  |  Dávky: "+(j.batches_written??0)+
+    "  |  Ztraceno: "+(j.dropped??0)+"  |  Chyby zápisu: "+(j.write_errors??0)+
+    (a.last_error?"\nSQLite APRS ERROR: "+a.last_error:"")+
+    (j.last_error?"\nSQLite LOG ERROR: "+j.last_error:"");
  }catch(e){notice("tnc-notice",e.message);}
 }
 $("tnc-reload").onclick=loadTncConfig;
