@@ -338,6 +338,35 @@ class APRSService:
             m=self.config.data['messages']
             self.messages.blocked_senders=list(m['blocked_senders'])
             return 'Blokovaní odesílatelé aktualizováni. Radio TX beze změny.'
+        if action == 'messages_save':
+            # Message-only updates must NOT stop an active DIGI or APRS-IS.
+            # The generic 'save' action intentionally restarts RF roles, but
+            # changing a receive SSID is not a radio/transport reconfiguration.
+            changes = data.get('messages')
+            if not isinstance(changes, dict):
+                raise ValueError('Nastavení APRS zpráv musí být objekt.')
+            previous = dict(self.config.data['messages'])
+            if changes.get('auto_ack') is True and data.get('confirm_auto_ack') is not True:
+                raise ValueError('Automatické RF ACK vyžaduje výslovné potvrzení.')
+            self.config.update({'messages': changes})
+            new = self.config.data['messages']
+            if (previous['path'] != new['path'] or
+                    previous['retry_seconds'] != new['retry_seconds'] or
+                    previous['max_attempts'] != new['max_attempts']):
+                # Routing/retry changes invalidate previously queued frames.
+                self.messages.usb_closed()
+            elif (previous['receive_aliases'] != new['receive_aliases'] or
+                  (previous['auto_ack'] and not new['auto_ack'])):
+                # Cancel unsent automatic ACKs when accepted targets or ACK
+                # permissions change; keep outgoing messages untouched.
+                self.messages.ack_queue.clear()
+            self.messages.configure(self.config.data['igate']['call'], new['path'],
+                                    new['auto_ack'], new['retry_seconds'],
+                                    new['max_attempts'], new.get('receive_aliases',[]),
+                                    new.get('blocked_senders',[]))
+            self.journal.log('MSG','settings',detail='Receive SSIDs/ACK settings saved')
+            return ('Nastavení zpráv uloženo. Aktivní iGate a DIGI zůstávají beze změny. '
+                    'Zprávy přijímáme pro: '+', '.join(self.messages.receive_calls))
         if action == 'message_read':
             return self.messages.mark_read(data.get('kind'),data.get('id'))
         if action == 'isrf_save':
