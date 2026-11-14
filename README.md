@@ -1,6 +1,6 @@
 # OK5TVR APRS KISS Monitor
 
-**Windows / Raspberry Pi APRS monitor, one-way iGate, digipeater and messaging over USB KISS TNC**
+**Windows / Raspberry Pi APRS TNC Command Center · v2.3 dev · bidirectional selective iGate, multi-KISS RX, DIGI and messaging**
 
 Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.8.2-rc1**.
 
