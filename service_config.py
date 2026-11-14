@@ -27,6 +27,13 @@ DEFAULT_CONFIG = {
     'tnc': {'transport':'serial', 'tcp_host':'127.0.0.1', 'tcp_port':8001,
             'kiss_server_enabled':False, 'kiss_server_host':'127.0.0.1',
             'kiss_server_port':8001, 'kiss_server_tx':False},
+    'tx_scheduler': {'min_gap_s':2.0, 'max_per_minute':12, 'max_pending':12},
+    'secondary_tncs': {'devices': []},  # up to 2 independent read-only KISS receivers
+    'alerts': {'enabled':True, 'offline_seconds':300, 'no_rf_minutes':30,
+               'watch_calls':[], 'weather_temp_high':None,
+               'weather_pressure_low':None,
+               'mqtt_enabled':False, 'mqtt_host':'127.0.0.1',
+               'mqtt_port':1883, 'mqtt_topic':'ok5tvr/aprs/alerts'},
     'archive': {'retention_days':30, 'max_rows':100000},
     'is_to_rf': {'calls': [], 'objects': [], 'types': ['message','position'],
                  'rf_path': '', 'heard_minutes': 30, 'max_per_minute': 2,
@@ -45,7 +52,8 @@ DEFAULT_CONFIG = {
              'beacon_transport': 'is', 'beacon_rf_path': '', 'telemetry_enabled': False,
              'telemetry_transport': 'is', 'telemetry_rf_path': ''},
     'messages': {'target': '', 'path': 'WIDE1-1', 'receive_aliases': [], 'auto_ack': False,
-                 'retry_seconds': 45, 'max_attempts': 3},
+                 'retry_seconds': 45, 'max_attempts': 3,
+                 'blocked_senders':[]},
     'telemetry': {'interval_minutes': 15},
     'position': {'latitude': None, 'longitude': None,
                  'comment': 'OK5TVR RX iGate', 'beacon_enabled': False,
@@ -122,6 +130,75 @@ def validate_config(candidate):
         raise ValueError('TCP KISS TX requires enabled loopback-only server')
     if t['transport']=='tcp' and t['kiss_server_enabled'] and t['tcp_host'] in ('127.0.0.1','localhost') and t['tcp_port']==t['kiss_server_port']:
         raise ValueError('TCP KISS client cannot connect to its own server')
+    sched = v['tx_scheduler']
+    if type(sched['min_gap_s']) not in (int,float) or not 0 <= sched['min_gap_s'] <= 15:
+        raise ValueError('TX scheduler interval must be 0-15 seconds')
+    sched['min_gap_s'] = float(sched['min_gap_s'])
+    sched['max_per_minute'] = _int(sched['max_per_minute'],'TX scheduler max/min',1,60)
+    sched['max_pending'] = _int(sched['max_pending'],'TX scheduler RAM queue',1,32)
+    other = v['secondary_tncs']['devices']
+    if not isinstance(other,list) or len(other)>2:
+        raise ValueError('Secondary KISS: maximum 2 independent receivers')
+    used_ids=set()
+    used_endpoints=set()
+    normalized=[]
+    for raw in other:
+        if not isinstance(raw,dict) or set(raw)-{'id','enabled','transport','host','port','serial_port','baud'}:
+            raise ValueError('Invalid secondary TNC structure')
+        item=dict(id=raw.get('id'),enabled=raw.get('enabled',False),
+                  transport=raw.get('transport','tcp'),host=raw.get('host','127.0.0.1'),
+                  port=raw.get('port',8002),serial_port=raw.get('serial_port',''),
+                  baud=raw.get('baud',115200))
+        if type(item['id']) is not str or not re.fullmatch(r'[a-z][a-z0-9_-]{1,15}',item['id']):
+            raise ValueError('Secondary TNC id: 2-16 lowercase letters/digits')
+        if item['id'] in used_ids:
+            raise ValueError('Duplicate secondary TNC id')
+        used_ids.add(item['id'])
+        item['enabled'] = _bool(item['enabled'],'Secondary TNC enabled')
+        if item['transport'] not in ('serial','tcp'):
+            raise ValueError('Secondary TNC must be serial or tcp')
+        if not isinstance(item['host'],str) or not re.fullmatch(r'[A-Za-z0-9.:-]{1,253}',item['host']):
+            raise ValueError('Invalid secondary TCP host')
+        item['port'] = _int(item['port'],'Secondary TCP port',1,65535)
+        if not isinstance(item['serial_port'],str) or not 0 <= len(item['serial_port']) <= 128 or any(c in item['serial_port'] for c in '\r\n\x00'):
+            raise ValueError('Invalid secondary serial port')
+        item['baud'] = _int(item['baud'],'Secondary serial baud',1200,2000000)
+        if item['enabled']:
+            if item['transport']=='serial' and not item['serial_port']:
+                raise ValueError('Secondary serial KISS requires an exact port')
+            endpoint=(item['transport'],item['serial_port'] if item['transport']=='serial' else (item['host'],item['port']))
+            if endpoint in used_endpoints:
+                raise ValueError('Duplicate secondary TNC endpoint')
+            if item['transport']=='serial' and item['serial_port']==s['port']:
+                raise ValueError('Secondary cannot open primary COM/USB port')
+            if item['transport']=='tcp' and t['transport']=='tcp' and item['host']==t['tcp_host'] and item['port']==t['tcp_port']:
+                raise ValueError('Secondary cannot open primary TCP KISS port')
+            if item['transport']=='tcp' and t['kiss_server_enabled'] and item['host'] in ('127.0.0.1','localhost') and item['port']==t['kiss_server_port']:
+                raise ValueError('Secondary TCP KISS cannot connect to own server')
+            used_endpoints.add(endpoint)
+        normalized.append(item)
+    v['secondary_tncs']['devices']=normalized
+    alerts=v['alerts']
+    alerts['enabled']=_bool(alerts['enabled'],'Monitoring alerts')
+    alerts['mqtt_enabled']=_bool(alerts['mqtt_enabled'],'MQTT alerts')
+    if not isinstance(alerts['mqtt_host'],str) or not re.fullmatch(r'[A-Za-z0-9.:-]{1,253}',alerts['mqtt_host']):
+        raise ValueError('MQTT hostname invalid')
+    alerts['mqtt_port']=_int(alerts['mqtt_port'],'MQTT port',1,65535)
+    if not isinstance(alerts['mqtt_topic'],str) or not re.fullmatch(r'[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+){0,7}',alerts['mqtt_topic']) or len(alerts['mqtt_topic'])>80:
+        raise ValueError('MQTT topic invalid')
+    alerts['offline_seconds']=_int(alerts['offline_seconds'],'TNC offline seconds',30,3600)
+    alerts['no_rf_minutes']=_int(alerts['no_rf_minutes'],'No RF minutes',5,240)
+    watchers=alerts['watch_calls']
+    if not isinstance(watchers,list) or len(watchers)>25:
+        raise ValueError('Watch list: maximum 25 calls')
+    alerts['watch_calls']=sorted(set(normalize_call(x) for x in watchers))
+    for name,low,high in (('weather_temp_high',-50,70),
+                          ('weather_pressure_low',800,1100)):
+        value=alerts[name]
+        if value is not None:
+            if type(value) not in (int,float) or not low<=value<=high:
+                raise ValueError('Weather alert threshold outside range')
+            alerts[name]=float(value)
     archive = v['archive']
     archive['retention_days'] = _int(archive['retention_days'], 'Archive retention days',1,365)
     archive['max_rows'] = _int(archive['max_rows'], 'Archive maximum rows',1000,1000000)
@@ -189,6 +266,10 @@ def validate_config(candidate):
     m['auto_ack'] = _bool(m['auto_ack'], 'Automatické potvrzování APRS zpráv (RF TX)')
     m['retry_seconds'] = _int(m['retry_seconds'], 'Opakování zprávy (s)', 30, 180)
     m['max_attempts'] = _int(m['max_attempts'], 'Počet odeslání', 1, 5)
+    blocked=m['blocked_senders']
+    if not isinstance(blocked,list) or len(blocked)>24:
+        raise ValueError('Messaging blocked senders: maximum 24')
+    m['blocked_senders']=sorted(set(normalize_call(x) for x in blocked))
     p = v['position']
     p['beacon_enabled'] = _bool(p['beacon_enabled'], 'Pozicni majak')
     p['beacon_interval'] = _int(p['beacon_interval'], 'Interval majaku', 30, 120)

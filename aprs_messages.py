@@ -119,7 +119,8 @@ class MessageManager:
     """SQLite message history, matching ACKs, strictly bounded RF TX/retry."""
 
     def __init__(self, db_path: str | Path, own_call: str, path='WIDE1-1',
-                 auto_ack=False, retry_seconds=45, max_attempts=3, receive_aliases=None):
+                 auto_ack=False, retry_seconds=45, max_attempts=3, receive_aliases=None,
+                 blocked_senders=None):
         self.db_path = Path(db_path).resolve()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         # Restrict only the application's own config directory. A custom
@@ -133,7 +134,8 @@ class MessageManager:
         self.ack_last: dict[tuple, float] = {}
         self.heard = deque(maxlen=60)  # Recent addressed messages heard on RF, including other addressees.
         self._last_tx_at = float('-inf')
-        self.configure(own_call, path, auto_ack, retry_seconds, max_attempts, receive_aliases)
+        self.configure(own_call, path, auto_ack, retry_seconds, max_attempts,
+                       receive_aliases, blocked_senders)
         with self.lock, self.db:
             self.db.execute('''CREATE TABLE IF NOT EXISTS inbox (
                 id INTEGER PRIMARY KEY, arrived_at TEXT NOT NULL, last_seen REAL NOT NULL,
@@ -146,6 +148,14 @@ class MessageManager:
                 message_id TEXT NOT NULL, path TEXT NOT NULL, status TEXT NOT NULL,
                 attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL,
                 next_retry REAL NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '')''')
+            self.db.execute('''CREATE TABLE IF NOT EXISTS bulletins (
+                id INTEGER PRIMARY KEY, arrived_at TEXT NOT NULL,
+                last_seen REAL NOT NULL, sender TEXT NOT NULL,
+                bulletin TEXT NOT NULL, text TEXT NOT NULL,
+                duplicates INTEGER NOT NULL DEFAULT 0, read INTEGER NOT NULL DEFAULT 0)''')
+            columns={row[1] for row in self.db.execute('PRAGMA table_info(inbox)')}
+            if 'read' not in columns:
+                self.db.execute('ALTER TABLE inbox ADD COLUMN read INTEGER NOT NULL DEFAULT 0')
             self.db.execute('''CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY, value TEXT NOT NULL)''')
             # A process restart must NOT unexpectedly restart automatic RF TX.
@@ -155,7 +165,7 @@ class MessageManager:
             os.chmod(self.db_path, 0o600)
 
     def configure(self, own_call, path, auto_ack=False, retry_seconds=45, max_attempts=3,
-                  receive_aliases=None):
+                  receive_aliases=None, blocked_senders=None):
         self.own_call = normalize_call(own_call)
         base = self.own_call.split('-')[0]
         if receive_aliases is None:
@@ -176,6 +186,7 @@ class MessageManager:
         self.auto_ack = auto_ack
         self.retry_seconds = retry_seconds
         self.max_attempts = max_attempts
+        self.blocked_senders = sorted(set(normalize_call(c) for c in (blocked_senders or [])))
 
     def close(self):
         with self.lock:
@@ -184,18 +195,36 @@ class MessageManager:
     def snapshot(self, count=150):
         with self.lock:
             inbox = [dict(v) for v in self.db.execute('''SELECT id,arrived_at,sender,recipient,text,
-              message_id,path,duplicates,ack_sent,source FROM inbox ORDER BY id DESC LIMIT ?''', (count,))]
+              message_id,path,duplicates,ack_sent,source,read FROM inbox ORDER BY id DESC LIMIT ?''', (count,))]
             outbox = [dict(v) for v in self.db.execute('''SELECT id,created_at,updated_at,sender,recipient,text,
               message_id,path,status,attempts,max_attempts,last_error FROM outbox ORDER BY id DESC LIMIT ?''', (count,))]
+            bulletins = [dict(v) for v in self.db.execute('''SELECT * FROM bulletins
+              ORDER BY id DESC LIMIT ?''', (count,))]
             stats = {'inbox': self.db.execute('SELECT COUNT(*) FROM inbox').fetchone()[0],
                      'outbox': self.db.execute('SELECT COUNT(*) FROM outbox').fetchone()[0],
                      'pending': self.db.execute('''SELECT COUNT(*) FROM outbox
                        WHERE status IN ('queued','usb_queued','waiting_ack')''').fetchone()[0]}
+        conversations = {}
+        for row in inbox:
+            source=row['sender']
+            conv=conversations.setdefault(source,{'callsign':source,'inbox':0,'outbox':0,'unread':0,'last':''})
+            conv['inbox']+=1
+            conv['unread']+=not row['read']
+            conv['last']=max(conv['last'],row['arrived_at'])
+        for row in outbox:
+            source=row['recipient']
+            conv=conversations.setdefault(source,{'callsign':source,'inbox':0,'outbox':0,'unread':0,'last':''})
+            conv['outbox']+=1
+            conv['last']=max(conv['last'],row['updated_at'])
         return {'call': self.own_call, 'default_path': self.default_path,
                 'auto_ack': self.auto_ack, 'retry_seconds': self.retry_seconds,
                 'max_attempts': self.max_attempts, 'receive_aliases': list(self.receive_aliases),
                 'receive_calls': list(self.receive_calls), 'heard_messages': list(self.heard),
-                'stats': stats, 'inbox': inbox, 'outbox': outbox}
+                'stats': stats, 'inbox': inbox, 'outbox': outbox,
+                'bulletins':bulletins,'conversations':sorted(conversations.values(),key=lambda r:r['last'],reverse=True),
+                'unread':sum(not p['read'] for p in inbox),
+                'unread_bulletins':sum(not p['read'] for p in bulletins),
+                'blocked_senders':list(self.blocked_senders)}
 
     def _next_id(self):
         # 3-digit rotating ID stored on disk; avoid in-flight IDs for the same own call.
@@ -240,9 +269,12 @@ class MessageManager:
             self.db.execute('''DELETE FROM outbox WHERE id IN
               (SELECT id FROM outbox WHERE status NOT IN ('queued','usb_queued','waiting_ack')
                ORDER BY id DESC LIMIT -1 OFFSET ?)''', (limit,))
+        elif table in ('inbox','bulletins'):
+            # 'table' is internal, restricted to two known static SQL names.
+            self.db.execute(f'''DELETE FROM {table} WHERE id IN
+              (SELECT id FROM {table} ORDER BY id DESC LIMIT -1 OFFSET ?)''', (limit,))
         else:
-            self.db.execute('''DELETE FROM inbox WHERE id IN
-              (SELECT id FROM inbox ORDER BY id DESC LIMIT -1 OFFSET ?)''', (limit,))
+            raise ValueError('Unknown message history table')
 
     def cancel(self, identifier: int) -> str:
         if type(identifier) is not int or identifier < 1:
@@ -293,8 +325,14 @@ class MessageManager:
         info = getattr(packet, 'raw_info', b'')
         if not isinstance(info, bytes) or not info.startswith(b':'):
             return None
-        decoded = parse_message(info)
         sender = getattr(packet, 'source', '?')
+        if sender.upper() in self.blocked_senders:
+            self._heard(sender,'?','blocked','Zpráva od blokované stanice')
+            return None
+        bulletin=self._decode_bulletin(info)
+        if bulletin is not None:
+            return self._receive_bulletin(sender,bulletin)
+        decoded = parse_message(info)
         if decoded is None:
             self._heard(sender, '?', 'invalid', 'Neplatný formát APRS zprávy / bulletin')
             return None
@@ -348,6 +386,48 @@ class MessageManager:
                 self.ack_last = {key:t for key,t in self.ack_last.items() if now-t < 900}
         return {'kind':'message','from':from_call,'to':target,'duplicate':duplicate,
                 'message_id':decoded['id'],'inbox_id':inbox_id}
+
+    @staticmethod
+    def _decode_bulletin(info):
+        # APRS bulletin format :BLN#     :message (9-char addressee).
+        # Announcements are never treated as private chat or auto-ACKed.
+        if len(info)<12 or info[:1]!=b':' or info[10:11]!=b':':
+            return None
+        target=info[1:10].decode('ascii','replace').strip().upper()
+        if not re.fullmatch(r'BLN[A-Z0-9_-]{1,6}',target):
+            return None
+        body=info[11:].decode('latin-1','replace')
+        if not 1<=len(body)<=67:return None
+        return target,body
+
+    def _receive_bulletin(self,sender,bulletin):
+        try:source=normalize_call(sender)
+        except ValueError:return None
+        name,body=bulletin
+        now=time.time()
+        with self.lock,self.db:
+            old=self.db.execute('''SELECT id FROM bulletins
+                    WHERE sender=? AND bulletin=? AND text=? AND last_seen>?
+                    ORDER BY id DESC LIMIT 1''',(source,name,body,now-900)).fetchone()
+            if old:
+                self.db.execute('UPDATE bulletins SET last_seen=?,duplicates=duplicates+1 WHERE id=?',
+                                (now,old['id']))
+                identifier=old['id']
+            else:
+                row=self.db.execute('INSERT INTO bulletins(arrived_at,last_seen,sender,bulletin,text) VALUES(?,?,?,?,?)',
+                                    (utc_now(),now,source,name,body))
+                identifier=row.lastrowid
+                self._prune('bulletins',500)
+        self._heard(source,name,'bulletin','APRS bulletin')
+        return {'kind':'bulletin','from':source,'bulletin':name,'id':identifier}
+
+    def mark_read(self,kind,identifier):
+        if kind not in ('message','bulletin') or type(identifier) is not int or not 1<=identifier<=10000000000:
+            raise ValueError('Invalid message/bulletin ID')
+        table='inbox' if kind=='message' else 'bulletins'
+        with self.lock,self.db:
+            cursor=self.db.execute(f'UPDATE {table} SET read=1 WHERE id=?',(identifier,))
+            return {'kind':kind,'id':identifier,'found':cursor.rowcount>0}
 
     def _heard(self, sender: str, target: str, result: str, note: str):
         # Memory-only diagnostic: public RF headers, bounded history.
