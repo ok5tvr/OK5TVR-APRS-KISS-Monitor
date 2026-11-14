@@ -269,9 +269,12 @@ class MessageManager:
             self.db.execute('''DELETE FROM outbox WHERE id IN
               (SELECT id FROM outbox WHERE status NOT IN ('queued','usb_queued','waiting_ack')
                ORDER BY id DESC LIMIT -1 OFFSET ?)''', (limit,))
+        elif table in ('inbox','bulletins'):
+            # 'table' is internal, restricted to two known static SQL names.
+            self.db.execute(f'''DELETE FROM {table} WHERE id IN
+              (SELECT id FROM {table} ORDER BY id DESC LIMIT -1 OFFSET ?)''', (limit,))
         else:
-            self.db.execute('''DELETE FROM inbox WHERE id IN
-              (SELECT id FROM inbox ORDER BY id DESC LIMIT -1 OFFSET ?)''', (limit,))
+            raise ValueError('Unknown message history table')
 
     def cancel(self, identifier: int) -> str:
         if type(identifier) is not int or identifier < 1:
