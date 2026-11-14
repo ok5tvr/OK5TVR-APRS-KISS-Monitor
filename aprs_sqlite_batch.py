@@ -93,7 +93,10 @@ class SQLiteBatcher:
                 self.write_batch(batch)
             except Exception as exc:
                 error = exc
-                LOG.warning('%s: SQLite batch write failed: %s', self.name, exc)
+                # A missing/full card must not generate a new journald write
+                # on every one-second retry attempt.
+                if self.write_errors == 0 or self.write_errors % 60 == 0:
+                    LOG.warning('%s: SQLite batch write failed: %s', self.name, exc)
             with self.cv:
                 self.inflight = 0
                 if error is not None:
