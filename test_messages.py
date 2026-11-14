@@ -197,6 +197,29 @@ class WebMessageTests(unittest.TestCase):
             with urlopen(req,timeout=6) as r: self.assertEqual(r.status,expected);return json.load(r)
         except HTTPError as e:
             self.assertEqual(e.code,expected);return json.load(e)
+    def test_digi_ssid_alias_saved_without_interrupting_live_tnc(self):
+        self.assertTrue(self.service.radio_ready)
+        incoming = encode_kiss_data(encode_ui_packet(
+            'OK1ABC-9', 'APRS', '',
+            message_info('OK5TVR-3', 'Before alias', '01')))
+        FakeSerial.incoming.put(incoming)
+        self.assertTrue(wait(lambda:self.service.messages.snapshot()['heard_messages']))
+        self.assertEqual(self.service.messages.snapshot()['stats']['inbox'],0)
+        self.assertEqual(self.service.messages.snapshot()['heard_messages'][0]['result'],'other')
+        answer=self.api('messages_save',messages={'receive_aliases':['OK5TVR-3']})
+        self.assertTrue(answer['ok'])
+        self.assertTrue(self.service.radio_ready)
+        self.assertIn('OK5TVR-3',self.service.messages.snapshot()['receive_calls'])
+        incoming = encode_kiss_data(encode_ui_packet(
+            'OK1ABC-9', 'APRS', '',
+            message_info('OK5TVR-3', 'After alias', '02')))
+        FakeSerial.incoming.put(incoming)
+        self.assertTrue(wait(lambda:self.service.messages.snapshot()['stats']['inbox']==1))
+        self.assertEqual(self.service.messages.snapshot()['inbox'][0]['recipient'],'OK5TVR-3')
+        self.assertTrue(FakeSerial.outgoing.empty(),'Alias must not enable automatic RF ACK')
+        self.assertIn('error',self.api('messages_save',expected=400,
+                       messages={'auto_ack':True}))
+
     def test_messaging_page_security_and_rf_transmit(self):
         base=f'http://127.0.0.1:{self.port}'
         key=self.conf.secrets['admin_token']
