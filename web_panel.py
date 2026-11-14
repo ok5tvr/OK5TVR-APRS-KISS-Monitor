@@ -205,6 +205,36 @@ class WebPanel:
                     self._respond(200, HTML, 'text/html; charset=utf-8')
                 elif parsed.path == '/api/state':
                     self._respond(200, json.dumps(state.snapshot(), ensure_ascii=False))
+                elif parsed.path == '/metrics':
+                    # Prometheus-compatible, read-only counters; viewer/session
+                    # authorization is enforced before this branch.
+                    snap=state.snapshot()
+                    def number(value):
+                        try:
+                            n=int(value)
+                            return str(max(0, n))
+                        except (ValueError, TypeError, OverflowError):
+                            return '0'
+                    lines = [
+                        '# HELP ok5tvr_aprs_rx_total Received RF AX.25 frames.',
+                        '# TYPE ok5tvr_aprs_rx_total counter',
+                        'ok5tvr_aprs_rx_total '+number(snap.get('rx')),
+                        '# TYPE ok5tvr_aprs_usb_tx_total counter',
+                        'ok5tvr_aprs_usb_tx_total '+number(snap.get('tx_requests')),
+                        '# TYPE ok5tvr_aprs_igate_forwarded_total counter',
+                        'ok5tvr_aprs_igate_forwarded_total '+number(snap.get('igate_sent')),
+                        '# TYPE ok5tvr_aprs_igate_rejected_total counter',
+                        'ok5tvr_aprs_igate_rejected_total '+number(snap.get('igate_rejected')),
+                        '# TYPE ok5tvr_aprs_digi_tx_total counter',
+                        'ok5tvr_aprs_digi_tx_total '+number(snap.get('digi',{}).get('tx_written')),
+                        '# TYPE ok5tvr_aprs_stations gauge',
+                        'ok5tvr_aprs_stations '+number(snap.get('station_count')),
+                        '# TYPE ok5tvr_aprs_stations_with_gps gauge',
+                        'ok5tvr_aprs_stations_with_gps '+number(snap.get('position_count')),
+                        '',
+                    ]
+                    self._respond(200, '\\n'.join(lines), 'text/plain; version=0.0.4; charset=utf-8')
+
                 elif parsed.path == '/assets/offline_geography.json':
                     try:
                         contents = (_ASSET_DIR / 'offline_geography.json').read_bytes()
