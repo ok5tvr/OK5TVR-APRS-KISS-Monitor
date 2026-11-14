@@ -146,12 +146,12 @@ class MessagesV23Tests(unittest.TestCase):
                 self.assertEqual(mgr.snapshot()['unread_bulletins'],0)
                 blocked=mgr.receive(packet('OK1BAD-7',':OK5TVR-10:blocked'),True)
                 self.assertIsNone(blocked)
-                m=mgr.receive(packet('OK1GOOD-7',':OK5TVR-10:hello'),True)
+                m=mgr.receive(packet('OK1GUD-7',':OK5TVR-10:hello'),True)
                 self.assertEqual(m['kind'],'message')
                 self.assertEqual(mgr.snapshot()['unread'],1)
                 self.assertTrue(mgr.mark_read('message',m['inbox_id'])['found'])
                 self.assertEqual(mgr.snapshot()['unread'],0)
-                self.assertEqual(mgr.snapshot()['conversations'][0]['callsign'],'OK1GOOD-7')
+                self.assertEqual(mgr.snapshot()['conversations'][0]['callsign'],'OK1GUD-7')
             finally:mgr.close()
 
 
