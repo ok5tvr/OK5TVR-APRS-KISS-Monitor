@@ -321,6 +321,22 @@ class APRSService:
 
     def _execute(self, action, data):
         # HDMI panel toggle does not touch USB, DIGI, iGate, RF, or messages.
+        if action == 'alerts_save':
+            rules=data.get('rules')
+            if type(rules) is not dict:
+                raise ValueError('Alert settings must be a JSON object')
+            self.config.update({'alerts':rules})
+            self.alerts.configure(self.config.data['alerts'])
+            self.journal.log('CONFIG','alerts-updated')
+            return 'Nastavení upozornění uloženo; radio TX beze změny.'
+        if action == 'message_blocklist':
+            calls=data.get('calls')
+            if not isinstance(calls,list):
+                raise ValueError('Blocked sender list must be a list')
+            self.config.update({'messages':{'blocked_senders':calls}})
+            m=self.config.data['messages']
+            self.messages.blocked_senders=list(m['blocked_senders'])
+            return 'Blokovaní odesílatelé aktualizováni. Radio TX beze změny.'
         if action == 'message_read':
             return self.messages.mark_read(data.get('kind'),data.get('id'))
         if action == 'isrf_save':
