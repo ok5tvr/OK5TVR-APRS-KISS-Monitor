@@ -6,6 +6,17 @@ Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplika
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
 
+## Nové sledování APRS provozu: Graywolf-inspired monitoring (v2 preview)
+
+Rozšíření je připravené pro **Windows i Raspberry Pi** nad existujícím sériovým/virtuálním KISS TNC. Přidává:
+- **Historii polohy (trails):** až 32 různých reálně přijatých souřadnic na stanici, bez fiktivních DEMO pozic a bez zakládání druhého připojení k TNC. Původní ikony a stanice zůstávají na mapě.
+- **Filtry mapy:** zobrazit jen DIRECT, skrýt objekty, omezit poslední aktivitu na 15/60 minut/24 hodin. Volba zobrazit/skrýt trasy.
+- **GeoJSON export:** aktuálně filtrované stanice a jejich lokálně zaznamenané trasy do standardního `FeatureCollection` (Point/LineString).
+- **Filtry rámců:** v hlavní webové konzoli v Příjem/TX vyhledávání značek, výběr typu paketu a DIRECT-only.
+- **Provozní metriky:** koncový bod `/metrics` ve formátu Prometheus (RX, TX USB, předané/odmítnuté iGate rámce, DIGI TX, počet stanic/GPS pozic). Přístup je omezen stejnou read-only autorizací jako `/api/state`; na lokálním počítači je dostupný přímo. Není určeno k otevření do internetu.
+
+**Poznámka:** Trasy jsou v paměti běžící služby a restartem se vymažou; nejsou historickým archívem GPS a nepředstavují změřenou RF trasu. Neimplementujeme zatím vlastní softwarový AFSK modem, obousměrný iGate, AGWPE nebo AX.25 connected-mode terminál. To jsou větší samostatné moduly, které je nutné testovat na rádiu a z hlediska RF bezpečnosti.
+
 ## Jednotné webové rozhraní (vývojová větev)
 
 Pro Windows i Raspberry Pi je nyní připravena **jedna přihlašovaná webová aplikace**. Otevři `http://IP_ADRESA:8765/` (na místním Windows počítači `http://127.0.0.1:8765/`), přihlas se jménem `ok5tvr` a vygenerovaným `admin_token`. Hlavní stránka ukazuje stav stanice a nabízí přehledné navigační karty: Příjem/TX, Mapa, Nastavení iGate/DIGI, Zprávy, Objekty, Telemetrie, Diagnostika. Bezpečná cookie relace brání posílání přihlašovacího tokenu v URL. Původní přímé odkazy ještě fungují pro kompatibilitu, ale nové přihlášení je doporučené. Server používá HTTP, proto port nevystavuj do internetu.
