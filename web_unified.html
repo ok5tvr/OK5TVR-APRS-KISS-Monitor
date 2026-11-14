@@ -919,6 +919,154 @@ $("isrf-test").onclick=async()=>{
       " | "+result.reason+" | "+(result.source||"")+" → "+(result.target||""));
  }catch(e){notice("isrf-test-result","ERROR: "+e.message);}
 };
+let lastHeardRows=[];
+async function loadHeardReceivers(){
+ try{
+  const t=await get("/api/tnc"),select=$("heard-device"),value=select.value;
+  select.replaceChildren(new Option("Všechny TNC",""),new Option("Primární TNC","primary"));
+  for(const item of (t.secondary_receivers||[]))
+   select.add(new Option(item.id+" · "+item.endpoint,item.id));
+  select.value=Array.from(select.options).some(o=>o.value===value)?value:"";
+ }catch(e){$("heard-summary").textContent="Přijímače: "+e.message;}
+}
+async function loadHeard(){
+ try{
+  const params="?minutes="+encodeURIComponent($("heard-period").value)+
+   "&receiver="+encodeURIComponent($("heard-device").value);
+  const data=await get("/api/heard"+params);
+  lastHeardRows=data.stations||[];
+  const root=$("heard-rows");root.replaceChildren();
+  $("heard-summary").textContent=data.stations.length+" zdrojů s GPS, "+
+    data.direct_stations+" přímo slyšených; interval "+data.minutes+" min";
+  for(const item of lastHeardRows){
+   const row=document.createElement("tr");
+   for(const field of [item.source,item.receiver,item.direct_packets,item.via_packets,
+                       item.distance_km==null?"—":Number(item.distance_km).toFixed(1),
+                       item.last_seen,item.path]){
+    const td=document.createElement("td");td.textContent=String(field??"");row.appendChild(td);
+   }
+   root.appendChild(row);
+  }
+ }catch(e){$("heard-summary").textContent="RF doslech: "+e.message;}
+}
+$("heard-refresh").onclick=loadHeard;
+$("heard-period").onchange=loadHeard;
+$("heard-device").onchange=loadHeard;
+$("heard-csv").onclick=()=>downloadCSV("ok5tvr-heard.csv",
+ ["call","receiver","direct","via","distance_km","last_seen","path"],
+ lastHeardRows.map(x=>[x.source,x.receiver,x.direct_packets,x.via_packets,
+                       x.distance_km,x.last_seen,x.path]));
+async function loadChat2(){
+ try{
+  const d=await get("/api/messages"),root=$("chat2-conversations"),
+        inbox=$("chat2-inbox"),bulletins=$("chat2-bulletins");
+  root.replaceChildren();inbox.replaceChildren();bulletins.replaceChildren();
+  $("chat2-unread").textContent=(d.unread||0)+" nepřečtených zpráv, "+
+    (d.unread_bulletins||0)+" nepřečtených bulletinů";
+  $("chat2-blocked").value=(d.blocked_senders||[]).join("\n");
+  for(const c of (d.conversations||[])){
+   const row=document.createElement("tr");
+   for(const v of [c.callsign,c.inbox,c.outbox,c.unread,c.last]){
+    const td=document.createElement("td");td.textContent=String(v??"");row.appendChild(td);
+   }root.appendChild(row);
+  }
+  const show=(items,destination,kind)=>{
+   for(const r of items){
+    const row=document.createElement("tr"),fields=kind==="message"?
+      [r.arrived_at,r.sender,r.recipient,r.text]:
+      [r.arrived_at,r.sender,r.bulletin,r.text];
+    for(const value of fields){
+     const td=document.createElement("td");td.textContent=String(value??"");row.appendChild(td);
+    }
+    const td=document.createElement("td");
+    if(r.read){td.textContent="Přečteno";}
+    else{
+     const button=document.createElement("button");
+     button.textContent="Označit jako přečtené";
+     button.addEventListener("click",async()=>{
+      try{await command("message_read",{kind,id:r.id});await loadChat2();}
+      catch(e){notice("chat2-notice","ERROR: "+e.message);}
+     });
+     td.appendChild(button);
+    }
+    row.appendChild(td);destination.appendChild(row);
+   }
+  };
+  show(d.inbox||[],inbox,"message");
+  show(d.bulletins||[],bulletins,"bulletin");
+ }catch(e){notice("chat2-notice","ERROR: "+e.message);}
+}
+$("chat2-refresh").onclick=loadChat2;
+$("chat2-block-save").onclick=async()=>{
+ try{
+  const calls=$("chat2-blocked").value.trim().split(/[\s,;]+/).filter(Boolean);
+  const result=await command("message_blocklist",{calls});
+  notice("chat2-notice",String(result));
+  await loadChat2();
+ }catch(e){notice("chat2-notice","ERROR: "+e.message);}
+};
+let alertBrowserEnabled=false,lastAlertSeen=null;
+async function loadAlertConfig(){
+ try{
+  const a=(await get("/api/config")).alerts;
+  $("alert-enabled").checked=a.enabled;
+  $("alert-offline").value=a.offline_seconds;
+  $("alert-no-rf").value=a.no_rf_minutes;
+  $("alert-temp").value=a.weather_temp_high??"";
+  $("alert-pressure").value=a.weather_pressure_low??"";
+  $("alert-watch").value=(a.watch_calls||[]).join(", ");
+  $("alert-mqtt").checked=a.mqtt_enabled;
+  $("alert-mqtt-host").value=a.mqtt_host;
+  $("alert-mqtt-port").value=a.mqtt_port;
+  $("alert-mqtt-topic").value=a.mqtt_topic;
+ }catch(e){notice("alert-notice","ERROR: "+e.message);}
+}
+$("alert-save").onclick=async()=>{
+ try{
+  const rules={enabled:$("alert-enabled").checked,
+   offline_seconds:Number($("alert-offline").value),
+   no_rf_minutes:Number($("alert-no-rf").value),
+   watch_calls:$("alert-watch").value.trim().split(/[\s,;]+/).filter(Boolean),
+   weather_temp_high:$("alert-temp").value.trim()===""?null:Number($("alert-temp").value),
+   weather_pressure_low:$("alert-pressure").value.trim()===""?null:Number($("alert-pressure").value),
+   mqtt_enabled:$("alert-mqtt").checked,
+   mqtt_host:$("alert-mqtt-host").value.trim(),
+   mqtt_port:Number($("alert-mqtt-port").value),
+   mqtt_topic:$("alert-mqtt-topic").value.trim()};
+  const message=await command("alerts_save",{rules});
+  notice("alert-notice",String(message));
+  await refreshAlerts();
+ }catch(e){notice("alert-notice","ERROR: "+e.message);}
+};
+$("alert-browser").onclick=async()=>{
+ if(!("Notification" in window)){notice("alert-notice","Prohlížeč nepodporuje systémové notifikace.");return;}
+ const state=await Notification.requestPermission();
+ alertBrowserEnabled=state==="granted";
+ notice("alert-notice",alertBrowserEnabled?"Upozornění povolena v prohlížeči.":"Upozornění nepovolena.");
+};
+async function refreshAlerts(){
+ try{
+  const d=await get("/api/alerts"),root=$("alert-rows");
+  root.replaceChildren();
+  $("alert-status").textContent="Upozornění: "+(d.enabled?"ON":"OFF")+
+      " | MQTT: "+(d.mqtt_enabled?"ON":"OFF")+
+      " | MQTT chyby: "+d.mqtt_errors+
+      " | Poslední ID: "+d.latest_id;
+  for(const event of d.events||[]){
+   const row=document.createElement("tr");
+   for(const value of [event.at,event.code,event.callsign,event.message]){
+    const td=document.createElement("td");td.textContent=String(value??"");row.appendChild(td);
+   }root.appendChild(row);
+  }
+  if(lastAlertSeen!=null && d.latest_id>lastAlertSeen && alertBrowserEnabled){
+   const found=(d.events||[]).find(e=>e.id>d.latest_id-3 && e.id>lastAlertSeen);
+   if(found&&"Notification" in window&&Notification.permission==="granted")
+    new Notification("OK5TVR APRS", {body:found.message});
+  }
+  lastAlertSeen=d.latest_id;
+ }catch(e){notice("alert-notice","ERROR: "+e.message);}
+}
+$("alert-refresh").onclick=refreshAlerts;
 async function refresh() {
   if(pollBusy)return;pollBusy=true;
   try{
@@ -926,6 +1074,7 @@ async function refresh() {
     lastState=s;lastDiagnostics=d;
     updateHealth(s,d);renderRx(s.history);renderTelemetry(d.telemetry||{});
     if(currentTab==='isrf')refreshIsrf();
+    if(currentTab==='alerts')refreshAlerts();
     if(currentTab in destinations){
       const f=$("tab-"+currentTab).querySelector("iframe");
       if(f)resizeFrame(f);
