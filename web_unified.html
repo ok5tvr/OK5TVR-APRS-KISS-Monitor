@@ -334,7 +334,26 @@ function setLanguage(value) {
   document.documentElement.lang = language;
   $("language").value = language;
   if (window.OK5TVRLocale) window.OK5TVRLocale.setLanguage(language);
-  document.querySelectorAll("[data-cs][data-en]").forEach(el => { el.textContent = el.dataset[language]; });
+  // IMPORTANT: Some translated labels contain <input> or <select> elements.
+  // Replacing the label's textContent would REMOVE these controls from the DOM.
+  document.querySelectorAll("[data-cs][data-en]").forEach(el => {
+    const translated = el.dataset[language];
+    if (!el.children.length) {
+      el.textContent = translated;
+      return;
+    }
+    // Translate just the label's own text node, preserving child controls,
+    // event listeners and current form values across CS/EN switches.
+    const ownText = Array.from(el.childNodes).find(node =>
+      node.nodeType === Node.TEXT_NODE && node.nodeValue.trim());
+    if (ownText) {
+      const leading = ownText.nodeValue.match(/^\s*/)[0];
+      const trailing = ownText.nodeValue.match(/\s*$/)[0];
+      ownText.nodeValue = leading + translated + trailing;
+    } else {
+      el.insertBefore(document.createTextNode(translated + " "), el.firstChild);
+    }
+  });
   for (const name of Object.keys(destinations)) {
     const frame = document.querySelector("#tab-" + name + " iframe");
     if (frame && frame.contentWindow && frame.contentWindow.OK5TVRLocale) {
