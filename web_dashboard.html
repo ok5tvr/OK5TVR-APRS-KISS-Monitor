@@ -103,6 +103,10 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <button id="reset">Zobrazit všechny</button><button id="export-geojson" title="Exportovat filtrované stanice a trasy do GeoJSON">Export GeoJSON</button></span></h2>
 <div class="map-filterbar" role="group" aria-label="Filtry APRS mapy" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 12px;background:#132a3a">
 <label style="font-size:12px"><input id="show-trails" type="checkbox" checked> Trasy stanic</label>
+<label style="font-size:12px">Import trasy / bodů (GPX, KML, GeoJSON)
+<input type="file" id="map-import" accept=".gpx,.kml,.geojson,.json" style="max-width:190px" /></label>
+<button id="map-clear-import" title="Smazat pouze importované lokální vrstvy">Smazat import</button>
+<span id="map-import-status" style="font-size:12px;color:#f7c479"></span>
 <label style="font-size:12px"><input id="direct-only" type="checkbox"> Jen DIRECT</label>
 <label style="font-size:12px"><input id="show-objects" type="checkbox" checked> Objekty</label>
 <label style="font-size:12px">Aktivita
@@ -136,6 +140,7 @@ const $=id=>document.getElementById(id);
 const tr=value=>window.OK5TVRLocale.tr(value);
 const urlParams=new URLSearchParams(location.search);
 const token=urlParams.get('key')||'';
+if(urlParams.get('heard')==='1') { $('direct-only').checked=true; $('activity-filter').value='1440'; }
 const adminToken=urlParams.get('admin')||'';
 const authPath=(path)=>path+(adminToken?'?admin='+encodeURIComponent(adminToken):token?'?key='+encodeURIComponent(token):'');
 let capabilityPromise=null;
@@ -173,6 +178,7 @@ const templates={
  'osm-dark':'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 };
 let positions=[], ownPosition=null, ownDigi=null, chosen=null, firstPosition=true, geo=null;
+let importedMapLayers=[];
 let view={lat:49.7384,lon:13.3736,z:8}, effectiveProvider=$('mapstyle').value;
 let tileEpoch=0, mapRedrawTimer=null, pointer=null, tileWatchdog=null, success=0, requested=0, failure=0;
 const mapNode=$('map'), canvas=$('geography'), context=canvas.getContext('2d');
@@ -353,7 +359,7 @@ function drawTrails(){
  trailCanvas.style.width=w+'px';trailCanvas.style.height=h+'px';
  trailCtx.setTransform(dpr,0,0,dpr,0,0);
  trailCtx.clearRect(0,0,w,h);
- if(!$('show-trails').checked)return;
+ if(!$('show-trails').checked) {drawImportedLayers();return;}
  trailCtx.lineWidth=2;trailCtx.lineJoin='round';trailCtx.lineCap='round';
  for(const s of filteredStations()){
   const trail=Array.isArray(s.trail)?s.trail:[];
@@ -370,7 +376,100 @@ function drawTrails(){
   trailCtx.strokeStyle=s.position_direct===true?'#62d6ed99':'#ffc77999';
   trailCtx.stroke();
  }
+ drawImportedLayers();
 }
+function drawImportedLayers(){
+ const {w,h}=pixels();
+ if(!w||!h)return;
+ trailCtx.save();trailCtx.lineWidth=2.5;trailCtx.strokeStyle='#f6bd68';
+ trailCtx.fillStyle='#ffd58e';trailCtx.setLineDash([7,4]);
+ for(const layer of importedMapLayers){
+  if(layer.length===1){
+   const p=project(layer[0].lat,layer[0].lon);
+   trailCtx.setLineDash([]);trailCtx.beginPath();trailCtx.arc(p.x,p.y,5,0,2*Math.PI);trailCtx.fill();
+   trailCtx.setLineDash([7,4]);continue;
+  }
+  trailCtx.beginPath();let prev=null;
+  for(const geo of layer){
+   const p=project(geo.lat,geo.lon);
+   if(!prev||Math.abs(p.x-prev.x)>w*.7||Math.abs(p.y-prev.y)>h*.9)
+    trailCtx.moveTo(p.x,p.y);
+   else trailCtx.lineTo(p.x,p.y);
+   prev=p;
+  }
+  trailCtx.stroke();
+ }
+ trailCtx.restore();
+}
+function importMapFile(name,source){
+ const layers=[];
+ const valid=(lon,lat)=>Number.isFinite(lon)&&Number.isFinite(lat)&&
+   lat>=-85&&lat<=85&&lon>=-180&&lon<=180;
+ const add=points=>{
+  if(!Array.isArray(points)||!points.length)return;
+  const filtered=points.filter(p=>valid(p.lon,p.lat)).slice(0,5000);
+  if(filtered.length)layers.push(filtered);
+ };
+ const fromCoords=coords=>Array.isArray(coords)?
+   coords.map(c=>({lon:Number(c?.[0]),lat:Number(c?.[1])})): [];
+ const visitGeo=(g,depth=0)=>{
+  if(!g||depth>7||layers.length>=60)return;
+  if(g.type==='FeatureCollection')for(const f of (g.features||[]).slice(0,60))visitGeo(f,depth+1);
+  else if(g.type==='Feature')visitGeo(g.geometry,depth+1);
+  else if(g.type==='GeometryCollection')for(const f of (g.geometries||[]).slice(0,60))visitGeo(f,depth+1);
+  else if(g.type==='Point')add(fromCoords([g.coordinates]));
+  else if(g.type==='LineString')add(fromCoords(g.coordinates));
+  else if(g.type==='MultiPoint'||g.type==='MultiLineString'||g.type==='Polygon')
+   for(const coords of (g.coordinates||[]).slice(0,60)) {
+    if(g.type==='MultiPoint')add(fromCoords([coords]));
+    else add(fromCoords(coords));
+   }
+ };
+ if(/\.geojson$|\.json$/i.test(name))visitGeo(JSON.parse(source));
+ else if(/\.gpx$/i.test(name)){
+  if(/<!DOCTYPE/i.test(source))throw Error('DOCTYPE is not accepted');
+  const xml=new DOMParser().parseFromString(source,'application/xml');
+  if(xml.querySelector('parsererror'))throw Error('Invalid GPX');
+  const trk=Array.from(xml.getElementsByTagName('trkseg'));
+  for(const segment of trk.slice(0,60))add(Array.from(segment.getElementsByTagName('trkpt'))
+    .slice(0,5000).map(p=>({lon:Number(p.getAttribute('lon')),lat:Number(p.getAttribute('lat'))})));
+  for(const tag of ['rte','wpt']){
+   for(const root of Array.from(xml.getElementsByTagName(tag)).slice(0,60)){
+    if(tag==='wpt')add([{lon:Number(root.getAttribute('lon')),lat:Number(root.getAttribute('lat'))}]);
+    else add(Array.from(root.getElementsByTagName('rtept'))
+      .slice(0,5000).map(p=>({lon:Number(p.getAttribute('lon')),lat:Number(p.getAttribute('lat'))})));
+   }
+  }
+ } else if(/\.kml$/i.test(name)){
+  if(/<!DOCTYPE/i.test(source))throw Error('DOCTYPE is not accepted');
+  const xml=new DOMParser().parseFromString(source,'application/xml');
+  if(xml.querySelector('parsererror'))throw Error('Invalid KML');
+  for(const coordinates of Array.from(xml.getElementsByTagName('coordinates')).slice(0,60)){
+   add((coordinates.textContent||'').trim().split(/\s+/).slice(0,5000)
+     .map(p=>p.split(',')).map(a=>({lon:Number(a[0]),lat:Number(a[1])})));
+  }
+ } else throw Error('Supported: GPX, KML, GeoJSON');
+ const n=layers.reduce((sum,l)=>sum+l.length,0);
+ if(!n||n>5000)throw Error('No valid points or over 5000 points');
+ return layers;
+}
+$('map-import').addEventListener('change',async event=>{
+ const file=event.target.files?.[0];if(!file)return;
+ if(file.size>2*1024*1024){$('map-import-status').textContent='Max. 2 MB';return;}
+ try {
+  const layers=importMapFile(file.name,await file.text());
+  importedMapLayers=layers;
+  const points=layers.flat().slice(0,5000);
+  $('map-import-status').textContent=layers.length+' vrstev / '+points.length+' GPS bodů';
+  fitStations(points);
+ }catch(e){$('map-import-status').textContent='Import: '+e.message;}
+});
+$('map-clear-import').addEventListener('click',()=>{
+ importedMapLayers=[];
+ $('map-import').value='';
+ $('map-import-status').textContent='';
+ renderMap(false);
+});
 function updateMarkers(){
  const {w,h}=pixels(),holder=$('markers');holder.replaceChildren();
  let active=null;

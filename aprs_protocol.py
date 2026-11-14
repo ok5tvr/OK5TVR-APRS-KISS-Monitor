@@ -151,6 +151,7 @@ class Packet:
     pid: int | None = None
     raw_info: bytes = b""
     raw_ax25: bytes = b""
+    receiver: str = 'primary'
 
 
 def decode_ax25(raw: bytes, simulated: bool = False) -> Packet:

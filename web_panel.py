@@ -163,7 +163,7 @@ class WebPanel:
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/app', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
+                if parsed.path in ('/app', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/api/heard', '/api/alerts', '/api/tx-scheduler', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
@@ -210,6 +210,19 @@ class WebPanel:
                             self._respond(200,json.dumps(result,ensure_ascii=False))
                         except (ValueError,TypeError) as exc:
                             self._respond(400,json.dumps({'error':str(exc)},ensure_ascii=False))
+                    elif parsed.path == '/api/heard':
+                        try:
+                            args=parse_qs(parsed.query)
+                            result=operator.heard_snapshot(
+                                args.get('minutes',['1440'])[0],
+                                args.get('receiver',[''])[0])
+                            self._respond(200,json.dumps(result,ensure_ascii=False))
+                        except (ValueError,TypeError) as exc:
+                            self._respond(400,json.dumps({'error':str(exc)},ensure_ascii=False))
+                    elif parsed.path == '/api/alerts':
+                        self._respond(200,json.dumps(operator.alerts.snapshot(),ensure_ascii=False))
+                    elif parsed.path == '/api/tx-scheduler':
+                        self._respond(200,json.dumps(operator.tx_snapshot(),ensure_ascii=False))
                     elif parsed.path == '/api/diagnostics':
                         self._respond(200, json.dumps(operator.diagnostics_snapshot(),ensure_ascii=False))
                     elif parsed.path == '/api/journal':

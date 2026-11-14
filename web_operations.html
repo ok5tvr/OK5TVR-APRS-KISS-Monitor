@@ -15,7 +15,15 @@
 <section id="objects"><h2 data-cs="APRS objekty · odesílání přes KISS TNC" data-en="APRS objects · transmit via KISS TNC">APRS objekty · odesílání přes KISS TNC</h2>
 <p data-cs="Objekty jsou vysílány pouze jednorázově po potvrzení; pro ukončení existujícího objektu použij KILL (stejný název). Dodrž místní APRS cestu a před vysíláním ověř polohu." data-en="Objects transmit only once after confirmation. To remove an existing object send KILL with the same name. Verify the position and RF path first.">Objekty jsou vysílány pouze jednorázově po potvrzení; pro ukončení existujícího objektu použij KILL (stejný název). Dodrž místní APRS cestu a před vysíláním ověř polohu.</p>
 <div class="grid"><div><label data-cs="Název objektu (max. 9 znaků)" data-en="Object name (max 9 chars)">Název objektu (max. 9 znaků)</label><input id="name" maxlength="9" placeholder="APRS-TEST"><label>Latitude</label><input type="number" id="lat" step="any" placeholder="49.7"><label>Longitude</label><input type="number" id="lon" step="any" placeholder="13.3"></div>
-<div><label data-cs="Cesta RF" data-en="RF path">Cesta RF</label><select id="path"><option>DIRECT</option><option selected>WIDE1-1</option><option>WIDE1-1,WIDE2-1</option><option>WIDE2-1</option></select><label data-cs="Symbol APRS" data-en="APRS symbol">Symbol APRS</label><select id="symbol"><option value="r">r · repeater</option><option value="-">- · house</option><option value="!">! · emergency (pouze skutečná událost / only real emergencies)</option><option value=">">&gt; · car</option><option value="O">O · balloon</option></select><label data-cs="Komentář (ASCII, max. 43)" data-en="Comment (ASCII, max 43)">Komentář (ASCII, max. 43)</label><input id="comment" maxlength="43" placeholder="APRS test object"></div></div>
+<div><label data-cs="Cesta RF" data-en="RF path">Cesta RF</label><select id="path"><option>DIRECT</option><option selected>WIDE1-1</option><option>WIDE1-1,WIDE2-1</option><option>WIDE2-1</option></select><label data-cs="Symbol APRS" data-en="APRS symbol">Symbol APRS</label><select id="symbol"><option value="r">r · repeater</option><option value="-">- · house</option><option value="!">! · emergency (pouze skutečná událost / only real emergencies)</option><option value=">">&gt; · car</option><option value="O">O · balloon</option></select><label data-cs="Typ objektu" data-en="Object preset">Typ objektu</label>
+<select id="object-preset">
+<option value="standard">Obecný</option><option value="repeater">Převaděč / frequency</option>
+<option value="event">Akce / rally point</option><option value="weather">Meteostanice</option></select>
+<label data-cs="Frekvence MHz – volitelně" data-en="Frequency MHz – optional">Frekvence MHz</label>
+<input id="object-frequency" type="number" min="28" max="1300" step="0.001" placeholder="145.600">
+<label data-cs="CTCSS Hz – volitelně" data-en="CTCSS Hz – optional">CTCSS Hz</label>
+<input id="object-tone" type="number" min="50" max="300" step="0.1" placeholder="88.5">
+<label data-cs="Komentář (ASCII, max. 43)" data-en="Comment (ASCII, max 43)">Komentář (ASCII, max. 43)</label><input id="comment" maxlength="43" placeholder="APRS test object"></div></div>
 <label data-cs="Text APRS statusu (ASCII, max. 67)" data-en="APRS status text (ASCII, max 67)">Text APRS statusu (ASCII, max. 67)</label><input id="status_text" maxlength="67" value="OK5TVR APRS online"><button id="status_send" data-cs="Vyslat status" data-en="Transmit status">Vyslat status</button><button id="own_position" data-cs="Jednorázový RF maják vlastní polohy" data-en="One-time RF own-position beacon">Jednorázový RF maják vlastní polohy</button><button class="primary" id="object_on" data-cs="Vyslat objekt (LIVE)" data-en="Transmit object (LIVE)">Vyslat objekt (LIVE)</button><button class="danger" id="object_off" data-cs="Ukončit objekt (KILL)" data-en="Kill object">Ukončit objekt (KILL)</button><small data-cs="Omezení: jeden TX objektu za 30 sekund. KISS rádio musí mít TX povolený." data-en="Rate limit: one object TX per 30 seconds. Radio must allow KISS TX.">Omezení: jeden TX objektu za 30 sekund. KISS rádio musí mít TX povolený.</small></section>
 <section><h2 data-cs="Telemetrie · statistiky za posledních 15 minut" data-en="Telemetry · last 15 minutes">Telemetrie · statistiky za posledních 15 minut</h2>
 <p data-cs="RX/TX znamená přijaté dekódované rámce / zápis do USB TNC, nikoliv nezávisle ověřené VF odvysílání. Průměrná a maximální vzdálenost vychází z udávaných GPS poloh, nikoli z měření přímo slyšených stanic." data-en="RX/TX means decoded packets / USB TNC writes, not independently verified RF transmissions. Distances are based on reported GPS positions, not direct RF range measurements.">RX/TX znamená přijaté dekódované rámce / zápis do USB TNC, nikoliv nezávisle ověřené VF odvysílání. Průměrná a maximální vzdálenost vychází z udávaných GPS poloh, nikoli z měření přímo slyšených stanic.</p>
@@ -72,7 +80,35 @@ $('telemetry_now').onclick=async()=>{
 function saveFile(name,text,type){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type}));a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 $('export').onclick=async()=>{try{saveFile('ok5tvr-config-backup.json',JSON.stringify(await get('/api/backup'),null,2),'application/json');msg('Záloha stažena (bez hesel).','Backup downloaded (without credentials).')}catch(e){msg(String(e),String(e))}};
 $('restore').onclick=async()=>{let f=$('restorefile').files[0];if(!f)return msg('Vyber zálohu.','Choose a backup.');if(f.size>32768)return msg('Soubor je příliš velký.','File too large.');if(!confirm(language==='en'?'Restore settings? Automatic transmissions will be disabled.':'Opravdu obnovit konfiguraci? Automatické vysílání bude vypnuté.'))return;try{let result=await post('restore_config',{backup:JSON.parse(await f.text()),confirm:true});msg(result,result)}catch(e){msg(String(e),String(e))}};
-async function obj(alive){if(!confirm(language==='en'?'Transmit ONE RF object packet?':'Odeslat JEDEN objektový rámec přes RF?'))return;try{let result=await post('object_send',{name:$('name').value,lat:$('lat').value,lon:$('lon').value,comment:$('comment').value,path:$('path').value,alive,symbol:$('symbol').value,confirm:true});msg(result,result);refresh()}catch(e){msg(String(e),String(e))}}
+$('object-preset').onchange=()=>{
+ const preset=$('object-preset').value;
+ if(preset==='repeater')$('symbol').value='r';
+ else if(preset==='event')$('symbol').value='-';
+ else if(preset==='weather')$('symbol').value='-';
+};
+async function obj(alive){
+ if(!confirm(language==='en'?'Transmit ONE RF object packet?':'Odeslat JEDEN objektový rámec přes RF?'))return;
+ try{
+  let comment=$('comment').value;
+  const f=$('object-frequency').value.trim(),tone=$('object-tone').value.trim();
+  if(f){
+   const frequency=Number(f);
+   if(!Number.isFinite(frequency)||frequency<28||frequency>1300)
+    throw Error('Frekvence musí být 28–1300 MHz');
+   let prefix=frequency.toFixed(3).padStart(7,'0')+'MHz';
+   if(tone){
+    const ctcss=Number(tone);
+    if(!Number.isFinite(ctcss)||ctcss<50||ctcss>300)throw Error('CTCSS 50–300 Hz');
+    prefix+=' T'+ctcss.toFixed(1);
+   }
+   comment=prefix+(comment?' '+comment:'');
+  }
+  if(comment.length>43)throw Error('Komentář včetně frekvence: max. 43 znaků');
+  const result=await post('object_send',{name:$('name').value,lat:$('lat').value,lon:$('lon').value,
+       comment,path:$('path').value,alive,symbol:$('symbol').value,confirm:true});
+  msg(result,result);refresh();
+ }catch(e){msg(String(e),String(e));}
+}
 $('status_send').onclick=async()=>{if(!confirm(language==='en'?'Transmit ONE status packet?':'Odeslat JEDEN APRS status?'))return;try{const r=await post('status_send',{text:$('status_text').value,path:$('path').value,confirm:true});msg(r,r);refresh()}catch(e){msg(String(e),String(e))}};
 $('own_position').onclick=async()=>{if(!confirm(language==='en'?'Transmit ONE position packet using saved iGate GPS location?':'Odeslat JEDEN poziční rámec z uložené GPS polohy iGate?'))return;try{const r=await post('position_send',{path:$('path').value,confirm:true});msg(r,r);refresh()}catch(e){msg(String(e),String(e))}};
 $('object_on').onclick=()=>obj(true);$('object_off').onclick=()=>obj(false);

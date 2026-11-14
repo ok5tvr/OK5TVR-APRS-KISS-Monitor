@@ -74,7 +74,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
 </head>
 <body>
 <header>
-  <div><div class="brand"><b>OK5TVR</b> APRS KISS Monitor</div><div class="sub" data-cs="Jednotné webové ovládání · Windows / Raspberry Pi" data-en="Unified web console · Windows / Raspberry Pi">Jednotné webové ovládání · Windows / Raspberry Pi</div></div>
+  <div><div class="brand"><b>OK5TVR</b> APRS KISS Monitor <small style="color:#9acbdf;font-weight:normal">v2.3 dev</small></div><div class="sub" data-cs="Jednotné webové ovládání · Windows / Raspberry Pi" data-en="Unified web console · Windows / Raspberry Pi">Jednotné webové ovládání · Windows / Raspberry Pi</div></div>
   <div class="health">
     <span id="usb-status" class="pill">USB: —</span>
     <span id="is-status" class="pill">APRS-IS: —</span>
@@ -87,11 +87,14 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <button type="button" data-tab="home" role="tab" aria-selected="true" data-cs="Přehled" data-en="Overview">Přehled</button>
   <button type="button" data-tab="rx" role="tab" aria-selected="true" data-cs="Příjem / TX" data-en="Receive / TX">Příjem / TX</button>
   <button type="button" data-tab="map" role="tab" aria-selected="false" data-cs="Mapa" data-en="Map">Mapa</button>
+  <button type="button" data-tab="heard" role="tab" aria-selected="false" data-cs="Mapa doslechu" data-en="RF Heard Map">Mapa doslechu</button>
   <button type="button" data-tab="messages" role="tab" aria-selected="false" data-cs="Zprávy" data-en="Messages">Zprávy</button>
+  <button type="button" data-tab="chat2" role="tab" aria-selected="false" data-cs="Konverzace / bulletiny" data-en="Conversations / Bulletins">Konverzace / bulletiny</button>
   <button type="button" data-tab="objects" role="tab" aria-selected="false" data-cs="Objekty" data-en="Objects">Objekty</button>
   <button type="button" data-tab="igate" role="tab" aria-selected="false" data-cs="Nastavení / iGate / DIGI" data-en="Settings / iGate / DIGI">Nastavení / iGate / DIGI</button>
   <button type="button" data-tab="telemetry" role="tab" aria-selected="false" data-cs="Telemetrie" data-en="Telemetry">Telemetrie</button>
   <button type="button" data-tab="diagnostics" role="tab" aria-selected="false" data-cs="Diagnostika / deník" data-en="Diagnostics / log">Diagnostika / deník</button>
+  <button type="button" data-tab="alerts" role="tab" aria-selected="false" data-cs="Upozornění" data-en="Alerts">Upozornění</button>
   <button type="button" data-tab="tnc" role="tab" aria-selected="false" data-cs="TNC / Síť / Historie" data-en="TNC / Network / History">TNC / Síť / Historie</button>
   <button type="button" data-tab="weather" role="tab" aria-selected="false" data-cs="APRS Počasí" data-en="APRS Weather">APRS Počasí</button>
   <button type="button" data-tab="isrf" role="tab" aria-selected="false" data-cs="IS → RF / Filtry" data-en="IS → RF / Filters">IS → RF / Filtry</button>
@@ -115,7 +118,10 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   </div>
   <div class="home-links">
     <button class="home-link" data-open="rx"><strong>01 · Příjem / TX</strong><span>USB KISS, poslední rámce, dekódování AX.25 a volba místního HDMI panelu.</span></button>
-    <button class="home-link" data-open="map"><strong>02 · APRS mapa</strong><span>Online a offline mapy, APRS symboly, polohy a přímý příjem.</span></button>
+    <button class="home-link" data-open="map"><strong>02 · APRS mapa</strong><span>Online a offline mapy, APRS symboly, polohy, GPX / KML / GeoJSON.</span></button>
+    <button class="home-link" data-open="heard"><strong>11 · Mapa RF doslechu</strong><span>Doslech po přijímačích, přímý a opakovaný provoz, DX a historie.</span></button>
+    <button class="home-link" data-open="chat2"><strong>12 · Konverzace a bulletiny</strong><span>Nepřečtené zprávy, historie konverzací, blokované stanice a APRS bulletiny.</span></button>
+    <button class="home-link" data-open="alerts"><strong>13 · Automatická upozornění</strong><span>Výpadky TNC/iGate, sledované stanice, počasí a volitelné MQTT.</span></button>
     <button class="home-link" data-open="igate"><strong>03 · Nastavení</strong><span>iGate, DIGI, USB, GPS, symboly, majáky a připojení k APRS-IS.</span></button>
     <button class="home-link" data-open="messages"><strong>04 · Zprávy</strong><span>Inbox, Outbox, potvrzení ACK/REJ a odeslání RF zpráv.</span></button>
     <button class="home-link" data-open="objects"><strong>05 · APRS objekty</strong><span>Správa objektů a ruční vysílání polohových rámců.</span></button>
@@ -171,7 +177,39 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <div class="panel"><h2 data-cs="Detail rámce · dekódování / HEX" data-en="Frame details · decode / HEX">Detail rámce · dekódování / HEX</h2><div id="rx-details" class="details" data-cs="Vyber přijatý rámec v tabulce." data-en="Select a received frame.">Vyber přijatý rámec v tabulce.</div></div>
 </section>
 <section class="view" id="tab-map" hidden></section>
+<section class="view" id="tab-heard" hidden>
+  <div class="panel">
+    <h2>Mapa doslechu · DIRECT / VIA / přijímače</h2>
+    <div class="toolbar">
+      <label>Interval <select id="heard-period"><option value="60">60 minut</option><option value="1440" selected>24 hodin</option>
+         <option value="10080">7 dní</option><option value="43200">30 dní</option></select></label>
+      <label>Přijímač <select id="heard-device"><option value="">Všechny TNC</option><option value="primary">Primární TNC</option></select></label>
+      <button id="heard-refresh">Obnovit doslech</button>
+      <button id="heard-csv">Export CSV</button>
+    </div>
+    <p class="note">DIRECT označuje paket přijatý bez opakování; GPS je poloha odesílatele, nikoliv mapa zaručeného RF pokrytí.</p>
+    <div id="heard-summary" class="muted"></div>
+    <div class="scroll"><table><thead><tr><th>Stanice</th><th>Přijímač</th><th>DIRECT</th><th>VIA</th><th>km</th><th>Poslední RF příjem</th><th>Cesta</th></tr></thead><tbody id="heard-rows"></tbody></table></div>
+  </div>
+</section>
 <section class="view" id="tab-messages" hidden></section>
+<section class="view" id="tab-chat2" hidden>
+  <div class="panel">
+    <h2>APRS Messaging 2.0</h2>
+    <p class="note">Přijaté RF zprávy mají stav přečtení; bulletiny se ukládají odděleně. Odesílání a ACK/REJ najdeš ve stávající záložce Zprávy.</p>
+    <div class="toolbar"><button id="chat2-refresh">Načíst zprávy</button>
+      <span id="chat2-unread" class="muted"></span></div>
+    <h3>Konverzace</h3>
+    <div class="scroll"><table><thead><tr><th>Stanice</th><th>RX</th><th>TX</th><th>Nepřečtené</th><th>Poslední</th></tr></thead><tbody id="chat2-conversations"></tbody></table></div>
+    <h3>Inbox – nepřečtené a poslední zprávy</h3>
+    <div class="scroll"><table><thead><tr><th>UTC</th><th>Od</th><th>Komu</th><th>Text</th><th>Stav</th></tr></thead><tbody id="chat2-inbox"></tbody></table></div>
+    <h3>APRS bulletiny (BLN)</h3>
+    <div class="scroll"><table><thead><tr><th>UTC</th><th>Zdroj</th><th>Bulletin</th><th>Text</th><th>Stav</th></tr></thead><tbody id="chat2-bulletins"></tbody></table></div>
+    <h3>Blokovaní odesílatelé</h3>
+    <textarea id="chat2-blocked" rows="3" placeholder="OK1ABC-7&#10;OK2XYZ-9" style="width:100%;background:#101f2e;color:#eff8fd;border-radius:8px"></textarea>
+    <div class="toolbar"><button class="primary" id="chat2-block-save">Uložit seznam blokovaných stanic</button><span id="chat2-notice"></span></div>
+  </div>
+</section>
 <section class="view" id="tab-objects" hidden></section>
 <section class="view" id="tab-igate" hidden></section>
 <section class="view" id="tab-telemetry" hidden>
@@ -195,6 +233,32 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <div class="panel"><h2 data-cs="Statistiky za posledních 15 minut" data-en="Statistics for the last 15 minutes">Statistiky za posledních 15 minut</h2><div class="metric-list" id="telem-metrics"></div><div class="details" id="telem-extras">—</div></div>
 </section>
 <section class="view" id="tab-diagnostics" hidden></section>
+<section class="view" id="tab-alerts" hidden>
+  <div class="panel">
+    <h2>Upozornění a monitoring</h2>
+    <p class="note">Upozornění zobrazujeme v prohlížeči a volitelně posíláme do lokálního MQTT brokeru. Nevyvolávají žádné APRS/RF vysílání.</p>
+    <div class="form-grid">
+      <label class="check"><input id="alert-enabled" type="checkbox" checked> Zapnout pravidla</label>
+      <div><label for="alert-offline">TNC offline (s)</label><input type="number" id="alert-offline" min="30" max="3600"></div>
+      <div><label for="alert-no-rf">Bez RF příjmu (min)</label><input type="number" id="alert-no-rf" min="5" max="240"></div>
+      <div><label for="alert-temp">Teplota nad °C (prázdné = vypnuto)</label><input type="number" id="alert-temp" min="-50" max="70" step="0.1"></div>
+      <div><label for="alert-pressure">Tlak pod hPa</label><input type="number" id="alert-pressure" min="800" max="1100" step="0.1"></div>
+      <div><label for="alert-watch">Sledované APRS stanice (oddělit čárkou)</label><input id="alert-watch" placeholder="OK1ABC-7, OK2XYZ-9"></div>
+      <label class="check"><input id="alert-mqtt" type="checkbox"> MQTT (lokální broker, bez TLS)</label>
+      <div><label for="alert-mqtt-host">MQTT host</label><input id="alert-mqtt-host"></div>
+      <div><label for="alert-mqtt-port">MQTT port</label><input type="number" id="alert-mqtt-port" min="1" max="65535"></div>
+      <div><label for="alert-mqtt-topic">MQTT topic</label><input id="alert-mqtt-topic"></div>
+    </div>
+    <div class="toolbar">
+      <button class="primary" id="alert-save">Uložit pravidla</button>
+      <button id="alert-refresh">Obnovit upozornění</button>
+      <button id="alert-browser">Zapnout upozornění v prohlížeči</button>
+    </div>
+    <div id="alert-notice" class="message"></div>
+    <div id="alert-status" class="muted"></div>
+    <div class="scroll"><table><thead><tr><th>UTC</th><th>Typ</th><th>Stanice</th><th>Upozornění</th></tr></thead><tbody id="alert-rows"></tbody></table></div>
+  </div>
+</section>
 <section class="view" id="tab-tnc" hidden>
   <div class="panel">
     <h2 data-cs="TNC Manager – USB / TCP KISS" data-en="TNC Manager – USB / TCP KISS">TNC Manager – USB / TCP KISS</h2>
@@ -213,6 +277,30 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
       <div><label for="tnc-server-port">Server port</label><input id="tnc-server-port" type="number" min="1024" max="65535" value="8001"></div>
       <div><label for="tnc-retention">Historie (dny)</label><input id="tnc-retention" type="number" min="1" max="365" value="30"></div>
       <div><label for="tnc-max-rows">Maximum paketů SQLite</label><input id="tnc-max-rows" type="number" min="1000" max="1000000" value="100000"></div>
+    </div>
+    <h3>Společný RF TX Scheduler (jeden primární KISS port)</h3>
+    <div class="form-grid">
+      <div><label for="tnc-tx-gap">Min. odstup TX (s)</label><input id="tnc-tx-gap" type="number" min="0" max="15" step="0.5" value="2"></div>
+      <div><label for="tnc-tx-minute">Max. paketů/min</label><input id="tnc-tx-minute" type="number" min="1" max="60" value="12"></div>
+      <div><label for="tnc-tx-pending">Délka TX fronty (RAM)</label><input id="tnc-tx-pending" type="number" min="1" max="32" value="12"></div>
+    </div>
+    <h3>Další nezávislá KISS TNC – pouze RX</h3>
+    <p class="note">Max. dvě doplňková TNC. Každé má vlastní port, reconnect a statistiky. Bez DIGI a RF TX, bez automatického spojování různých RF sítí. Primární TNC se nikdy neotevírá dvakrát.</p>
+    <div class="form-grid">
+      <label class="check"><input id="sec1-enabled" type="checkbox"> Přijímač 1 zapnutý</label>
+      <div><label for="sec1-id">ID přijímače 1</label><input id="sec1-id" value="rx1"></div>
+      <div><label for="sec1-type">Připojení 1</label><select id="sec1-type"><option value="tcp">TCP KISS</option><option value="serial">USB / COM KISS</option></select></div>
+      <div><label for="sec1-host">TCP host</label><input id="sec1-host" value="127.0.0.1"></div>
+      <div><label for="sec1-tcp">TCP port</label><input id="sec1-tcp" type="number" min="1" max="65535" value="8002"></div>
+      <div><label for="sec1-serial">USB / COM zařízení</label><input id="sec1-serial" placeholder="/dev/ttyACM1 / COM6"></div>
+      <div><label for="sec1-baud">Rychlost COM</label><input id="sec1-baud" type="number" min="1200" max="2000000" value="115200"></div>
+      <label class="check"><input id="sec2-enabled" type="checkbox"> Přijímač 2 zapnutý</label>
+      <div><label for="sec2-id">ID přijímače 2</label><input id="sec2-id" value="rx2"></div>
+      <div><label for="sec2-type">Připojení 2</label><select id="sec2-type"><option value="tcp">TCP KISS</option><option value="serial">USB / COM KISS</option></select></div>
+      <div><label for="sec2-host">TCP host</label><input id="sec2-host" value="127.0.0.1"></div>
+      <div><label for="sec2-tcp">TCP port</label><input id="sec2-tcp" type="number" min="1" max="65535" value="8003"></div>
+      <div><label for="sec2-serial">USB / COM zařízení</label><input id="sec2-serial" placeholder="/dev/ttyACM1 / COM6"></div>
+      <div><label for="sec2-baud">Rychlost COM</label><input id="sec2-baud" type="number" min="1200" max="2000000" value="115200"></div>
     </div>
     <div class="toolbar">
       <button class="primary" id="tnc-save" data-cs="Uložit konfiguraci" data-en="Save configuration">Uložit konfiguraci</button>
@@ -322,9 +410,9 @@ const tr = (cs,en) => language === "en" ? en : cs;
 let language = window.OK5TVRLocale ? window.OK5TVRLocale.language : "cs";
 let currentTab = "rx", lastState = {}, lastDiagnostics = {}, rxHistory = [];
 let rxSignature = "", selectedFrame = null, configLoaded = false, pollBusy = false;
-const tabIds = ["home","rx","map","messages","objects","igate","telemetry","diagnostics","tnc","weather","isrf"];
+const tabIds = ["home","rx","map","heard","messages","chat2","objects","igate","telemetry","diagnostics","alerts","tnc","weather","isrf"];
 const destinations = {
-  map:"/map", messages:"/messages", objects:"/operations",
+  map:"/map", heard:"/map?heard=1", messages:"/messages", objects:"/operations",
   igate:"/control", diagnostics:"/operations"
 };
 const auth = path => key ? path + (path.includes("?") ? "&" : "?") + "admin=" + encodeURIComponent(key) : path;
@@ -387,6 +475,9 @@ function showTab(name) {
   if (name === "tnc") {loadTncConfig();loadHistory();}
   if (name === "weather") loadWeather();
   if (name === "isrf") {loadIsrfRules();refreshIsrf();}
+  if (name === "heard") {loadHeardReceivers();loadHeard();}
+  if (name === "chat2") loadChat2();
+  if (name === "alerts") {loadAlertConfig();refreshAlerts();}
   history.replaceState(null,"","#" + name);
 }
 function trimEmbedded(frame,name) {
@@ -651,6 +742,20 @@ async function loadTncConfig(){
   $("tnc-server-host").value=t.kiss_server_host;
   $("tnc-server-port").value=t.kiss_server_port;
   $("tnc-retention").value=a.retention_days;$("tnc-max-rows").value=a.max_rows;
+  const q=c.tx_scheduler||{};
+  $("tnc-tx-gap").value=q.min_gap_s??2;
+  $("tnc-tx-minute").value=q.max_per_minute??12;
+  $("tnc-tx-pending").value=q.max_pending??12;
+  for(let i=1;i<=2;i++){
+   const item=(c.secondary_tncs?.devices||[])[i-1]||{};
+   $("sec"+i+"-enabled").checked=!!item.enabled;
+   $("sec"+i+"-id").value=item.id||"rx"+i;
+   $("sec"+i+"-type").value=item.transport||"tcp";
+   $("sec"+i+"-host").value=item.host||"127.0.0.1";
+   $("sec"+i+"-tcp").value=item.port||8001+i;
+   $("sec"+i+"-serial").value=item.serial_port||"";
+   $("sec"+i+"-baud").value=item.baud||115200;
+  }
   await refreshTnc();
  }catch(e){notice("tnc-notice",e.message);}
 }
@@ -674,7 +779,12 @@ async function refreshTnc(){
     "\nSQLite deník: čeká "+(j.pending??0)+"  |  Dávky: "+(j.batches_written??0)+
     "  |  Ztraceno: "+(j.dropped??0)+"  |  Chyby zápisu: "+(j.write_errors??0)+
     (a.last_error?"\nSQLite APRS ERROR: "+a.last_error:"")+
-    (j.last_error?"\nSQLite LOG ERROR: "+j.last_error:"");
+    (j.last_error?"\nSQLite LOG ERROR: "+j.last_error:"")+
+    "\nRF Scheduler: "+(t.tx_scheduler?.pending??0)+" čeká, "+
+         (t.tx_scheduler?.in_last_minute??0)+" / min, min. odstup "+
+         (t.tx_scheduler?.min_gap_s??0)+" s"+
+    "\nDalší KISS: "+(t.secondary_receivers||[]).map(x=>x.id+" ["+
+     (x.connected?"ONLINE":"OFF")+"] RX "+x.rx+" "+(x.last_error||"")).join("; ");
  }catch(e){notice("tnc-notice",e.message);}
 }
 $("tnc-reload").onclick=loadTncConfig;
@@ -689,8 +799,22 @@ $("tnc-save").onclick=async()=>{
     kiss_server_port:Number($("tnc-server-port").value),
     kiss_server_tx:false};
   if(!confirm(tr("Změna primárního TNC nebo sdílení KISS může odpojit přijímač. Aktivní DIGI/iGate se bezpečně vypne. Pokračovat?","Changing primary TNC or KISS sharing may disconnect the receiver and disable DIGI/iGate. Continue?")))return;
+  const others=[];
+  for(let i=1;i<=2;i++)if($("sec"+i+"-enabled").checked){
+   others.push({id:$("sec"+i+"-id").value.trim(),
+     enabled:true,transport:$("sec"+i+"-type").value,
+     host:$("sec"+i+"-host").value.trim(),
+     port:Number($("sec"+i+"-tcp").value),
+     serial_port:$("sec"+i+"-serial").value.trim(),
+     baud:Number($("sec"+i+"-baud").value)});
+  }
+  const tx_scheduler={
+    min_gap_s:Number($("tnc-tx-gap").value),
+    max_per_minute:Number($("tnc-tx-minute").value),
+    max_pending:Number($("tnc-tx-pending").value)};
   const result=await command("save",{config:{tnc:t,serial:{port:$("tnc-serial-port").value.trim()||"auto"},
-    archive:{retention_days:Number($("tnc-retention").value),max_rows:Number($("tnc-max-rows").value)}}});
+    archive:{retention_days:Number($("tnc-retention").value),max_rows:Number($("tnc-max-rows").value)},
+    tx_scheduler,secondary_tncs:{devices:others}}});
   notice("tnc-notice",result);await loadTncConfig();
  }catch(e){notice("tnc-notice","CHYBA: "+e.message);}
 };
@@ -871,6 +995,154 @@ $("isrf-test").onclick=async()=>{
       " | "+result.reason+" | "+(result.source||"")+" → "+(result.target||""));
  }catch(e){notice("isrf-test-result","ERROR: "+e.message);}
 };
+let lastHeardRows=[];
+async function loadHeardReceivers(){
+ try{
+  const t=await get("/api/tnc"),select=$("heard-device"),value=select.value;
+  select.replaceChildren(new Option("Všechny TNC",""),new Option("Primární TNC","primary"));
+  for(const item of (t.secondary_receivers||[]))
+   select.add(new Option(item.id+" · "+item.endpoint,item.id));
+  select.value=Array.from(select.options).some(o=>o.value===value)?value:"";
+ }catch(e){$("heard-summary").textContent="Přijímače: "+e.message;}
+}
+async function loadHeard(){
+ try{
+  const params="?minutes="+encodeURIComponent($("heard-period").value)+
+   "&receiver="+encodeURIComponent($("heard-device").value);
+  const data=await get("/api/heard"+params);
+  lastHeardRows=data.stations||[];
+  const root=$("heard-rows");root.replaceChildren();
+  $("heard-summary").textContent=data.stations.length+" zdrojů s GPS, "+
+    data.direct_stations+" přímo slyšených; interval "+data.minutes+" min";
+  for(const item of lastHeardRows){
+   const row=document.createElement("tr");
+   for(const field of [item.source,item.receiver,item.direct_packets,item.via_packets,
+                       item.distance_km==null?"—":Number(item.distance_km).toFixed(1),
+                       item.last_seen,item.path]){
+    const td=document.createElement("td");td.textContent=String(field??"");row.appendChild(td);
+   }
+   root.appendChild(row);
+  }
+ }catch(e){$("heard-summary").textContent="RF doslech: "+e.message;}
+}
+$("heard-refresh").onclick=loadHeard;
+$("heard-period").onchange=loadHeard;
+$("heard-device").onchange=loadHeard;
+$("heard-csv").onclick=()=>downloadCSV("ok5tvr-heard.csv",
+ ["call","receiver","direct","via","distance_km","last_seen","path"],
+ lastHeardRows.map(x=>[x.source,x.receiver,x.direct_packets,x.via_packets,
+                       x.distance_km,x.last_seen,x.path]));
+async function loadChat2(){
+ try{
+  const d=await get("/api/messages"),root=$("chat2-conversations"),
+        inbox=$("chat2-inbox"),bulletins=$("chat2-bulletins");
+  root.replaceChildren();inbox.replaceChildren();bulletins.replaceChildren();
+  $("chat2-unread").textContent=(d.unread||0)+" nepřečtených zpráv, "+
+    (d.unread_bulletins||0)+" nepřečtených bulletinů";
+  $("chat2-blocked").value=(d.blocked_senders||[]).join("\n");
+  for(const c of (d.conversations||[])){
+   const row=document.createElement("tr");
+   for(const v of [c.callsign,c.inbox,c.outbox,c.unread,c.last]){
+    const td=document.createElement("td");td.textContent=String(v??"");row.appendChild(td);
+   }root.appendChild(row);
+  }
+  const show=(items,destination,kind)=>{
+   for(const r of items){
+    const row=document.createElement("tr"),fields=kind==="message"?
+      [r.arrived_at,r.sender,r.recipient,r.text]:
+      [r.arrived_at,r.sender,r.bulletin,r.text];
+    for(const value of fields){
+     const td=document.createElement("td");td.textContent=String(value??"");row.appendChild(td);
+    }
+    const td=document.createElement("td");
+    if(r.read){td.textContent="Přečteno";}
+    else{
+     const button=document.createElement("button");
+     button.textContent="Označit jako přečtené";
+     button.addEventListener("click",async()=>{
+      try{await command("message_read",{kind,id:r.id});await loadChat2();}
+      catch(e){notice("chat2-notice","ERROR: "+e.message);}
+     });
+     td.appendChild(button);
+    }
+    row.appendChild(td);destination.appendChild(row);
+   }
+  };
+  show(d.inbox||[],inbox,"message");
+  show(d.bulletins||[],bulletins,"bulletin");
+ }catch(e){notice("chat2-notice","ERROR: "+e.message);}
+}
+$("chat2-refresh").onclick=loadChat2;
+$("chat2-block-save").onclick=async()=>{
+ try{
+  const calls=$("chat2-blocked").value.trim().split(/[\s,;]+/).filter(Boolean);
+  const result=await command("message_blocklist",{calls});
+  notice("chat2-notice",String(result));
+  await loadChat2();
+ }catch(e){notice("chat2-notice","ERROR: "+e.message);}
+};
+let alertBrowserEnabled=false,lastAlertSeen=null;
+async function loadAlertConfig(){
+ try{
+  const a=(await get("/api/config")).alerts;
+  $("alert-enabled").checked=a.enabled;
+  $("alert-offline").value=a.offline_seconds;
+  $("alert-no-rf").value=a.no_rf_minutes;
+  $("alert-temp").value=a.weather_temp_high??"";
+  $("alert-pressure").value=a.weather_pressure_low??"";
+  $("alert-watch").value=(a.watch_calls||[]).join(", ");
+  $("alert-mqtt").checked=a.mqtt_enabled;
+  $("alert-mqtt-host").value=a.mqtt_host;
+  $("alert-mqtt-port").value=a.mqtt_port;
+  $("alert-mqtt-topic").value=a.mqtt_topic;
+ }catch(e){notice("alert-notice","ERROR: "+e.message);}
+}
+$("alert-save").onclick=async()=>{
+ try{
+  const rules={enabled:$("alert-enabled").checked,
+   offline_seconds:Number($("alert-offline").value),
+   no_rf_minutes:Number($("alert-no-rf").value),
+   watch_calls:$("alert-watch").value.trim().split(/[\s,;]+/).filter(Boolean),
+   weather_temp_high:$("alert-temp").value.trim()===""?null:Number($("alert-temp").value),
+   weather_pressure_low:$("alert-pressure").value.trim()===""?null:Number($("alert-pressure").value),
+   mqtt_enabled:$("alert-mqtt").checked,
+   mqtt_host:$("alert-mqtt-host").value.trim(),
+   mqtt_port:Number($("alert-mqtt-port").value),
+   mqtt_topic:$("alert-mqtt-topic").value.trim()};
+  const message=await command("alerts_save",{rules});
+  notice("alert-notice",String(message));
+  await refreshAlerts();
+ }catch(e){notice("alert-notice","ERROR: "+e.message);}
+};
+$("alert-browser").onclick=async()=>{
+ if(!("Notification" in window)){notice("alert-notice","Prohlížeč nepodporuje systémové notifikace.");return;}
+ const state=await Notification.requestPermission();
+ alertBrowserEnabled=state==="granted";
+ notice("alert-notice",alertBrowserEnabled?"Upozornění povolena v prohlížeči.":"Upozornění nepovolena.");
+};
+async function refreshAlerts(){
+ try{
+  const d=await get("/api/alerts"),root=$("alert-rows");
+  root.replaceChildren();
+  $("alert-status").textContent="Upozornění: "+(d.enabled?"ON":"OFF")+
+      " | MQTT: "+(d.mqtt_enabled?"ON":"OFF")+
+      " | MQTT chyby: "+d.mqtt_errors+
+      " | Poslední ID: "+d.latest_id;
+  for(const event of d.events||[]){
+   const row=document.createElement("tr");
+   for(const value of [event.at,event.code,event.callsign,event.message]){
+    const td=document.createElement("td");td.textContent=String(value??"");row.appendChild(td);
+   }root.appendChild(row);
+  }
+  if(lastAlertSeen!=null && d.latest_id>lastAlertSeen && alertBrowserEnabled){
+   const found=(d.events||[]).find(e=>e.id>d.latest_id-3 && e.id>lastAlertSeen);
+   if(found&&"Notification" in window&&Notification.permission==="granted")
+    new Notification("OK5TVR APRS", {body:found.message});
+  }
+  lastAlertSeen=d.latest_id;
+ }catch(e){notice("alert-notice","ERROR: "+e.message);}
+}
+$("alert-refresh").onclick=refreshAlerts;
 async function refresh() {
   if(pollBusy)return;pollBusy=true;
   try{
@@ -878,6 +1150,7 @@ async function refresh() {
     lastState=s;lastDiagnostics=d;
     updateHealth(s,d);renderRx(s.history);renderTelemetry(d.telemetry||{});
     if(currentTab==='isrf')refreshIsrf();
+    if(currentTab==='alerts')refreshAlerts();
     if(currentTab in destinations){
       const f=$("tab-"+currentTab).querySelector("iframe");
       if(f)resizeFrame(f);

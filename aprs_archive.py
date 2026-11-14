@@ -40,9 +40,14 @@ class APRSArchive:
                 destination TEXT NOT NULL, path TEXT NOT NULL,
                 kind TEXT NOT NULL, summary TEXT NOT NULL,
                 lat REAL, lon REAL, direct INTEGER,
-                ax25_hex TEXT NOT NULL, weather INTEGER NOT NULL DEFAULT 0)''')
+                ax25_hex TEXT NOT NULL, weather INTEGER NOT NULL DEFAULT 0,
+                receiver TEXT NOT NULL DEFAULT 'primary')''')
             self.db.execute('CREATE INDEX IF NOT EXISTS ix_packets_time ON packets(id DESC)')
             self.db.execute('CREATE INDEX IF NOT EXISTS ix_packets_source ON packets(source, id DESC)')
+            cols={row[1] for row in self.db.execute('PRAGMA table_info(packets)')}
+            if 'receiver' not in cols:
+                self.db.execute("ALTER TABLE packets ADD COLUMN receiver TEXT NOT NULL DEFAULT 'primary'")
+            self.db.execute('CREATE INDEX IF NOT EXISTS ix_packets_receiver ON packets(receiver, id DESC)')
             self.db.execute('''CREATE TABLE IF NOT EXISTS weather (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 received_at TEXT NOT NULL, source TEXT NOT NULL,
@@ -63,7 +68,8 @@ class APRSArchive:
         record = (now, packet.source[:16], packet.destination[:16], packet.path[:120],
                   packet.kind[:50], packet.summary[:240], packet.latitude, packet.longitude,
                   None if packet.heard_direct is None else int(packet.heard_direct),
-                  packet.raw_ax25[:1024].hex(), 1 if weather else 0)
+                  packet.raw_ax25[:1024].hex(), 1 if weather else 0,
+                  str(getattr(packet,'receiver','primary'))[:16])
         wx = None
         if weather:
             wx = (now, packet.source[:16], weather.get('temperature_c'),
@@ -85,7 +91,7 @@ class APRSArchive:
                 for packet, weather in records:
                     row = self.db.execute(
                         'INSERT INTO packets (received_at,source,destination,path,kind,summary,'
-                        'lat,lon,direct,ax25_hex,weather) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                        'lat,lon,direct,ax25_hex,weather,receiver) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
                         packet)
                     if weather is not None:
                         self.db.execute(
@@ -143,11 +149,11 @@ class APRSArchive:
         with self.lock:
             if source:
                 rows = self.db.execute('''SELECT id,received_at,source,destination,path,
-                    kind,summary,lat,lon,direct,weather FROM packets
+                    kind,summary,lat,lon,direct,weather,receiver FROM packets
                     WHERE source LIKE ? ORDER BY id DESC LIMIT ?''', ('%'+source+'%',count))
             else:
                 rows = self.db.execute('''SELECT id,received_at,source,destination,path,
-                    kind,summary,lat,lon,direct,weather FROM packets
+                    kind,summary,lat,lon,direct,weather,receiver FROM packets
                     ORDER BY id DESC LIMIT ?''', (count,))
             return [dict(row) for row in rows.fetchall()]
 
@@ -158,10 +164,45 @@ class APRSArchive:
         if not 1 <= len(source) <= 16 or not all(x.isalnum() or x == '-' for x in source):
             raise ValueError('Invalid callsign')
         with self.lock:
-            rows = self.db.execute('''SELECT received_at,lat,lon,direct FROM packets
+            rows = self.db.execute('''SELECT received_at,lat,lon,direct,receiver FROM packets
                 WHERE source=? AND lat IS NOT NULL AND lon IS NOT NULL
                 ORDER BY id DESC LIMIT ?''', (source,count))
             return list(reversed([dict(row) for row in rows.fetchall()]))
+
+    def heard(self, minutes=1440, receiver='', limit=300):
+        """Aggregate measured RF receptions; no inferred sender TX coverage."""
+        try:minutes=int(minutes)
+        except (ValueError,TypeError):raise ValueError('Invalid heard window')
+        if not 1 <= minutes <= 43200:
+            raise ValueError('Heard window must be 1-43200 minutes')
+        count=self._limit(limit,500)
+        if not isinstance(receiver,str) or len(receiver)>16:
+            raise ValueError('Invalid receiver name')
+        cutoff=(datetime.now(timezone.utc)-timedelta(minutes=minutes)).isoformat(timespec='seconds')
+        self.batch.flush(timeout=10)
+        with self.lock:
+            args=[cutoff]
+            clause=''
+            if receiver:
+                clause=' AND receiver=?'
+                args.append(receiver)
+            rows=self.db.execute('''SELECT source,receiver,
+                SUM(CASE WHEN direct=1 THEN 1 ELSE 0 END) AS direct_packets,
+                SUM(CASE WHEN direct=0 THEN 1 ELSE 0 END) AS via_packets,
+                MAX(id) AS latest_id,MAX(received_at) AS last_seen
+                FROM packets WHERE received_at>=? AND lat IS NOT NULL
+                  AND lon IS NOT NULL''' + clause + '''
+                GROUP BY source,receiver
+                ORDER BY latest_id DESC LIMIT ?''',(*args,count)).fetchall()
+            result=[]
+            for row in rows:
+                spot=self.db.execute(
+                    'SELECT lat,lon,path FROM packets WHERE id=?',
+                    (row['latest_id'],)).fetchone()
+                entry=dict(row)
+                entry.update(lat=spot['lat'],lon=spot['lon'],path=spot['path'])
+                result.append(entry)
+            return result
 
     def weather_rows(self, source='', limit=100):
         self.batch.flush(timeout=10)

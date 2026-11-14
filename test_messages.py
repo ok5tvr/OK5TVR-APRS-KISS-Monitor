@@ -57,6 +57,26 @@ class ManagerTests(unittest.TestCase):
         self.rd=DummyReader()
     def tearDown(self):
         self.manager.close();self.tmp.cleanup()
+    def test_igate_base_and_digi_aliases_are_received_via_rf_without_tx(self):
+        self.manager.configure('OK5TVR-10','WIDE1-1',False,45,3,
+                               receive_aliases=['OK5TVR-3','OK5TVR-7'])
+        self.assertEqual(set(self.manager.snapshot()['receive_calls']),
+                         {'OK5TVR-10','OK5TVR','OK5TVR-3','OK5TVR-7'})
+        for index,target in enumerate(('OK5TVR-10','OK5TVR','OK5TVR-3','OK5TVR-7')):
+            # AX.25 destination remains APRS; ADDRESSEE9 inside info selects Inbox.
+            info=message_info(target,'RX test '+str(index),'A'+str(index))
+            result=self.manager.receive(pack('OK1ABC-9','APRS',info),True)
+            self.assertEqual(result['kind'],'message')
+            self.assertEqual(result['to'],target)
+        self.assertEqual(self.manager.snapshot()['stats']['inbox'],4)
+        rejected=self.manager.receive(
+            pack('OK1ABC-9','APRS',message_info('OK5TVR-9','not for us')),True)
+        self.assertIsNone(rejected)
+        self.assertEqual(self.manager.snapshot()['heard_messages'][0]['result'],'other')
+        self.assertEqual(self.manager.snapshot()['stats']['inbox'],4)
+        self.assertFalse(self.manager.ack_queue)
+        self.assertFalse(self.rd.sent)
+
     def test_outbox_ack_matching_and_retry(self):
         item=self.manager.compose('OK1ABC-9','TEST APRS ZPRAVY','WIDE1-1,WIDE2-1')
         self.assertEqual(item['message_id'],'001')
@@ -177,6 +197,29 @@ class WebMessageTests(unittest.TestCase):
             with urlopen(req,timeout=6) as r: self.assertEqual(r.status,expected);return json.load(r)
         except HTTPError as e:
             self.assertEqual(e.code,expected);return json.load(e)
+    def test_digi_ssid_alias_saved_without_interrupting_live_tnc(self):
+        self.assertTrue(self.service.radio_ready)
+        incoming = encode_kiss_data(encode_ui_packet(
+            'OK1ABC-9', 'APRS', '',
+            message_info('OK5TVR-3', 'Before alias', '01')))
+        FakeSerial.incoming.put(incoming)
+        self.assertTrue(wait(lambda:self.service.messages.snapshot()['heard_messages']))
+        self.assertEqual(self.service.messages.snapshot()['stats']['inbox'],0)
+        self.assertEqual(self.service.messages.snapshot()['heard_messages'][0]['result'],'other')
+        answer=self.api('messages_save',messages={'receive_aliases':['OK5TVR-3']})
+        self.assertTrue(answer['ok'])
+        self.assertTrue(self.service.radio_ready)
+        self.assertIn('OK5TVR-3',self.service.messages.snapshot()['receive_calls'])
+        incoming = encode_kiss_data(encode_ui_packet(
+            'OK1ABC-9', 'APRS', '',
+            message_info('OK5TVR-3', 'After alias', '02')))
+        FakeSerial.incoming.put(incoming)
+        self.assertTrue(wait(lambda:self.service.messages.snapshot()['stats']['inbox']==1))
+        self.assertEqual(self.service.messages.snapshot()['inbox'][0]['recipient'],'OK5TVR-3')
+        self.assertTrue(FakeSerial.outgoing.empty(),'Alias must not enable automatic RF ACK')
+        self.assertIn('error',self.api('messages_save',expected=400,
+                       messages={'auto_ack':True}))
+
     def test_messaging_page_security_and_rf_transmit(self):
         base=f'http://127.0.0.1:{self.port}'
         key=self.conf.secrets['admin_token']
@@ -187,6 +230,9 @@ class WebMessageTests(unittest.TestCase):
         self.assertIn('Inbox',data);self.assertIn('Outbox',data)
         with urlopen(base+'/api/messages?admin='+key) as r: view=json.load(r)
         self.assertEqual(view['stats']['inbox'],0)
+        self.assertEqual(view['digi_call'],'OK5TVR-3')
+        self.assertIn('OK5TVR-10',view['receive_calls'])
+        self.assertIn('OK5TVR',view['receive_calls'])
         self.assertIn('error',self.api('message_send',expected=403,admin=False,target='OK1ABC',text='Hi'))
         self.assertIn('error',self.api('message_send',expected=400,target='OK1ABC',text='Hi'))
         self.assertIn('error',self.api('save',expected=400,config={'messages':{'auto_ack':True}}))
