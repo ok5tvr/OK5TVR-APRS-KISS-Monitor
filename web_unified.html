@@ -151,7 +151,14 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   </div>
   <div class="panel">
     <h2 data-cs="Přijaté AX.25/APRS rámce" data-en="Received AX.25/APRS frames">Přijaté AX.25/APRS rámce</h2>
-    <div class="scroll"><table><thead><tr>
+    <div class="toolbar" style="align-items:center;margin-bottom:10px">
+<label for="rx-filter-source">Značka <input type="search" id="rx-filter-source" placeholder="OK5TVR / OK1..." style="margin:3px 0"></label>
+<label for="rx-filter-type">Typ
+<select id="rx-filter-type" style="margin:3px 0"><option value="">Všechny rámce</option><option value="Pozice">Pozice</option><option value="Zpráva">Zprávy</option><option value="Mic-E">Mic-E</option><option value="RAW">RAW</option></select></label>
+<label class="check" for="rx-filter-direct" style="padding-top:15px"><input id="rx-filter-direct" type="checkbox"> Jen DIRECT</label>
+<span id="rx-filter-count" class="muted"></span>
+</div>
+<div class="scroll"><table><thead><tr>
       <th>UTC / local</th><th data-cs="Zdroj" data-en="Source">Zdroj</th><th data-cs="Cíl" data-en="Destination">Cíl</th><th data-cs="Cesta" data-en="Path">Cesta</th><th data-cs="Typ" data-en="Type">Typ</th><th data-cs="Obsah" data-en="Content">Obsah</th>
     </tr></thead><tbody id="rx-rows"></tbody></table></div>
   </div>
@@ -353,11 +360,20 @@ function frameDetails(row) {
 }
 function renderRx(history) {
   rxHistory=Array.isArray(history)?history:[];
-  const signature=String(lastState.rx)+"/"+String(lastState.demo)+"/"+(rxHistory[0]?.time||"");
+  const filterSource=$("rx-filter-source").value.trim().toUpperCase();
+  const filterType=$("rx-filter-type").value;
+  const directOnly=$("rx-filter-direct").checked;
+  const visible=rxHistory.filter(r=>(
+    (!filterSource || String(r.source||"").toUpperCase().includes(filterSource)) &&
+    (!filterType || String(r.kind||"").includes(filterType)) &&
+    (!directOnly || r.direct===true)
+  ));
+  $("rx-filter-count").textContent=visible.length+" / "+rxHistory.length;
+  const signature=String(lastState.rx)+"/"+String(lastState.demo)+"/"+(rxHistory[0]?.time||"")+"/"+filterSource+"/"+filterType+"/"+directOnly;
   if (signature===rxSignature)return;
   rxSignature=signature;
   const tbody=$("rx-rows");tbody.replaceChildren();
-  rxHistory.forEach((r,index)=>{
+  visible.forEach((r,index)=>{
     const trEl=document.createElement("tr");
     trEl.className="clickable"+(r.direct===true&&!r.demo?" direct":"");
     for(const field of ["time","source","destination","path","kind","summary"]){
@@ -368,6 +384,9 @@ function renderRx(history) {
     tbody.appendChild(trEl);
   });
   if(selectedFrame)frameDetails(selectedFrame);
+}
+for(const id of ["rx-filter-source","rx-filter-type","rx-filter-direct"]){
+ $(id).addEventListener(id==="rx-filter-source"?"input":"change",()=>{rxSignature="";renderRx(rxHistory);});
 }
 let hdmiLoaded = false;
 async function loadHdmiDisplay(){

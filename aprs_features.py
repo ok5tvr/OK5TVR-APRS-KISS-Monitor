@@ -303,6 +303,7 @@ class MonitorState:
         self.lock = threading.RLock()
         self.history = collections.deque(maxlen=220)
         self.stations: dict[str, dict] = {}
+        self.position_trails: dict[str, collections.deque] = {}  # max 32 recent fixes per station
         self.type_counts = collections.Counter()
         self.rx = self.demo = self.tx_requests = self.igate_sent = self.igate_rejected = 0
         self.igate_status = "Vypnuto"
@@ -357,6 +358,14 @@ class MonitorState:
                               summary=packet.summary[:180],position_direct=position_direct,
                               is_object=object_point,source_call=packet.source,
                               position_format=packet.position_format)
+                # Bound the position history: 32 fixes per station, only changed
+                # GPS positions. Tracking never includes simulated frames.
+                if not object_point and not third_party:
+                    trail = self.position_trails.setdefault(key, collections.deque(maxlen=32))
+                    lat, lon = target['lat'], target['lon']
+                    if not trail or (trail[-1]['lat'], trail[-1]['lon']) != (lat, lon):
+                        trail.append({'lat': lat, 'lon': lon, 'time': packet.timestamp,
+                                      'direct': position_direct})
                 if packet.symbol:
                     target['symbol'] = packet.symbol
                 if third_party:
@@ -364,6 +373,7 @@ class MonitorState:
             if len(self.stations)>1000:
                 drop=min(self.stations,key=lambda k:self.stations[k]['last'])
                 del self.stations[drop]
+                self.position_trails.pop(drop, None)
 
     def set_own_position(self, position):
         with self.lock:
@@ -414,6 +424,7 @@ class MonitorState:
                 try:
                     station.update(distance_bearing(origin['lat'],origin['lon'],station['lat'],station['lon']))
                 except (TypeError,ValueError):pass
+            station['trail'] = list(self.position_trails.get(station['call'], ()))
             result.append(station)
         return result
 

@@ -27,8 +27,8 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 .app-nav{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px clamp(14px,3vw,35px);border-bottom:1px solid var(--edge);background:#111f31}.app-nav a{color:#e6f7ff;text-decoration:none;font-weight:650;padding:8px 13px;border:1px solid #45647f;border-radius:8px;background:#21394f}.app-nav a:hover,.app-nav a:focus-visible{background:#26665e;outline:2px solid var(--mint);outline-offset:1px}.app-nav .nav-link-primary{background:#15685d;border-color:#399c90}#nav-info{margin:0;padding:8px clamp(14px,3vw,35px);background:#283449;color:#ffdf9a;font-size:13px}.map-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.map-header select,.map-header button{font-size:12px}
 #map{position:relative;height:clamp(330px,55vh,650px);overflow:hidden;touch-action:none;cursor:grab;background:#1b3345;border-radius:0 0 12px 12px;user-select:none}
 #map.dragging{cursor:grabbing}
-#geography,#tiles,#markers{position:absolute;inset:0;overflow:hidden}
-#geography{pointer-events:none}#tiles{pointer-events:none}#markers{pointer-events:none}
+#geography,#tiles,#tracks,#markers{position:absolute;inset:0;overflow:hidden}
+#geography{pointer-events:none}#tiles{pointer-events:none}#tracks{pointer-events:none}#markers{pointer-events:none}
 .map-tile{position:absolute;width:256px;height:256px;border:0;max-width:none;image-rendering:auto}
 /* Dark-mode rendering uses the same OSM raster tiles; markers stay unfiltered. */
 .map-tile.dark{filter:invert(.92) hue-rotate(180deg) brightness(.86) contrast(.9) saturate(.8)}
@@ -100,9 +100,18 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <section class="panel">
 <h2 class="map-header"><span>Mapa přijatých APRS pozic</span><span>
 <select id="mapstyle" aria-label="Mapový podklad"><option value="osm-light">Mapa ulic (OpenStreetMap)</option><option value="osm-dark">Tmavá mapa (OpenStreetMap)</option><option value="offline" selected>Offline mapa – bez internetu</option></select>
-<button id="reset">Zobrazit všechny</button></span></h2>
+<button id="reset">Zobrazit všechny</button><button id="export-geojson" title="Exportovat filtrované stanice a trasy do GeoJSON">Export GeoJSON</button></span></h2>
+<div class="map-filterbar" role="group" aria-label="Filtry APRS mapy" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 12px;background:#132a3a">
+<label style="font-size:12px"><input id="show-trails" type="checkbox" checked> Trasy stanic</label>
+<label style="font-size:12px"><input id="direct-only" type="checkbox"> Jen DIRECT</label>
+<label style="font-size:12px"><input id="show-objects" type="checkbox" checked> Objekty</label>
+<label style="font-size:12px">Aktivita
+<select id="activity-filter" aria-label="Stáří APRS pozice" style="width:auto;padding:5px;margin:0">
+<option value="0">Všechny</option><option value="15">15 minut</option><option value="60">1 hodina</option><option value="1440">24 hodin</option>
+</select></label><span id="filtered-count" style="font-size:12px;color:#9bcbdb"></span>
+</div>
 <div id="map" role="region" aria-label="Interaktivní mapa APRS stanic" tabindex="0">
-<canvas id="geography"></canvas><div id="tiles"></div><div id="markers"></div>
+<canvas id="geography"></canvas><div id="tiles"></div><canvas id="tracks"></canvas><div id="markers"></div>
 <div id="mapnote" class="map-notice">Načítám lokální geografická data…</div>
 <div class="map-tools"><button id="zoomin" title="Přiblížit" aria-label="Přiblížit">+</button><button id="zoomout" title="Oddálit" aria-label="Oddálit">−</button></div>
 <div id="attribution" class="map-attribution">Offline geografie: GSHHG / WDBII (Basemap)</div>
@@ -167,6 +176,25 @@ let positions=[], ownPosition=null, ownDigi=null, chosen=null, firstPosition=tru
 let view={lat:49.7384,lon:13.3736,z:8}, effectiveProvider=$('mapstyle').value;
 let tileEpoch=0, mapRedrawTimer=null, pointer=null, tileWatchdog=null, success=0, requested=0, failure=0;
 const mapNode=$('map'), canvas=$('geography'), context=canvas.getContext('2d');
+const trailCanvas=$('tracks'), trailCtx=trailCanvas.getContext('2d');
+const visibilityFilters=()=>({
+ directOnly:$('direct-only').checked,
+ objects:$('show-objects').checked,
+ minutes:Number($('activity-filter').value)||0
+});
+function filteredStations(){
+ const f=visibilityFilters(),now=Date.now();
+ return positions.filter(s=>{
+  if(f.directOnly && s.position_direct!==true)return false;
+  if(!f.objects && s.is_object)return false;
+  if(f.minutes){
+   const stamp=Date.parse(String(s.last||'').replace(' ','T'));
+   if(!Number.isFinite(stamp)||now-stamp>f.minutes*60000)return false;
+  }
+  return true;
+ });
+}
+
 const MERC=85.05112878;
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const worldSize=z=>TILE*Math.pow(2,z);
@@ -318,10 +346,36 @@ function aprsIcon(code){
  }
  return ico;
 }
+function drawTrails(){
+ const {w,h}=pixels();if(!w||!h)return;
+ const dpr=clamp(window.devicePixelRatio||1,1,2);
+ trailCanvas.width=Math.round(w*dpr);trailCanvas.height=Math.round(h*dpr);
+ trailCanvas.style.width=w+'px';trailCanvas.style.height=h+'px';
+ trailCtx.setTransform(dpr,0,0,dpr,0,0);
+ trailCtx.clearRect(0,0,w,h);
+ if(!$('show-trails').checked)return;
+ trailCtx.lineWidth=2;trailCtx.lineJoin='round';trailCtx.lineCap='round';
+ for(const s of filteredStations()){
+  const trail=Array.isArray(s.trail)?s.trail:[];
+  if(trail.length<2)continue;
+  trailCtx.beginPath();let previous=null;
+  for(const p of trail){
+   if(!Number.isFinite(p.lat)||!Number.isFinite(p.lon))continue;
+   const pt=project(p.lat,p.lon);
+   // Do not connect across a dateline/world-wrap discontinuity.
+   if(!previous||Math.abs(pt.x-previous.x)>w*.7||Math.abs(pt.y-previous.y)>h*.9)trailCtx.moveTo(pt.x,pt.y);
+   else trailCtx.lineTo(pt.x,pt.y);
+   previous=pt;
+  }
+  trailCtx.strokeStyle=s.position_direct===true?'#62d6ed99':'#ffc77999';
+  trailCtx.stroke();
+ }
+}
 function updateMarkers(){
  const {w,h}=pixels(),holder=$('markers');holder.replaceChildren();
  let active=null;
- const base=positions.filter(s=>s.call!==ownPosition?.call && s.call!==ownDigi?.call);
+ const base=filteredStations().filter(s=>s.call!==ownPosition?.call && s.call!==ownDigi?.call);
+ $('filtered-count').textContent=base.length+' / '+positions.length+' stanic';
  const visible=[...base];
  if(ownPosition)visible.push({...ownPosition,own:true,count:tr('vlastní'),last:tr('nastavená poloha')});
  if(ownDigi?.active)visible.push({...ownDigi,digiOwn:true,count:'–',last:tr('nastavená poloha')});
@@ -357,7 +411,7 @@ function updateMarkers(){
   holder.appendChild(pop);
  }
 }
-function renderMap(paintTiles=false){drawGeography();updateMarkers();if(paintTiles)drawTiles();}
+function renderMap(paintTiles=false){drawGeography();drawTrails();updateMarkers();if(paintTiles)drawTiles();}
 function setCenter(lat,lon,z=view.z){view={lat:clamp(lat,-MERC,MERC),lon:((lon+180)%360+360)%360-180,z:clamp(Math.round(z),2,MAX_ZOOM)};renderMap(true);}
 function fitStations(items){
  const found=items.filter(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon));if(!found.length)return;
@@ -374,7 +428,7 @@ function fitStations(items){
 }
 function renderStations(){
  const term=$('search').value.trim().toUpperCase(),out=$('stationrows');out.replaceChildren();
- for(const s of positions.filter(s=>s.call.toUpperCase().includes(term)).slice(0,180)){
+ for(const s of filteredStations().filter(s=>s.call.toUpperCase().includes(term)).slice(0,180)){
   const tr=document.createElement('tr');
   if(s.direct===true&&!s.is_object)tr.classList.add('station-direct');
   const route=s.direct===true?'DIRECT':s.direct===false?'VIA':'—';
@@ -390,7 +444,31 @@ function renderStations(){
  }
 }
 $('search').addEventListener('input',renderStations);
+for(const id of ['show-trails','direct-only','show-objects','activity-filter']){
+ $(id).addEventListener('change',()=>{renderStations();renderMap(false);});
+}
 $('reset').addEventListener('click',()=>fitStations(positions));
+$('export-geojson').addEventListener('click',()=>{
+ const features=[];
+ for(const s of filteredStations()){
+  if(!Number.isFinite(s.lat)||!Number.isFinite(s.lon))continue;
+  const properties={callsign:s.call,symbol:s.symbol||null,
+    direct:s.position_direct===true,via:s.position_direct===false,
+    last:s.last||null,is_object:!!s.is_object,heard_packets:s.count||0};
+  features.push({type:'Feature',geometry:{type:'Point',coordinates:[s.lon,s.lat]},properties});
+  const coords=(Array.isArray(s.trail)?s.trail:[])
+    .filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon))
+    .map(p=>[p.lon,p.lat]);
+  if(coords.length>1)features.push({type:'Feature',
+    geometry:{type:'LineString',coordinates:coords},
+    properties:{callsign:s.call,kind:'aprs-position-trail',points:coords.length}});
+ }
+ const json=JSON.stringify({type:'FeatureCollection',features},null,2);
+ const blob=new Blob([json],{type:'application/geo+json;charset=utf-8'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='ok5tvr-aprs-positions.geojson';document.body.appendChild(a);
+ a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
 $('zoomin').addEventListener('click',()=>setCenter(view.lat,view.lon,view.z+1));
 $('zoomout').addEventListener('click',()=>setCenter(view.lat,view.lon,view.z-1));
 $('mapstyle').addEventListener('change',()=>{
