@@ -23,13 +23,15 @@ class AlertEngine:
         self.mqtt_queue = queue.Queue(maxsize=24)
         self.mqtt_stop = threading.Event()
         self.mqtt_errors = 0
-        self.worker = threading.Thread(target=self._mqtt_loop,daemon=True,name='ok5tvr-alert-mqtt')
+        self.worker = None
         self.configure(config or {'enabled':False})
-        self.worker.start()
 
     def configure(self, config):
         self.config = dict(config)
         self.last.clear()
+        if self.config.get('mqtt_enabled',False) and self.worker is None:
+            self.worker=threading.Thread(target=self._mqtt_loop,daemon=True,name='ok5tvr-alert-mqtt')
+            self.worker.start()
 
     def _new(self,code,message,level='info',call='',cooldown=900):
         if not self.config.get('enabled',False):
@@ -100,4 +102,5 @@ class AlertEngine:
 
     def close(self):
         self.mqtt_stop.set()
-        self.worker.join(timeout=2)
+        if self.worker:
+            self.worker.join(timeout=2)
