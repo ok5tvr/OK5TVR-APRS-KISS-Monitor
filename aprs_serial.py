@@ -9,6 +9,7 @@ try:
 except ImportError:
     serial = None
 from aprs_protocol import KissDecoder, decode_ax25
+from aprs_rf_scheduler import RFOutputScheduler
 
 class SerialReader(threading.Thread):
     def __init__(self, port: str, baud: int, events: queue.Queue, stop: threading.Event, session: int):
@@ -18,7 +19,7 @@ class SerialReader(threading.Thread):
         self.events = events
         self.stop = stop
         self.session = session
-        self.outgoing = queue.Queue(maxsize=1)  # Never build a TX queue in the background.
+        self.outgoing = RFOutputScheduler()  # single bounded queue for every TX category  # Never build a TX queue in the background.
         self.digi_allowed = threading.Event()
         self.isrf_allowed = threading.Event()  # OFF unless explicitly enabled by admin  # OFF until operator starts DIGI
 
