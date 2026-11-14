@@ -23,7 +23,8 @@ class WebV23Tests(unittest.TestCase):
     @unittest.skipUnless(shutil.which('node'),'Node.js is optional for JS syntax checks')
     def test_inline_scripts_parse_as_javascript(self):
         for path in (Path(__file__).parent/'web_unified.html',
-                     Path(__file__).parent/'web_dashboard.html'):
+                     Path(__file__).parent/'web_dashboard.html',
+                     Path(__file__).parent/'web_operations.html'):
             source=path.read_text(encoding='utf-8')
             scripts=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>',source)
             scripts=[script for script in scripts if script.strip()]
