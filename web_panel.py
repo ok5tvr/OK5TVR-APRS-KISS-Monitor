@@ -233,7 +233,7 @@ class WebPanel:
                         'ok5tvr_aprs_stations_with_gps '+number(snap.get('position_count')),
                         '',
                     ]
-                    self._respond(200, '\\n'.join(lines), 'text/plain; version=0.0.4; charset=utf-8')
+                    self._respond(200, '\n'.join(lines), 'text/plain; version=0.0.4; charset=utf-8')
 
                 elif parsed.path == '/assets/offline_geography.json':
                     try:
