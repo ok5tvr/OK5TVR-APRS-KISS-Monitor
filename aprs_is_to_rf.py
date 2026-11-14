@@ -10,7 +10,8 @@ from dataclasses import dataclass
 import re
 import time
 
-from aprs_features import address_bytes, encode_kiss_data
+from aprs_features import address_bytes, encode_kiss_data, parse_position
+from aprs_weather import decode_weather
 
 CALL = re.compile(r'^[A-Z0-9]{3,6}(?:-(?:[1-9]|1[0-5]))?$')
 OBJECT = re.compile(r'^[A-Z0-9_-]{1,9}$')
@@ -111,6 +112,13 @@ def parse_tnc2(line: str) -> ISPacket:
         kind = 'weather' if info[0] in ('!', '=', '/', '@') and '_' in info[15:28] else 'position'
     else:
         kind = 'other'
+    # The public Internet feed is not a substitute for verifying a valid APRS
+    # payload. Never put malformed coordinates/objects onto the RF channel.
+    raw = info.encode('ascii')
+    if kind in ('position', 'object') and parse_position(raw, destination) is None:
+        raise ValueError('APRS-IS: invalid position or object')
+    if kind == 'weather' and decode_weather(raw) is None:
+        raise ValueError('APRS-IS: invalid weather frame')
     return ISPacket(source, destination, path, info, kind, target, obj_name)
 
 
