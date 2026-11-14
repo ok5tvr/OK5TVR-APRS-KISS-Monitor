@@ -41,8 +41,11 @@ class MonitoringExtensionsTest(unittest.TestCase):
 
     def test_no_trails_for_third_party_igate(self):
         state=MonitorState()
-        p=decode_ax25(encode_ui_packet("OK1GAT","APRS","",
-            "}OK1ABC-7>APRS:!4944.00N/01322.00E>test"))
+        # TX builder intentionally forbids third-party encapsulation. Craft
+        # received AX.25 UI packet directly for this receive-only test.
+        base=encode_ui_packet("OK1GAT","APRS","",">placeholder")
+        p=decode_ax25(base[:-len(b'>placeholder')] +
+            b"}OK1ABC-7>APRS:!4944.00N/01322.00E>test")
         state.add(p)
         rows={s['call']:s for s in state.snapshot()['stations']}
         self.assertEqual(rows["OK1ABC-7"]['trail'],[])
