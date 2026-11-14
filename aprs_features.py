@@ -536,7 +536,7 @@ class APRSISClient(threading.Thread):
                 try: conn.recv(2048)
                 except socket.timeout: pass
                 sub = ' filter ' + self.subscription if self.subscription else ''
-                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 2.2{sub}\r\n"
+                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 1.7{sub}\r\n"
                 conn.sendall(login.encode("ascii"))
                 buffer = b""
                 verified = False
