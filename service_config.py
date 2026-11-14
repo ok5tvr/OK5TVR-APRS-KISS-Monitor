@@ -23,6 +23,10 @@ from aprs_telemetry import symbol_code
 DEFAULT_PATH = Path.home() / '.config' / 'ok5tvr-aprs' / 'config.json'
 DEFAULT_CONFIG = {
     'serial': {'port': 'auto', 'baud': 115200, 'retry_seconds': 4},
+    'tnc': {'transport':'serial', 'tcp_host':'127.0.0.1', 'tcp_port':8001,
+            'kiss_server_enabled':False, 'kiss_server_host':'127.0.0.1',
+            'kiss_server_port':8001, 'kiss_server_tx':False},
+    'archive': {'retention_days':30, 'max_rows':100000},
     'web': {'port': 8765, 'lan': False},
     'display': {'enabled': False},  # optional HDMI desktop panel; no RF side effects
     'igate': {'call': 'OK5TVR-10', 'host': 'rotate.aprs2.net', 'port': 14580,
@@ -96,6 +100,26 @@ def validate_config(candidate):
         raise ValueError('Neplatný název sériového portu.')
     s['baud'] = _int(s['baud'], 'Rychlost USB', 1200, 2000000)
     s['retry_seconds'] = _int(s['retry_seconds'], 'Opakování USB', 2, 60)
+    t = v['tnc']
+    if t['transport'] not in ('serial','tcp'):
+        raise ValueError('TNC transport must be serial or tcp')
+    for key in ('tcp_host','kiss_server_host'):
+        if not isinstance(t[key],str) or len(t[key]) > 253 or not re.fullmatch(r'[A-Za-z0-9.:-]+', t[key]):
+            raise ValueError('Invalid TCP KISS hostname/address')
+    if t['kiss_server_host'] not in ('127.0.0.1','0.0.0.0'):
+        raise ValueError('TCP KISS server bind address must be loopback or all interfaces')
+    t['tcp_port'] = _int(t['tcp_port'], 'TCP KISS client port', 1,65535)
+    t['kiss_server_port'] = _int(t['kiss_server_port'], 'TCP KISS server port', 1024,65535)
+    t['kiss_server_enabled'] = _bool(t['kiss_server_enabled'], 'TCP KISS server')
+    t['kiss_server_tx'] = _bool(t['kiss_server_tx'], 'TCP KISS server TX')
+    if t['kiss_server_tx'] and (t['kiss_server_host'] != '127.0.0.1' or
+                               not t['kiss_server_enabled']):
+        raise ValueError('TCP KISS TX requires enabled loopback-only server')
+    if t['transport']=='tcp' and t['kiss_server_enabled'] and t['tcp_host'] in ('127.0.0.1','localhost') and t['tcp_port']==t['kiss_server_port']:
+        raise ValueError('TCP KISS client cannot connect to its own server')
+    archive = v['archive']
+    archive['retention_days'] = _int(archive['retention_days'], 'Archive retention days',1,365)
+    archive['max_rows'] = _int(archive['max_rows'], 'Archive maximum rows',1000,1000000)
     w = v['web']
     w['port'] = _int(w['port'], 'Web port', 1024, 65535)
     w['lan'] = _bool(w['lan'], 'Přístup z LAN')
