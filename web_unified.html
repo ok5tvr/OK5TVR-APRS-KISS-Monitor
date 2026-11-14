@@ -92,6 +92,8 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <button type="button" data-tab="igate" role="tab" aria-selected="false" data-cs="Nastavení / iGate / DIGI" data-en="Settings / iGate / DIGI">Nastavení / iGate / DIGI</button>
   <button type="button" data-tab="telemetry" role="tab" aria-selected="false" data-cs="Telemetrie" data-en="Telemetry">Telemetrie</button>
   <button type="button" data-tab="diagnostics" role="tab" aria-selected="false" data-cs="Diagnostika / deník" data-en="Diagnostics / log">Diagnostika / deník</button>
+  <button type="button" data-tab="tnc" role="tab" aria-selected="false" data-cs="TNC / Síť / Historie" data-en="TNC / Network / History">TNC / Síť / Historie</button>
+  <button type="button" data-tab="weather" role="tab" aria-selected="false" data-cs="APRS Počasí" data-en="APRS Weather">APRS Počasí</button>
 </nav>
 <main>
 <section class="view" id="tab-home">
@@ -118,6 +120,8 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <button class="home-link" data-open="objects"><strong>05 · APRS objekty</strong><span>Správa objektů a ruční vysílání polohových rámců.</span></button>
     <button class="home-link" data-open="telemetry"><strong>06 · Telemetrie</strong><span>Statistiky za posledních 15 minut a nastavení T#.</span></button>
     <button class="home-link" data-open="diagnostics"><strong>07 · Diagnostika</strong><span>Provozní deník, chyby USB a APRS-IS, export a zálohy.</span></button>
+    <button class="home-link" data-open="tnc"><strong>08 · TNC / Síť / Historie</strong><span>USB nebo TCP KISS, sdílení TNC, reconnect a SQLite archiv poloh a rámců.</span></button>
+    <button class="home-link" data-open="weather"><strong>09 · APRS Počasí</strong><span>Přijaté meteorologické stanice, teplota, vítr, tlak a historie měření.</span></button>
   </div>
 </section>
 <section class="view" id="tab-rx" hidden>
@@ -189,6 +193,59 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <div class="panel"><h2 data-cs="Statistiky za posledních 15 minut" data-en="Statistics for the last 15 minutes">Statistiky za posledních 15 minut</h2><div class="metric-list" id="telem-metrics"></div><div class="details" id="telem-extras">—</div></div>
 </section>
 <section class="view" id="tab-diagnostics" hidden></section>
+<section class="view" id="tab-tnc" hidden>
+  <div class="panel">
+    <h2 data-cs="TNC Manager – USB / TCP KISS" data-en="TNC Manager – USB / TCP KISS">TNC Manager – USB / TCP KISS</h2>
+    <p class="note" data-cs="Jedno TNC smí mít jen jedno primární spojení. Změna transportu odpojí stávající TNC. TCP server je standardně RX-only; sdílení do LAN zapínej jen na důvěryhodné síti."
+      data-en="Only one primary connection per TNC. Changing the transport disconnects the current TNC. TCP server defaults to RX-only; use LAN sharing only on trusted networks.">Jedno TNC smí mít jen jedno primární spojení. Změna transportu odpojí stávající TNC. TCP server je standardně RX-only; sdílení do LAN zapínej jen na důvěryhodné síti.</p>
+    <div class="form-grid">
+      <div><label for="tnc-transport" data-cs="Primární připojení" data-en="Primary connection">Primární připojení</label><select id="tnc-transport"><option value="serial">USB / COM</option><option value="tcp">TCP KISS klient</option></select></div>
+      <div><label for="tnc-tcp-host">TCP host</label><input id="tnc-tcp-host" value="127.0.0.1" autocomplete="off"></div>
+      <div><label for="tnc-tcp-port">TCP port</label><input id="tnc-tcp-port" type="number" min="1" max="65535" value="8001"></div>
+      <div><label for="tnc-serial-port">USB / COM port</label><input id="tnc-serial-port" placeholder="auto / COM5 / /dev/ttyACM0"></div>
+    </div>
+    <h3 data-cs="Sdílení fyzického TNC dalším programům" data-en="Share a KISS TNC with other programs">Sdílení fyzického TNC dalším programům</h3>
+    <div class="form-grid">
+      <label class="check" for="tnc-server-enabled"><input id="tnc-server-enabled" type="checkbox"> TCP KISS server ON</label>
+      <div><label for="tnc-server-host">Listen</label><select id="tnc-server-host"><option value="127.0.0.1">127.0.0.1 (lokální)</option><option value="0.0.0.0">0.0.0.0 (LAN)</option></select></div>
+      <div><label for="tnc-server-port">Server port</label><input id="tnc-server-port" type="number" min="1024" max="65535" value="8001"></div>
+      <div><label for="tnc-retention">Historie (dny)</label><input id="tnc-retention" type="number" min="1" max="365" value="30"></div>
+      <div><label for="tnc-max-rows">Maximum paketů SQLite</label><input id="tnc-max-rows" type="number" min="1000" max="1000000" value="100000"></div>
+    </div>
+    <div class="toolbar">
+      <button class="primary" id="tnc-save" data-cs="Uložit konfiguraci" data-en="Save configuration">Uložit konfiguraci</button>
+      <button id="tnc-reload" data-cs="Načíst" data-en="Reload">Načíst</button>
+      <button id="tnc-refresh" data-cs="Obnovit stav" data-en="Refresh status">Obnovit stav</button>
+      <button id="tnc-tx-enable" class="warn" data-cs="Povolit lokální TCP TX" data-en="Enable local TCP TX">Povolit lokální TCP TX</button>
+      <button id="tnc-tx-disable" class="stop" data-cs="Vypnout TCP TX" data-en="Disable TCP TX">Vypnout TCP TX</button>
+    </div>
+    <p class="note" data-cs="TCP TX lze dočasně povolit pouze pro server 127.0.0.1 a vyžaduje potvrzení. Po restartu i odpojení TNC je vypnutý. Není vhodný pro vzdálené nedůvěryhodné klienty."
+      data-en="TCP TX can be temporarily enabled only on loopback with confirmation. It is disabled after restarts and TNC disconnects. Do not use with untrusted remote clients.">TCP TX lze dočasně povolit pouze pro server 127.0.0.1 a vyžaduje potvrzení. Po restartu i odpojení TNC je vypnutý.</p>
+    <div id="tnc-notice" class="message"></div>
+    <div class="details" id="tnc-status">Načítám TNC stav…</div>
+  </div>
+  <div class="panel">
+    <h2 data-cs="SQLite historie APRS paketů a tras" data-en="SQLite APRS packet and trail history">SQLite historie APRS paketů a tras</h2>
+    <div class="toolbar">
+      <label for="history-source" data-cs="Filtrovat značku" data-en="Filter callsign">Filtrovat značku <input id="history-source" placeholder="OK1..." autocomplete="off"></label>
+      <button id="history-refresh" data-cs="Načíst historii" data-en="Load history">Načíst historii</button>
+      <button id="history-geojson">Export trasy GeoJSON</button>
+    </div>
+    <div id="history-info" class="muted"></div>
+    <div class="scroll"><table><thead><tr><th>UTC</th><th>Značka</th><th>Typ</th><th>Cesta</th><th>Popis</th></tr></thead><tbody id="history-rows"></tbody></table></div>
+  </div>
+</section>
+<section class="view" id="tab-weather" hidden>
+  <div class="panel">
+    <h2 data-cs="APRS meteorologické stanice" data-en="APRS weather stations">APRS meteorologické stanice</h2>
+    <div class="toolbar"><label for="wx-source" data-cs="Značka" data-en="Callsign">Značka <input id="wx-source" placeholder="OK..." autocomplete="off"></label>
+      <button id="wx-refresh" data-cs="Načíst počasí" data-en="Load weather">Načíst počasí</button></div>
+    <p class="note" data-cs="Hodnoty pocházejí z přijatých APRS WX rámců. Chybějící veličiny se nedopočítávají."
+      data-en="Values come from received APRS WX frames; missing measurements are not inferred.">Hodnoty pocházejí z přijatých APRS WX rámců. Chybějící veličiny se nedopočítávají.</p>
+    <div class="metric-list" id="wx-metrics"></div>
+    <div class="scroll"><table><thead><tr><th>UTC</th><th>Stanice</th><th>°C</th><th>Vítr km/h</th><th>Náraz km/h</th><th>Tlak hPa</th><th>Vlhkost %</th><th>Srážky 1 h mm</th></tr></thead><tbody id="wx-rows"></tbody></table></div>
+  </div>
+</section>
 </main>
 <footer data-cs="Lokální webové ovládání. Administrátorský odkaz umožňuje RF vysílání – nepublikuj jej na internetu. Přístup zvenčí pouze přes důvěryhodnou VPN s HTTPS." data-en="Local web control. The admin link permits RF TX – never publish it to the Internet. Use a trusted VPN with HTTPS for remote access.">Lokální webové ovládání. Administrátorský odkaz umožňuje RF vysílání – nepublikuj jej na internetu. Přístup zvenčí pouze přes důvěryhodnou VPN s HTTPS.</footer>
 <script src="/assets/web_locale.js"></script>
@@ -201,7 +258,7 @@ const tr = (cs,en) => language === "en" ? en : cs;
 let language = window.OK5TVRLocale ? window.OK5TVRLocale.language : "cs";
 let currentTab = "rx", lastState = {}, lastDiagnostics = {}, rxHistory = [];
 let rxSignature = "", selectedFrame = null, configLoaded = false, pollBusy = false;
-const tabIds = ["home","rx","map","messages","objects","igate","telemetry","diagnostics"];
+const tabIds = ["home","rx","map","messages","objects","igate","telemetry","diagnostics","tnc","weather"];
 const destinations = {
   map:"/map", messages:"/messages", objects:"/operations",
   igate:"/control", diagnostics:"/operations"
@@ -244,6 +301,8 @@ function showTab(name) {
     } else { setTimeout(() => resizeFrame(frame),40); }
   }
   if (name === "telemetry" && !configLoaded) loadTelemetryConfig();
+  if (name === "tnc") {loadTncConfig();loadHistory();}
+  if (name === "weather") loadWeather();
   history.replaceState(null,"","#" + name);
 }
 function trimEmbedded(frame,name) {
@@ -498,6 +557,114 @@ $("telem-now").onclick=()=>{
   if(confirm(tr("Odeslat APRS telemetrii (APRS-IS nebo RF podle konfigurace)?","Send APRS telemetry (APRS-IS or RF per configuration)?")))
     act("telemetry_send_now",{confirm:true},"telem-notice");
 };
+async function loadTncConfig(){
+ try{
+  const c=await get("/api/config"),t=c.tnc,a=c.archive;
+  $("tnc-transport").value=t.transport;
+  $("tnc-tcp-host").value=t.tcp_host;$("tnc-tcp-port").value=t.tcp_port;
+  $("tnc-serial-port").value=c.serial.port;
+  $("tnc-server-enabled").checked=t.kiss_server_enabled;
+  $("tnc-server-host").value=t.kiss_server_host;
+  $("tnc-server-port").value=t.kiss_server_port;
+  $("tnc-retention").value=a.retention_days;$("tnc-max-rows").value=a.max_rows;
+  await refreshTnc();
+ }catch(e){notice("tnc-notice",e.message);}
+}
+async function refreshTnc(){
+ try{
+  const t=await get("/api/tnc");
+  const s=t.server||{};
+  $("tnc-status").textContent="Transport: "+t.transport+"  |  "+(t.connected?"ONLINE":"OFFLINE")+
+    "\nTNC: "+(t.endpoint||"—")+"  |  Reconnect attempts: "+t.reconnect_attempts+
+    "  |  Connections: "+t.reconnect_count+
+    "\nTCP KISS server: "+(s.running?"ONLINE":"OFF")+"  "+s.host+":"+s.port+
+    "  |  Clients: "+s.clients+"  |  Sent to clients: "+s.frames_published+
+    "  |  Dropped: "+s.frames_dropped+
+    "\nTCP client TX allowed: "+(t.tx_permission?"YES":"NO")+
+    "  |  Rejected TX requests: "+s.tx_rejected+
+    (s.last_error?"\nError: "+s.last_error:"");
+ }catch(e){notice("tnc-notice",e.message);}
+}
+$("tnc-reload").onclick=loadTncConfig;
+$("tnc-refresh").onclick=refreshTnc;
+$("tnc-save").onclick=async()=>{
+ try{
+  const t={transport:$("tnc-transport").value,
+    tcp_host:$("tnc-tcp-host").value.trim(),
+    tcp_port:Number($("tnc-tcp-port").value),
+    kiss_server_enabled:$("tnc-server-enabled").checked,
+    kiss_server_host:$("tnc-server-host").value,
+    kiss_server_port:Number($("tnc-server-port").value),
+    kiss_server_tx:false};
+  if(!confirm(tr("Změna primárního TNC nebo sdílení KISS může odpojit přijímač. Aktivní DIGI/iGate se bezpečně vypne. Pokračovat?","Changing primary TNC or KISS sharing may disconnect the receiver and disable DIGI/iGate. Continue?")))return;
+  const result=await command("save",{config:{tnc:t,serial:{port:$("tnc-serial-port").value.trim()||"auto"},
+    archive:{retention_days:Number($("tnc-retention").value),max_rows:Number($("tnc-max-rows").value)}}});
+  notice("tnc-notice",result);await loadTncConfig();
+ }catch(e){notice("tnc-notice","CHYBA: "+e.message);}
+};
+$("tnc-tx-enable").onclick=async()=>{
+ if(!confirm(tr("Povolit RF vysílání místním TCP KISS klientům pouze pro tuto relaci? Pozor: externí program může začít vysílat!","Allow RF transmission from local TCP KISS clients for this session? External software could transmit!")))return;
+ await act("tnc_server_tx",{enabled:true,confirm:true},"tnc-notice");refreshTnc();
+};
+$("tnc-tx-disable").onclick=async()=>{await act("tnc_server_tx",{enabled:false},"tnc-notice");refreshTnc();};
+async function loadHistory(){
+ try{
+  const source=$("history-source").value.trim();
+  const result=await get("/api/archive?limit=100&source="+encodeURIComponent(source));
+  $("history-info").textContent="SQLite: "+result.summary.packets+" paketů, "+
+   result.summary.positions+" poloh, "+result.summary.weather+" WX; uchování "+
+   result.summary.retention_days+" dní";
+  const root=$("history-rows");root.replaceChildren();
+  for(const p of result.packets){
+   const row=document.createElement("tr");
+   for(const value of [p.received_at,p.source,p.kind,p.path,p.summary]){
+    const td=document.createElement("td");td.textContent=String(value??"");row.appendChild(td);
+   }
+   root.appendChild(row);
+  }
+ }catch(e){$("history-info").textContent="Chyba: "+e.message;}
+}
+$("history-refresh").onclick=loadHistory;
+$("history-geojson").onclick=async()=>{
+ try{
+  const source=$("history-source").value.trim();
+  if(!source)throw Error("Zadej přesnou značku stanice.");
+  const data=await get("/api/archive/positions?limit=1000&source="+encodeURIComponent(source));
+  const features=data.positions.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)).map(p=>({
+    type:"Feature",geometry:{type:"Point",coordinates:[p.lon,p.lat]},
+    properties:{callsign:source,time:p.received_at,direct:p.direct}}));
+  if(features.length>1)features.push({type:"Feature",geometry:{type:"LineString",
+    coordinates:features.map(p=>p.geometry.coordinates)},properties:{callsign:source}});
+  const blob=new Blob([JSON.stringify({type:"FeatureCollection",features},null,2)],{type:"application/geo+json"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="ok5tvr-"+source.replace(/[^a-zA-Z0-9-]/g,"")+".geojson";a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+ }catch(e){$("history-info").textContent=e.message;}
+};
+async function loadWeather(){
+ try{
+  const source=$("wx-source").value.trim();
+  const data=await get("/api/weather?limit=100&source="+encodeURIComponent(source));
+  const root=$("wx-rows"),metrics=$("wx-metrics");root.replaceChildren();metrics.replaceChildren();
+  const fields=[["temperature_c","Teplota °C"],["pressure_hpa","Tlak hPa"],
+    ["wind_kmh","Vítr km/h"],["humidity_pct","Vlhkost %"]];
+  const latest=data.records[0]||{};
+  for(const [field,label] of fields){
+   const div=document.createElement("div");div.className="metric";
+   const span=document.createElement("span");span.textContent=label;
+   const value=document.createElement("strong");value.textContent=latest[field]??"—";
+   div.append(span,value);metrics.appendChild(div);
+  }
+  for(const p of data.records){
+   const row=document.createElement("tr");
+   for(const field of ["received_at","source","temperature_c","wind_kmh","gust_kmh",
+                        "pressure_hpa","humidity_pct","rain_1h_mm"]){
+    const td=document.createElement("td");td.textContent=String(p[field]??"—");row.appendChild(td);
+   }root.appendChild(row);
+  }
+ }catch(e){$("wx-metrics").textContent="Chyba: "+e.message;}
+}
+$("wx-refresh").onclick=loadWeather;
 async function refresh() {
   if(pollBusy)return;pollBusy=true;
   try{
