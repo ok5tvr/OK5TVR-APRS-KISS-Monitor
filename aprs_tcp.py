@@ -27,6 +27,7 @@ class TCPKissReader(threading.Thread):
         self.stop = stop
         self.session = session
         self.digi_allowed = threading.Event()
+        self.isrf_allowed = threading.Event()  # OFF unless explicitly enabled by admin
         self.outgoing = queue.Queue(maxsize=1)
         self.connected = False
         self.last_error = ''
@@ -38,7 +39,7 @@ class TCPKissReader(threading.Thread):
             pass
 
     def send(self, encoded_kiss, category='manual'):
-        if self.stop.is_set() or not self.connected:
+        if self.stop.is_set() or not self.connected or (category == 'igate_is_to_rf' and not self.isrf_allowed.is_set()):
             return False
         try:
             self.outgoing.put_nowait((bytes(encoded_kiss), category))
@@ -63,6 +64,9 @@ class TCPKissReader(threading.Thread):
                     if payload is not None:
                         if category in ('digi', 'telemetry_rf', 'digi_beacon_rf') and not self.digi_allowed.is_set():
                             self.emit('tx_cancelled', 'RF DIGI permission revoked')
+                            continue
+                        if category == 'igate_is_to_rf' and not self.isrf_allowed.is_set():
+                            self.emit('tx_cancelled', 'IS->RF disabled: pending packet cancelled')
                             continue
                         try:
                             conn.sendall(payload)
