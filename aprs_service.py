@@ -24,6 +24,9 @@ from aprs_messages import MessageManager
 from aprs_features import (APRSISClient, MonitorState, encode_ui_packet,
                            encode_kiss_data, igate_tnc2)
 from aprs_serial import SerialReader
+from aprs_tcp import TCPKissReader, TCPKissHub
+from aprs_archive import APRSArchive
+from aprs_weather import decode_weather
 from aprs_station import aprsis_position
 from aprs_telemetry import RadioWindow, symbol_code, aprsis_telemetry_lines
 from aprs_operations import Journal, backup_document, validate_restore_document, validate_object_request, object_payload
@@ -114,6 +117,13 @@ class APRSService:
         self.next_telemetry_ui = 0.0
         self.running = False
         self.serial_enabled = True  # desktop UI may disconnect without exiting
+        self.tcp_hub = None
+        self.tnc_tx_permission = False  # network clients NEVER transmit on startup
+        self.archive = APRSArchive(config.path.with_name('aprs_history.sqlite3'),
+                                    config.data['archive']['retention_days'],
+                                    config.data['archive']['max_rows'])
+        self.archive.prune()
+        self.latest_weather = {}
 
     def _make_digi(self):
         d = self.config.data['digi']
@@ -167,6 +177,10 @@ class APRSService:
             'uptime_s':round(now-self.started_at), 'radio_connected':self.radio_ready,
             'usb_alert': bool(not self.radio_ready and now-self.started_at>45),
             'usb_port':str(self.reader.port) if self.reader else '',
+            'tnc_transport':self.config.data['tnc']['transport'],
+            'tnc':self.tnc_snapshot(),
+            'archive':self.archive.summary(),
+            'latest_weather':list(self.latest_weather.values())[-20:],
             'usb_connections':self.serial_connections,
             'last_rf_frame_utc':self.last_rx_utc,
             'seconds_since_rf':None if self.last_frame_at is None else round(now-self.last_frame_at),
@@ -183,6 +197,42 @@ class APRSService:
             'last_telemetry_utc':dict(self.telemetry_last_sent),
             'last_digi_rf_beacon_utc':self.last_digi_rf_beacon_utc,
         }
+
+    def tnc_snapshot(self):
+        conf=self.config.data['tnc']
+        hub=self.tcp_hub.snapshot() if self.tcp_hub else {
+            'running':False,'host':conf['kiss_server_host'],
+            'port':conf['kiss_server_port'],'clients':0,'rx_only':True,
+            'frames_published':0,'frames_dropped':0,
+            'tx_accepted':0,'tx_rejected':0,'last_error':''}
+        return {'transport':conf['transport'], 'connected':self.radio_ready,
+                'endpoint':str(self.reader.port) if self.reader else '',
+                'reconnect_attempts':self.stats['tnc_reconnect_attempts'],
+                'reconnect_count':self.serial_connections,
+                'server':hub, 'tx_permission':self.tnc_tx_permission}
+
+    def _hub_tx(self, frame):
+        # Called only by an authenticated loopback-bound KISS TCP session,
+        # with explicit operator permission; no automatic TX enable on restart.
+        if not self.tnc_tx_permission or not self.radio_ready or self.reader is None:
+            return False
+        return self.reader.send(frame, category='network_manual')
+
+    def _start_tnc_hub(self):
+        conf=self.config.data['tnc']
+        if self.tcp_hub is not None:
+            self.tcp_hub.close()
+            self.tcp_hub=None
+        if not conf['kiss_server_enabled']:
+            return
+        # Never auto-enable TX even if the persisted config contains a
+        # previously saved affirmative setting.
+        self.tnc_tx_permission = False
+        hub=TCPKissHub(conf['kiss_server_host'],conf['kiss_server_port'],
+                       allow_tx=False, tx_request=self._hub_tx)
+        hub.start()
+        self.tcp_hub=hub
+        self.journal.log('TCP','server-start',detail=f"{hub.host}:{hub.port} read-only")
 
     def telemetry_snapshot(self):
         m=self.telemetry.snapshot()
@@ -230,6 +280,25 @@ class APRSService:
 
     def _execute(self, action, data):
         # HDMI panel toggle does not touch USB, DIGI, iGate, RF, or messages.
+        if action == 'tnc_server_tx':
+            # Enabling requires a real runtime confirmation; never persists
+            # across restart or USB disconnect.
+            if data.get('enabled') is True:
+                if data.get('confirm') is not True:
+                    raise ValueError('Explicit confirmation required for KISS TCP RF TX')
+                conf=self.config.data['tnc']
+                if not (self.tcp_hub and conf['kiss_server_host']=='127.0.0.1'):
+                    raise ValueError('TCP KISS RF TX only on local loopback server')
+                self.tnc_tx_permission=True
+                self.tcp_hub.allow_tx=True
+                self.journal.log('TCP','tx-enabled',detail='Loopback local client RF access')
+                return 'Local TCP KISS TX enabled for this session'
+            if data.get('enabled') is False:
+                self.tnc_tx_permission=False
+                if self.tcp_hub: self.tcp_hub.allow_tx=False
+                self.journal.log('TCP','tx-disabled')
+                return 'TCP KISS TX disabled'
+            raise ValueError('Expected enabled true/false')
         if action == 'display_set':
             if type(data.get('enabled')) is not bool:
                 raise ValueError('HDMI panel requires true/false.')
@@ -378,6 +447,8 @@ class APRSService:
             if passcode is not None and not isinstance(passcode, str):
                 raise ValueError('Neplatný APRS-IS passcode.')
             previous_port = self.config.data['serial']['port']
+            previous_tnc = dict(self.config.data['tnc'])
+            previous_archive = dict(self.config.data['archive'])
             previous_call = self.config.data['igate']['call']
             previous_messages = dict(self.config.data['messages'])
             self.config.update(changes, passcode=passcode)
@@ -401,9 +472,21 @@ class APRSService:
             self.state.update_digi(self.digi.snapshot())
             if self.igate_client:
                 self._disable_igate()
-            if previous_port != self.config.data['serial']['port']:
+            if (previous_port != self.config.data['serial']['port'] or
+                    previous_tnc['transport'] != self.config.data['tnc']['transport'] or
+                    previous_tnc['tcp_host'] != self.config.data['tnc']['tcp_host'] or
+                    previous_tnc['tcp_port'] != self.config.data['tnc']['tcp_port']):
                 self._disconnect_reader()
                 self.next_serial_attempt = 0.0
+            if previous_tnc != self.config.data['tnc']:
+                self.tnc_tx_permission=False
+                if self.tcp_hub:
+                    self.tcp_hub.allow_tx=False
+                self._start_tnc_hub()
+            if previous_archive != self.config.data['archive']:
+                self.archive.retention_days=self.config.data['archive']['retention_days']
+                self.archive.max_rows=self.config.data['archive']['max_rows']
+                self.archive.prune()
             LOG.info('Konfigurace uložena; provozní změny RF/IS vyžadují nové zapnutí.')
             return 'Nastavení uloženo. Po úpravě aktivní iGate/DIGI znovu zapni. Změnu web portu/LAN proveď restartem služby.'
 
@@ -504,6 +587,9 @@ class APRSService:
         self._update_position()
 
     def _disconnect_reader(self):
+        self.tnc_tx_permission=False
+        if self.tcp_hub:
+            self.tcp_hub.allow_tx=False
         if self.reader is not None:
             previous = self.reader
             previous.digi_allowed.clear()
@@ -524,7 +610,9 @@ class APRSService:
             return
         if self.reader is not None or time.monotonic() < self.next_serial_attempt:
             return
-        port = find_radio_port(self.config.data['serial']['port'])
+        conf=self.config.data['tnc']
+        port = (f"{conf['tcp_host']}:{conf['tcp_port']}" if conf['transport']=='tcp'
+                else find_radio_port(self.config.data['serial']['port']))
         self.next_serial_attempt = time.monotonic() + self.config.data['serial']['retry_seconds']
         if port is None:
             self.state.update_status(radio='USB nenalezeno / více portů; nastav port')
@@ -534,9 +622,14 @@ class APRSService:
                 self.last_serial_warning = time.monotonic()
             return
         self.session += 1
+        self.stats['tnc_reconnect_attempts']+=1
         self.serial_stop = threading.Event()
-        self.reader = SerialReader(port, self.config.data['serial']['baud'], self.events,
-                                   self.serial_stop, self.session)
+        if conf['transport']=='tcp':
+            self.reader=TCPKissReader(conf['tcp_host'],conf['tcp_port'],self.events,
+                                      self.serial_stop,self.session)
+        else:
+            self.reader=SerialReader(port,self.config.data['serial']['baud'],self.events,
+                                     self.serial_stop,self.session)
         self.radio_ready = False
         self.state.update_status(radio=f'Připojuji {port}...')
         self.reader.start()
@@ -642,6 +735,20 @@ class APRSService:
         if not packet.simulated and packet.source != '?':
             self.telemetry.record_rx(packet.source, packet.latitude, packet.longitude,
                                      own_position=own,position_label=packet.position_label)
+        wx=decode_weather(packet.raw_info)
+        try:
+            self.archive.add(packet, wx)
+        except (OSError, ValueError) as exc:
+            self.stats['archive_errors']+=1
+            LOG.warning('APRS archive failed: %s',exc)
+        if wx:
+            self.latest_weather[packet.source]={'source':packet.source,
+                'received_at':self.last_rx_utc,**wx}
+            if len(self.latest_weather)>100:
+                oldest=next(iter(self.latest_weather))
+                self.latest_weather.pop(oldest,None)
+        if self.tcp_hub and packet.raw_ax25 and not packet.simulated and packet.source!='?':
+            self.tcp_hub.publish(packet.raw_ax25)
         self.journal.log('RX','accepted',packet.source,packet.destination,
                          (packet.raw_info.decode('latin-1','replace') if isinstance(packet.raw_info,bytes) else str(packet.raw_info))[:250])
         msg = self.messages.receive(packet, self.radio_ready)
@@ -812,6 +919,7 @@ class APRSService:
         # One backend, two mutually exclusive frontends: native desktop (no HTTP)
         # and headless Raspberry Pi / browser service. Never open two USB readers.
         c = self.config.data
+        self._start_tnc_hub()
         if with_web:
             lan = c['web']['lan'] or self.force_lan
             self.web.start(lan=lan, port=c['web']['port'], fallback=False)
@@ -841,6 +949,11 @@ class APRSService:
             self._disconnect_reader()
             self._disable_igate()
             self.web.close()
+            if self.tcp_hub:
+                self.tcp_hub.close()
+                self.tcp_hub=None
+            self.tnc_tx_permission=False
+            self.archive.close()
             self.messages.close()
             self.journal.close()
             LOG.info('Služba OK5TVR zastavena.')
