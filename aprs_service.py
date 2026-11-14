@@ -26,6 +26,9 @@ from aprs_features import (APRSISClient, MonitorState, encode_ui_packet,
 from aprs_is_to_rf import SelectiveISGate, server_filter
 from aprs_serial import SerialReader
 from aprs_tcp import TCPKissReader, TCPKissHub
+from aprs_secondary_tnc import SecondaryTNCManager
+from aprs_alerts import AlertEngine
+from aprs_geo import distance_bearing
 from aprs_archive import APRSArchive
 from aprs_weather import decode_weather
 from aprs_station import aprsis_position
@@ -80,13 +83,16 @@ class APRSService:
         self.igate_client = None
         self.igate_events = None  # dedicated queue; stale client events cannot overwrite a new session
         self.want_digi = bool(config.data['digi']['autostart'])
+        self.secondary = SecondaryTNCManager(config.data['secondary_tncs']['devices'])
+        self.alerts = AlertEngine(config.data['alerts'])
+        self.next_alert_tick = 0.0
         self.gate_cache = {}
         self.isrf = SelectiveISGate(config.data['is_to_rf'], config.data['igate']['call'])
         m = config.data['messages']
         self.messages = MessageManager(config.path.with_name('messages.sqlite3'),
                                       config.data['igate']['call'], m['path'],
                                       m['auto_ack'], m['retry_seconds'], m['max_attempts'],
-                                      m.get('receive_aliases', []))
+                                      m.get('receive_aliases', []),m.get('blocked_senders', []))
         self.digi = self._make_digi()
         self.state.update_digi(self.digi.snapshot())
         self._update_position()
@@ -183,6 +189,9 @@ class APRSService:
             'tnc':self.tnc_snapshot(),
             'archive':self.archive.summary(),
             'journal_storage':self.journal.stats(),
+            'tx_scheduler':self.tx_snapshot(),
+            'secondary_tncs':self.secondary.snapshot(),
+            'alerts':self.alerts.snapshot(),
             'latest_weather':list(self.latest_weather.values())[-20:],
             'usb_connections':self.serial_connections,
             'last_rf_frame_utc':self.last_rx_utc,
@@ -215,7 +224,33 @@ class APRSService:
                 'endpoint':str(self.reader.port) if self.reader else '',
                 'reconnect_attempts':self.stats['tnc_reconnect_attempts'],
                 'reconnect_count':self.serial_connections,
-                'server':hub, 'tx_permission':self.tnc_tx_permission}
+                'server':hub, 'tx_permission':self.tnc_tx_permission,
+            'secondary_receivers':self.secondary.snapshot(),
+            'tx_scheduler':self.tx_snapshot()}
+
+    def tx_snapshot(self):
+        outgoing=getattr(self.reader,'outgoing',None)
+        if outgoing is not None and hasattr(outgoing,'snapshot'):
+            return outgoing.snapshot()
+        return dict(pending=0, max_pending=self.config.data['tx_scheduler']['max_pending'],
+                    min_gap_s=self.config.data['tx_scheduler']['min_gap_s'],
+                    max_per_minute=self.config.data['tx_scheduler']['max_per_minute'])
+
+    def heard_snapshot(self, minutes=1440, receiver=''):
+        rows=self.archive.heard(minutes=minutes,receiver=receiver,limit=400)
+        p=self.config.data['position']
+        if p['latitude'] is not None and p['longitude'] is not None:
+            for row in rows:
+                try:row.update(distance_bearing(p['latitude'],p['longitude'],row['lat'],row['lon']))
+                except (ValueError,TypeError):pass
+        return dict(minutes=int(minutes),receiver=receiver,stations=rows,
+                    direct_stations=sum(row['direct_packets']>0 for row in rows),
+                    via_stations=sum(row['via_packets']>0 for row in rows))
+
+    def _configure_radio_scheduler(self):
+        outgoing=getattr(self.reader,'outgoing',None)
+        if outgoing is not None and hasattr(outgoing,'configure'):
+            outgoing.configure(**self.config.data['tx_scheduler'])
 
     def _hub_tx(self, frame):
         # Called only by an authenticated loopback-bound KISS TCP session,
@@ -286,6 +321,8 @@ class APRSService:
 
     def _execute(self, action, data):
         # HDMI panel toggle does not touch USB, DIGI, iGate, RF, or messages.
+        if action == 'message_read':
+            return self.messages.mark_read(data.get('kind'),data.get('id'))
         if action == 'isrf_save':
             rules = data.get('rules')
             if not isinstance(rules, dict):
@@ -384,12 +421,16 @@ class APRSService:
             old_port=self.config.data['serial']['port']
             old_tnc=dict(self.config.data['tnc'])
             self.config.update(restored)
+            self.alerts.configure(self.config.data['alerts'])
+            self.secondary.configure(self.config.data['secondary_tncs']['devices'])
+            self._configure_radio_scheduler()
             self.isrf.configure(self.config.data['is_to_rf'], self.config.data['igate']['call'])
             self.messages.configure(self.config.data['igate']['call'],
                     self.config.data['messages']['path'],False,
                     self.config.data['messages']['retry_seconds'],
                     self.config.data['messages']['max_attempts'],
-                    self.config.data['messages'].get('receive_aliases', []))
+                    self.config.data['messages'].get('receive_aliases', []),
+                    self.config.data['messages'].get('blocked_senders', []))
             self._update_position()
             self.telemetry_epoch = -1
             self.rf_telemetry_pending.clear()
@@ -503,14 +544,20 @@ class APRSService:
             previous_archive = dict(self.config.data['archive'])
             previous_call = self.config.data['igate']['call']
             previous_messages = dict(self.config.data['messages'])
+            previous_secondary = list(self.config.data['secondary_tncs']['devices'])
             self.config.update(changes, passcode=passcode)
+            self._configure_radio_scheduler()
+            self.alerts.configure(self.config.data['alerts'])
+            if previous_secondary != self.config.data['secondary_tncs']['devices']:
+                self.secondary.configure(self.config.data['secondary_tncs']['devices'])
             self.isrf.configure(self.config.data['is_to_rf'], self.config.data['igate']['call'])
             if previous_call != self.config.data['igate']['call'] or previous_messages != self.config.data['messages']:
                 # Persisted pending transmissions are invalid when callsign/path changes.
                 self.messages.usb_closed()
             m = self.config.data['messages']
             self.messages.configure(self.config.data['igate']['call'], m['path'], m['auto_ack'],
-                                    m['retry_seconds'], m['max_attempts'], m.get('receive_aliases', []))
+                                    m['retry_seconds'], m['max_attempts'],
+                                    m.get('receive_aliases', []), m.get('blocked_senders', []))
             self._update_position()
             self.telemetry_epoch = -1
             self.telemetry_next = time.monotonic() + self.config.data['telemetry']['interval_minutes'] * 60
@@ -695,6 +742,7 @@ class APRSService:
                                      self.serial_stop,self.session)
         self.radio_ready = False
         self.state.update_status(radio=f'Připojuji {port}...')
+        self._configure_radio_scheduler()
         self.reader.start()
 
     def _handle_events(self):
@@ -814,6 +862,7 @@ class APRSService:
                     LOG.warning('APRS-IS: %s', value)
 
     def _on_frame(self, packet):
+        packet.receiver='primary'
         self.last_frame_at=time.monotonic()
         self.last_rx_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
         self.stats['rx']+=1
@@ -831,6 +880,7 @@ class APRSService:
             if self.stats['archive_errors']==1 or self.stats['archive_errors']%100==0:
                 LOG.warning('APRS archive failed (%d events): %s',
                             self.stats['archive_errors'], exc)
+        self.alerts.on_packet(packet,wx)
         if wx:
             self.latest_weather[packet.source]={'source':packet.source,
                 'received_at':self.last_rx_utc,**wx}
@@ -867,6 +917,29 @@ class APRSService:
                     self.gate_cache = {key:stamp for key,stamp in self.gate_cache.items() if now-stamp < 60}
         if self.state.rx % 50 == 0:
             LOG.info('APRS RF RX: %s platných rámců', self.state.rx)
+
+    def _on_secondary_frame(self,packet,receiver):
+        # Secondary KISS devices are RX-only: never send ACK, DIGI, or IS->RF.
+        # Their packets are included in heard map and SQLite with a receiver tag.
+        packet.receiver=receiver
+        self.state.add(packet)
+        self.stats['secondary_rx']+=1
+        wx=decode_weather(packet.raw_info)
+        try:self.archive.add(packet,wx)
+        except (OSError,ValueError):
+            self.stats['archive_errors']+=1
+        self.alerts.on_packet(packet,wx)
+        self.journal.log('RX2','accepted',packet.source,receiver,
+                         packet.summary[:140])
+
+    def _alerts_tick(self):
+        now=time.monotonic()
+        if now<self.next_alert_tick:return
+        self.next_alert_tick=now+3
+        self.alerts.tick(uptime=now-self.started_at,radio_connected=self.radio_ready,
+                         last_rf_at=self.last_frame_at,
+                         igate_online=bool(self.igate_client and self.igate_client.connected.is_set()),
+                         igate_enabled=self.igate_client is not None)
 
     def _messages_tick(self):
         self.messages.tx_tick(self.reader, self.radio_ready)
@@ -1030,6 +1103,9 @@ class APRSService:
                 self._commands_tick()
                 self._handle_events()
                 self._connect_tick()
+                self.secondary.tick(self._on_secondary_frame,
+                    primary_endpoint=str(self.reader.port) if self.reader else '')
+                self._alerts_tick()
                 self._messages_tick()
                 self._digi_tick()
                 self._telemetry_tick()
@@ -1037,6 +1113,8 @@ class APRSService:
         finally:
             self.running = False
             self._disconnect_reader()
+            self.secondary.close()
+            self.alerts.close()
             self._disable_igate()
             self.web.close()
             if self.tcp_hub:
