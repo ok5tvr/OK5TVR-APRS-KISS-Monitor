@@ -100,7 +100,7 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <section class="panel">
 <h2 class="map-header"><span>Mapa přijatých APRS pozic</span><span>
 <select id="mapstyle" aria-label="Mapový podklad"><option value="osm-light">Mapa ulic (OpenStreetMap)</option><option value="osm-dark">Tmavá mapa (OpenStreetMap)</option><option value="offline" selected>Offline mapa – bez internetu</option></select>
-<button id="reset">Zobrazit všechny</button></span></h2>
+<button id="reset">Zobrazit všechny</button><button id="export-geojson" title="Exportovat filtrované stanice a trasy do GeoJSON">Export GeoJSON</button></span></h2>
 <div class="map-filterbar" role="group" aria-label="Filtry APRS mapy" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 12px;background:#132a3a">
 <label style="font-size:12px"><input id="show-trails" type="checkbox" checked> Trasy stanic</label>
 <label style="font-size:12px"><input id="direct-only" type="checkbox"> Jen DIRECT</label>
@@ -448,6 +448,27 @@ for(const id of ['show-trails','direct-only','show-objects','activity-filter']){
  $(id).addEventListener('change',()=>{renderStations();renderMap(false);});
 }
 $('reset').addEventListener('click',()=>fitStations(positions));
+$('export-geojson').addEventListener('click',()=>{
+ const features=[];
+ for(const s of filteredStations()){
+  if(!Number.isFinite(s.lat)||!Number.isFinite(s.lon))continue;
+  const properties={callsign:s.call,symbol:s.symbol||null,
+    direct:s.position_direct===true,via:s.position_direct===false,
+    last:s.last||null,is_object:!!s.is_object,heard_packets:s.count||0};
+  features.push({type:'Feature',geometry:{type:'Point',coordinates:[s.lon,s.lat]},properties});
+  const coords=(Array.isArray(s.trail)?s.trail:[])
+    .filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon))
+    .map(p=>[p.lon,p.lat]);
+  if(coords.length>1)features.push({type:'Feature',
+    geometry:{type:'LineString',coordinates:coords},
+    properties:{callsign:s.call,kind:'aprs-position-trail',points:coords.length}});
+ }
+ const json=JSON.stringify({type:'FeatureCollection',features},null,2);
+ const blob=new Blob([json],{type:'application/geo+json;charset=utf-8'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='ok5tvr-aprs-positions.geojson';document.body.appendChild(a);
+ a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
 $('zoomin').addEventListener('click',()=>setCenter(view.lat,view.lon,view.z+1));
 $('zoomout').addEventListener('click',()=>setCenter(view.lat,view.lon,view.z-1));
 $('mapstyle').addEventListener('change',()=>{
