@@ -73,6 +73,8 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
   <label for="default_target">Výchozí cílová značka</label><input id="default_target" maxlength="9" spellcheck="false" placeholder="např. OK1ABC-9">
   <label for="aliases">Další přijímané značky / SSID</label>
   <input id="aliases" maxlength="90" spellcheck="false" placeholder="OK5TVR-7,OK5TVR-3">
+  <p id="call_hint" class="hint">Schránka přijímá zprávy adresované značce iGate a základní značce bez SSID. Pokud chceš přijímat i zprávy adresované DIGI, přidej její SSID.</p>
+  <button type="button" id="add_digi_alias">Přidat vlastní značku DIGI mezi příjemce</button>
   <p class="hint">Automaticky přijímáme značku iGate i základní značku bez SSID. Sem přidej pouze další vlastní SSID (oddělené čárkami). Změna zapíše příchozí zprávy do stejného Inboxu.</p>
   <label for="default_path">Výchozí RF cesta</label><input id="default_path" maxlength="27" spellcheck="false" placeholder="WIDE1-1 (DIRECT = bez cesty)">
   <div class="inline"><div><label for="retry">Čas prvního opakování (s)</label><input id="retry" type="number" min="30" max="180" step="1"></div>
@@ -86,6 +88,7 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
   <h2>Historie zpráv</h2>
   <div class="tabs"><button class="tab active" id="tabin">Inbox <span id="tabin_count"></span></button><button class="tab" id="tabout">Outbox <span id="tabout_count"></span></button><button id="refresh">Obnovit</button></div>
   <div id="items" class="list" aria-live="polite"><div class="empty">Načítám zprávy…</div></div>
+  <p id="messages_load_error" class="bad" role="alert" hidden></p>
   <p class="hint" style="margin-top:15px">Stav „Čeká ACK“ znamená, že byl rámec zapsán do USB TNC; skutečný RF přenos je nutné ověřit rádiem. „ACK přijato“ znamená protokolové potvrzení, nikoli přečtení člověkem.</p>
  </section>
 </div>
@@ -108,7 +111,9 @@ $('admin').href=authUrl('/control');$('map').href=authUrl('/');
 $('objects_nav').href=authUrl('/operations')+'#objects';
 $('diagnostics_nav').href=authUrl('/operations')+'#diagnostics';
 const label={queued:'Čeká na USB',usb_queued:'V USB frontě',waiting_ack:'Čeká na ACK',ack:'ACK přijato',rej:'REJ – odmítnuto',failed:'Bez ACK',interrupted:'Přerušeno',cancelled:'Zrušeno'};
-let pane='inbox',last=null,configured=false;
+let pane='inbox',last=null,configured=false,loading=false;
+$('send').disabled=true;
+$('save').disabled=true;
 function toast(msg,error=false){$('toast').textContent=tr(msg);$('toast').style.borderColor=error?'#ad5c69':'#557b8b';}
 function elem(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;}
 function setPath(v){const pre=['','WIDE1-1','WIDE2-1','WIDE1-1,WIDE2-1'];
@@ -137,6 +142,11 @@ function renderHeard(){
 function render(){if(!last)return;
  $('lastrx').textContent=last.last_rf_frame_utc||tr('Zatím žádný RF rámec');
  $('rxaddr').textContent=(last.receive_calls||[last.call]).join(', ');
+ const digi=(last.digi_call||'').trim().toUpperCase();
+ $('call_hint').textContent='Výchozí schránka: '+last.call+
+   ' + '+last.call.split('-')[0]+'. DIGI: '+(digi||'nenastaveno')+
+   '. Pro příjem zpráv adresovaných DIGI použij tlačítko a pak Uložit nastavení.';
+ $('add_digi_alias').disabled=!digi||(last.receive_calls||[]).includes(digi);
  renderHeard();
  $('mycall').textContent=last.call;$('radio').textContent=last.radio_ready?tr('Připojeno'):tr('Odpojeno');
  $('radio').className=last.radio_ready?'good':'bad';
@@ -170,14 +180,39 @@ function render(){if(!last)return;
   footer.append(buttons);card.append(footer);wrap.append(card);
  }
 }
-async function refresh(){try{const r=await fetch(authUrl('/api/messages'),{cache:'no-store'});
- if(!r.ok)throw new Error('HTTP '+r.status);last=await r.json();
+async function refresh(){
+ if(loading)return;
+ loading=true;
+ try{
+ const r=await fetch(authUrl('/api/messages'),{cache:'no-store'});
+ if(!r.ok)throw new Error('HTTP '+r.status+(r.status===403?' – přihlas se znovu přes hlavní stránku.':''));
+ last=await r.json();
+ $('messages_load_error').hidden=true;
+ $('messages_load_error').textContent='';
+ $('send').disabled=false;
+ $('save').disabled=false;
  if(!configured){$('target').value=last.default_target;$('default_target').value=last.default_target;
    $('default_path').value=last.default_path||'DIRECT';setPath(last.default_path);
    $('retry').value=last.retry_seconds;$('attempts').value=last.max_attempts;$('autoack').checked=last.auto_ack;
    $('aliases').value=(last.receive_aliases||[]).join(',');configured=true;
    toast('Připraveno. Odeslání přes RF vyžaduje potvrzení.');}
- render();}catch(e){toast(tr('Nelze načíst zprávy: ')+e.message,true);}}
+ render();
+ }catch(e){
+  const message=tr('Nelze načíst zprávy: ')+e.message;
+  $('messages_load_error').hidden=false;
+  $('messages_load_error').textContent=message;
+  if(!last){
+   $('radio').textContent='Nedostupné';
+   $('mycall').textContent='—';
+   $('lastrx').textContent='—';
+   $('rxaddr').textContent='Údaje nebyly načteny';
+   $('items').replaceChildren(elem('div','empty',message));
+   $('send').disabled=true;
+   $('save').disabled=true;
+  }
+  toast(message,true);
+ }finally{loading=false;}
+}
 $('send').onclick=async()=>{const target=$('target').value.trim().toUpperCase(),text=$('body').value,path=$('path_preset').value==='custom' ? $('custom_path').value : $('path_preset').value;
  if(!target||!text){toast(tr('Vyplň cílovou značku a text.'),true);return;}
  if(!/^[\x20-\x7E]{1,67}$/.test(text)||/[{}]/.test(text)){toast(tr('Použij 1–67 znaků ASCII bez diakritiky a { nebo }.'),true);return;}
@@ -185,6 +220,17 @@ $('send').onclick=async()=>{const target=$('target').value.trim().toUpperCase(),
  $('send').disabled=true;
  try{const res=await request('message_send',{confirm:true,target,text,path});toast(tr('Zpráva #')+res.message_id+tr(' zařazena do Outboxu pro ')+res.recipient+'.');$('body').value='';$('body').oninput();pane='outbox';await refresh();}
  catch(e){toast(tr('TX zpráva: ')+e.message,true);}finally{$('send').disabled=false;}};
+$('add_digi_alias').onclick=()=>{
+ const call=(last?.digi_call||'').trim().toUpperCase();
+ if(!call){toast('Značka DIGI není nastavena.',true);return;}
+ const calls=$('aliases').value.split(',').map(v=>v.trim().toUpperCase()).filter(Boolean);
+ if((last.receive_calls||[]).includes(call)||calls.includes(call)){
+  toast('Značka '+call+' již patří mezi přijímané adresy.');return;
+ }
+ calls.push(call);
+ $('aliases').value=calls.join(',');
+ toast('Přidáno '+call+'. Potvrď tlačítkem Uložit nastavení zpráv. Žádné RF vysílání se tím nespustí.');
+};
 $('save').onclick=async()=>{const target=$('default_target').value.trim().toUpperCase(),path=$('default_path').value.trim(),auto=$('autoack').checked;
  if(auto&&!confirm(tr('Povolit automatické RF vysílání ACK při každé příchozí zprávě s ID? Bude pokračovat i po restartu.')))return;
  try{const aliases=$('aliases').value.split(',').map(v=>v.trim().toUpperCase()).filter(Boolean);
