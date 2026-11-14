@@ -29,15 +29,14 @@ def decode_weather(info: bytes) -> dict | None:
     # '_' at the beginning denotes timestamped positionless WX. Position-bearing
     # WX requires a weather-symbol suffix (underscore) after lat/lon.
     is_weather = text.startswith('_') or (text[:1] in ('!', '=', '/', '@', ';', ')')
-                      and re.search(r'[0-9]{3}\.[0-9]{2}[NS].{1}[0-9]{4}\.[0-9]{2}[EW]_', text[:70]) is not None)
+                      and re.search(r'[0-9]{4}\.[0-9]{2}[NS].{1}[0-9]{5}\.[0-9]{2}[EW]_', text[:70]) is not None)
     if not is_weather:
         return None
     # Some positionless WX reports begin with DDHHMMz or HHMMSS, then cDDD...
     # Look for standard weather field tags after the APRS leading payload.
     data = text
     wind_direction = _number(data, r'c([0-9]{3})(?=s[0-9.]{3})', 0, 360)
-    wind_mph = _number(data, r'(?<=c[0-9]{3})s([0-9]{3})', 0, 400) if False else _number(
-        data, r'c[0-9]{3}s([0-9]{3})', 0, 400)
+    wind_mph = _number(data, r'c[0-9]{3}s([0-9]{3})', 0, 400)
     if wind_direction is None:
         wind_mph = None
     temperature_f = re.search(r't(-?[0-9]{3})', data)
