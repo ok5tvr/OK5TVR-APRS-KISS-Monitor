@@ -31,7 +31,9 @@ DEFAULT_CONFIG = {
     'secondary_tncs': {'devices': []},  # up to 2 independent read-only KISS receivers
     'alerts': {'enabled':True, 'offline_seconds':300, 'no_rf_minutes':30,
                'watch_calls':[], 'weather_temp_high':None,
-               'weather_pressure_low':None},
+               'weather_pressure_low':None,
+               'mqtt_enabled':False, 'mqtt_host':'127.0.0.1',
+               'mqtt_port':1883, 'mqtt_topic':'ok5tvr/aprs/alerts'},
     'archive': {'retention_days':30, 'max_rows':100000},
     'is_to_rf': {'calls': [], 'objects': [], 'types': ['message','position'],
                  'rf_path': '', 'heard_minutes': 30, 'max_per_minute': 2,
@@ -178,6 +180,12 @@ def validate_config(candidate):
     v['secondary_tncs']['devices']=normalized
     alerts=v['alerts']
     alerts['enabled']=_bool(alerts['enabled'],'Monitoring alerts')
+    alerts['mqtt_enabled']=_bool(alerts['mqtt_enabled'],'MQTT alerts')
+    if not isinstance(alerts['mqtt_host'],str) or not re.fullmatch(r'[A-Za-z0-9.:-]{1,253}',alerts['mqtt_host']):
+        raise ValueError('MQTT hostname invalid')
+    alerts['mqtt_port']=_int(alerts['mqtt_port'],'MQTT port',1,65535)
+    if not isinstance(alerts['mqtt_topic'],str) or not re.fullmatch(r'[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+){0,7}',alerts['mqtt_topic']) or len(alerts['mqtt_topic'])>80:
+        raise ValueError('MQTT topic invalid')
     alerts['offline_seconds']=_int(alerts['offline_seconds'],'TNC offline seconds',30,3600)
     alerts['no_rf_minutes']=_int(alerts['no_rf_minutes'],'No RF minutes',5,240)
     watchers=alerts['watch_calls']
