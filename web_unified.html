@@ -674,7 +674,7 @@ function drawWeatherChart(){
  ctx.fillStyle="#b5cfdf";ctx.font="12px sans-serif";
  ctx.fillText(String(rows[0].received_at||"").slice(11,19),48,height-6);
  ctx.fillText(String(rows[rows.length-1].received_at||"").slice(11,19),width-96,height-6);
- $("wx-chart-info").textContent=rows.length+" hodnot";
+ $("wx-chart-info").textContent=(wxLastRows[0]?.source||"—")+" · "+rows.length+" hodnot";
 }
 $("wx-chart-field").addEventListener("change",drawWeatherChart);
 async function loadWeather(){
@@ -682,10 +682,13 @@ async function loadWeather(){
   const source=$("wx-source").value.trim();
   const data=await get("/api/weather?limit=100&source="+encodeURIComponent(source));
   const root=$("wx-rows"),metrics=$("wx-metrics");root.replaceChildren();metrics.replaceChildren();
-  wxLastRows=[...data.records].reverse();
+  // Never connect measurements from different stations into one weather curve.
+  const chartCall=source.toUpperCase()||data.records[0]?.source||"";
+  wxLastRows=[...data.records.filter(row=>row.source===chartCall)].reverse();
+  $("wx-chart-info").textContent=chartCall?"Stanice: "+chartCall:"";
   const fields=[["temperature_c","Teplota °C"],["pressure_hpa","Tlak hPa"],
     ["wind_kmh","Vítr km/h"],["humidity_pct","Vlhkost %"]];
-  const latest=data.records[0]||{};
+  const latest=wxLastRows[wxLastRows.length-1]||{};
   for(const [field,label] of fields){
    const div=document.createElement("div");div.className="metric";
    const span=document.createElement("span");span.textContent=label;
