@@ -42,7 +42,7 @@ def incoming(source='OK1SRC-7',info='!4944.40N/01322.20E>Test',path='TCPIP*,qAC,
     return f'{source}>APRS,{path}:{info}'
 
 
-def message(target='OK1LOCAL-9', source='OK1SRC-7', body='Hello{1'):
+def message(target='OK1LOC-9', source='OK1SRC-7', body='Hello{1'):
     return incoming(source, f':{target:<9}:{body}')
 
 
@@ -103,11 +103,11 @@ class SelectiveIGateTests(unittest.TestCase):
         good = message()
         ok,reason = self.gate.process(good,self.send,True,True)
         self.assertEqual((ok,reason),(False,'recipient_not_heard_direct'))
-        self.note_direct('OK1LOCAL-9')
+        self.note_direct('OK1LOC-9')
         ok,reason = self.gate.process(good,self.send,True,True)
         self.assertTrue(ok)
         self.assertEqual(len(self.frames),1)
-        self.assertIn(b':OK1LOCAL-9:',KissDecoder().feed(self.frames[0])[0])
+        self.assertIn(b':OK1LOC-9:',KissDecoder().feed(self.frames[0])[0])
         self.clock.advance(20)
         ok,reason = self.gate.process(good,self.send,True,True)
         self.assertFalse(ok)
@@ -118,10 +118,10 @@ class SelectiveIGateTests(unittest.TestCase):
 
     def test_block_internet_reachable_and_recent_rf_sources(self):
         self.gate.start()
-        self.note_direct('OK1LOCAL-9')
-        self.gate.process(incoming('OK1LOCAL-9'),self.send,True,True)
+        self.note_direct('OK1LOC-9')
+        self.gate.process(incoming('OK1LOC-9'),self.send,True,True)
         # The recipient is also directly visible on APRS-IS: do not re-gate.
-        result=self.gate.process(incoming('OK1LOCAL-9',path='TCPIP*,qAC,T2TEST'),self.send,True,True)
+        result=self.gate.process(incoming('OK1LOC-9',path='TCPIP*,qAC,T2TEST'),self.send,True,True)
         self.assertEqual(result[1],'sender_not_selected')
         self.assertEqual(self.gate.process(message(),self.send,True,True)[1],
                          'recipient_available_via_internet')
@@ -131,14 +131,14 @@ class SelectiveIGateTests(unittest.TestCase):
 
     def test_types_objects_and_blocked_paths(self):
         self.gate.start()
-        self.assertEqual(self.gate.process(incoming('OK1OTHER-7'),self.send,True,True)[1],
+        self.assertEqual(self.gate.process(incoming('OK1OTH-7'),self.send,True,True)[1],
                          'sender_not_selected')
         self.assertEqual(self.gate.process(
-            incoming('OK1OTHER-7',';EVENT1   *140800z4944.40N/01322.20E>Test'),self.send,True,True)[0],
+            incoming('OK1OTH-7',';EVENT1   *140800z4944.40N/01322.20E>Test'),self.send,True,True)[0],
             True)
         self.clock.advance(20)
         self.assertEqual(self.gate.process(
-            incoming('OK1OTHER-7',';UNLISTED *140800z4944.40N/01322.20E>Test'),self.send,True,True)[1],
+            incoming('OK1OTH-7',';UNLISTED *140800z4944.40N/01322.20E>Test'),self.send,True,True)[1],
             'object_not_selected')
         for via in ('NOGATE,qAC,T2TEST','RFONLY,qAC,T2TEST','TCPXX,qAC,T2TEST',
                     'OK5TVR-10,qAC,T2TEST'):
@@ -150,17 +150,17 @@ class SelectiveIGateTests(unittest.TestCase):
 
     def test_rate_limits_and_airtime_gap(self):
         self.gate.start()
-        self.assertTrue(self.gate.process(incoming(info='!first'),self.send,True,True)[0])
-        self.assertEqual(self.gate.process(incoming(info='!second'),self.send,True,True)[1],
+        self.assertTrue(self.gate.process(incoming(info='!4944.40N/01322.20E>first'),self.send,True,True)[0])
+        self.assertEqual(self.gate.process(incoming(info='!4944.40N/01322.20E>second'),self.send,True,True)[1],
                          'min_gap')
         self.clock.advance(20)
-        self.assertTrue(self.gate.process(incoming(info='!second'),self.send,True,True)[0])
+        self.assertTrue(self.gate.process(incoming(info='!4944.40N/01322.20E>second'),self.send,True,True)[0])
         self.clock.advance(20)
-        self.assertEqual(self.gate.process(incoming(info='!third'),self.send,True,True)[1],
+        self.assertEqual(self.gate.process(incoming(info='!4944.40N/01322.20E>third'),self.send,True,True)[1],
                          'minute_limit')
         self.assertEqual(self.gate.snapshot()['sent_this_hour'],2)
         self.gate.stop()
-        self.assertEqual(self.gate.process(incoming(info='!fourth'),self.send,True,True)[1],
+        self.assertEqual(self.gate.process(incoming(info='!4944.40N/01322.20E>fourth'),self.send,True,True)[1],
                          'preview_only')
 
     def test_malformed_no_admin_filter_injection_and_fake_input(self):
