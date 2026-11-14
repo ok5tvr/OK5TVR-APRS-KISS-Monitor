@@ -107,7 +107,7 @@ class SelectiveIGateTests(unittest.TestCase):
         ok,reason = self.gate.process(good,self.send,True,True)
         self.assertTrue(ok)
         self.assertEqual(len(self.frames),1)
-        self.assertIn(b':OK1LOC-9:',KissDecoder().feed(self.frames[0])[0])
+        self.assertIn(b':OK1LOC-9 :Hello{1',KissDecoder().feed(self.frames[0])[0])
         self.clock.advance(20)
         ok,reason = self.gate.process(good,self.send,True,True)
         self.assertFalse(ok)
