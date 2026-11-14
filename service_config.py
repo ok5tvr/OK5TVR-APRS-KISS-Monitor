@@ -15,6 +15,7 @@ import secrets
 import tempfile
 
 from aprs_features import CALL_RE
+from aprs_is_to_rf import validate_filter_config
 from aprs_messages import normalize_call, normalize_path
 from aprs_digi import DigiConfig
 from aprs_station import decimal_coordinate, aprsis_position
@@ -27,6 +28,10 @@ DEFAULT_CONFIG = {
             'kiss_server_enabled':False, 'kiss_server_host':'127.0.0.1',
             'kiss_server_port':8001, 'kiss_server_tx':False},
     'archive': {'retention_days':30, 'max_rows':100000},
+    'is_to_rf': {'calls': [], 'objects': [], 'types': ['message','position'],
+                 'rf_path': '', 'heard_minutes': 30, 'max_per_minute': 2,
+                 'max_per_hour': 12, 'min_gap_seconds': 15,
+                 'duplicate_seconds': 120},
     'web': {'port': 8765, 'lan': False},
     'display': {'enabled': False},  # optional HDMI desktop panel; no RF side effects
     'igate': {'call': 'OK5TVR-10', 'host': 'rotate.aprs2.net', 'port': 14580,
@@ -133,6 +138,7 @@ def validate_config(candidate):
     i['port'] = _int(i['port'], 'APRS-IS port', 1, 65535)
     i['autostart'] = _bool(i['autostart'], 'Automatický iGate')
     i['telemetry_enabled'] = _bool(i['telemetry_enabled'], 'iGate APRS-IS telemetry')
+    v['is_to_rf'] = validate_filter_config(v['is_to_rf'])
     symbol_code(i['symbol_table'], i['symbol'], i['overlay'])
     d = v['digi']
     if not isinstance(d['call'], str):
