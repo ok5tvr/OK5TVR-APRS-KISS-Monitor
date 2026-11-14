@@ -79,8 +79,10 @@ class Journal:
                 str(target)[:24],str(detail)[:250])
         try:
             if not self.batch.add(record):
-                logging.getLogger('ok5tvr.aprs').warning(
-                    'Operations journal RAM queue full; event was not archived')
+                drops=self.batch.stats()['dropped']
+                if drops==1 or drops%100==0:
+                    logging.getLogger('ok5tvr.aprs').warning(
+                        'Operations journal RAM queue full; %d events dropped',drops)
             else:
                 self.count+=1
         except RuntimeError as exc:
