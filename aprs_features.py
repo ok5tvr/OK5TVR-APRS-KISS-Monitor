@@ -436,7 +436,7 @@ class MonitorState:
 
     def snapshot(self):
         with self.lock:
-            return {"version":"1.8.1-rc1", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
+            return {"version":"2.3.0-dev", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
                     "rf_status":self.rf_status, "igate_status":self.igate_status, "rx":self.rx, "demo":self.demo,
                     "tx_requests":self.tx_requests, "igate_sent":self.igate_sent,"igate_rejected":self.igate_rejected,
                     "beacons_sent":self.beacons_sent, "own_position":self.own_position,
