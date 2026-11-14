@@ -56,11 +56,14 @@ class SQLiteBatcher:
             if len(self.queue) + self.inflight >= self.max_pending:
                 self.dropped += 1
                 return False
-            if not self.queue:
+            first = not self.queue
+            if first:
                 self.first_pending_at = time.monotonic()
             self.queue.append(record)
             self.accepted += 1
-            if len(self.queue) >= self.batch_size:
+            # The worker may be waiting with no deadline when queue is empty.
+            # Wake it for the *first* record to begin the 10-second timer.
+            if first or len(self.queue) >= self.batch_size:
                 self.cv.notify_all()
             return True
 
