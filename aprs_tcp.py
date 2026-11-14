@@ -13,6 +13,7 @@ import time
 
 from aprs_features import encode_kiss_data
 from aprs_protocol import KissDecoder, decode_ax25
+from aprs_rf_scheduler import RFOutputScheduler
 
 
 class TCPKissReader(threading.Thread):
@@ -28,7 +29,7 @@ class TCPKissReader(threading.Thread):
         self.session = session
         self.digi_allowed = threading.Event()
         self.isrf_allowed = threading.Event()  # OFF unless explicitly enabled by admin
-        self.outgoing = queue.Queue(maxsize=1)
+        self.outgoing = RFOutputScheduler()  # single bounded queue for every TX category
         self.connected = False
         self.last_error = ''
 
