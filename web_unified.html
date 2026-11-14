@@ -278,6 +278,30 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
       <div><label for="tnc-retention">Historie (dny)</label><input id="tnc-retention" type="number" min="1" max="365" value="30"></div>
       <div><label for="tnc-max-rows">Maximum paketů SQLite</label><input id="tnc-max-rows" type="number" min="1000" max="1000000" value="100000"></div>
     </div>
+    <h3>Společný RF TX Scheduler (jeden primární KISS port)</h3>
+    <div class="form-grid">
+      <div><label for="tnc-tx-gap">Min. odstup TX (s)</label><input id="tnc-tx-gap" type="number" min="0" max="15" step="0.5" value="2"></div>
+      <div><label for="tnc-tx-minute">Max. paketů/min</label><input id="tnc-tx-minute" type="number" min="1" max="60" value="12"></div>
+      <div><label for="tnc-tx-pending">Délka TX fronty (RAM)</label><input id="tnc-tx-pending" type="number" min="1" max="32" value="12"></div>
+    </div>
+    <h3>Další nezávislá KISS TNC – pouze RX</h3>
+    <p class="note">Max. dvě doplňková TNC. Každé má vlastní port, reconnect a statistiky. Bez DIGI a RF TX, bez automatického spojování různých RF sítí. Primární TNC se nikdy neotevírá dvakrát.</p>
+    <div class="form-grid">
+      <label class="check"><input id="sec1-enabled" type="checkbox"> Přijímač 1 zapnutý</label>
+      <div><label for="sec1-id">ID přijímače 1</label><input id="sec1-id" value="rx1"></div>
+      <div><label for="sec1-type">Připojení 1</label><select id="sec1-type"><option value="tcp">TCP KISS</option><option value="serial">USB / COM KISS</option></select></div>
+      <div><label for="sec1-host">TCP host</label><input id="sec1-host" value="127.0.0.1"></div>
+      <div><label for="sec1-tcp">TCP port</label><input id="sec1-tcp" type="number" min="1" max="65535" value="8002"></div>
+      <div><label for="sec1-serial">USB / COM zařízení</label><input id="sec1-serial" placeholder="/dev/ttyACM1 / COM6"></div>
+      <div><label for="sec1-baud">Rychlost COM</label><input id="sec1-baud" type="number" min="1200" max="2000000" value="115200"></div>
+      <label class="check"><input id="sec2-enabled" type="checkbox"> Přijímač 2 zapnutý</label>
+      <div><label for="sec2-id">ID přijímače 2</label><input id="sec2-id" value="rx2"></div>
+      <div><label for="sec2-type">Připojení 2</label><select id="sec2-type"><option value="tcp">TCP KISS</option><option value="serial">USB / COM KISS</option></select></div>
+      <div><label for="sec2-host">TCP host</label><input id="sec2-host" value="127.0.0.1"></div>
+      <div><label for="sec2-tcp">TCP port</label><input id="sec2-tcp" type="number" min="1" max="65535" value="8003"></div>
+      <div><label for="sec2-serial">USB / COM zařízení</label><input id="sec2-serial" placeholder="/dev/ttyACM1 / COM6"></div>
+      <div><label for="sec2-baud">Rychlost COM</label><input id="sec2-baud" type="number" min="1200" max="2000000" value="115200"></div>
+    </div>
     <div class="toolbar">
       <button class="primary" id="tnc-save" data-cs="Uložit konfiguraci" data-en="Save configuration">Uložit konfiguraci</button>
       <button id="tnc-reload" data-cs="Načíst" data-en="Reload">Načíst</button>
@@ -699,6 +723,20 @@ async function loadTncConfig(){
   $("tnc-server-host").value=t.kiss_server_host;
   $("tnc-server-port").value=t.kiss_server_port;
   $("tnc-retention").value=a.retention_days;$("tnc-max-rows").value=a.max_rows;
+  const q=c.tx_scheduler||{};
+  $("tnc-tx-gap").value=q.min_gap_s??2;
+  $("tnc-tx-minute").value=q.max_per_minute??12;
+  $("tnc-tx-pending").value=q.max_pending??12;
+  for(let i=1;i<=2;i++){
+   const item=(c.secondary_tncs?.devices||[])[i-1]||{};
+   $("sec"+i+"-enabled").checked=!!item.enabled;
+   $("sec"+i+"-id").value=item.id||"rx"+i;
+   $("sec"+i+"-type").value=item.transport||"tcp";
+   $("sec"+i+"-host").value=item.host||"127.0.0.1";
+   $("sec"+i+"-tcp").value=item.port||8001+i;
+   $("sec"+i+"-serial").value=item.serial_port||"";
+   $("sec"+i+"-baud").value=item.baud||115200;
+  }
   await refreshTnc();
  }catch(e){notice("tnc-notice",e.message);}
 }
@@ -722,7 +760,12 @@ async function refreshTnc(){
     "\nSQLite deník: čeká "+(j.pending??0)+"  |  Dávky: "+(j.batches_written??0)+
     "  |  Ztraceno: "+(j.dropped??0)+"  |  Chyby zápisu: "+(j.write_errors??0)+
     (a.last_error?"\nSQLite APRS ERROR: "+a.last_error:"")+
-    (j.last_error?"\nSQLite LOG ERROR: "+j.last_error:"");
+    (j.last_error?"\nSQLite LOG ERROR: "+j.last_error:"")+
+    "\nRF Scheduler: "+(t.tx_scheduler?.pending??0)+" čeká, "+
+         (t.tx_scheduler?.in_last_minute??0)+" / min, min. odstup "+
+         (t.tx_scheduler?.min_gap_s??0)+" s"+
+    "\nDalší KISS: "+(t.secondary_receivers||[]).map(x=>x.id+" ["+
+     (x.connected?"ONLINE":"OFF")+"] RX "+x.rx+" "+(x.last_error||"")).join("; ");
  }catch(e){notice("tnc-notice",e.message);}
 }
 $("tnc-reload").onclick=loadTncConfig;
@@ -737,8 +780,22 @@ $("tnc-save").onclick=async()=>{
     kiss_server_port:Number($("tnc-server-port").value),
     kiss_server_tx:false};
   if(!confirm(tr("Změna primárního TNC nebo sdílení KISS může odpojit přijímač. Aktivní DIGI/iGate se bezpečně vypne. Pokračovat?","Changing primary TNC or KISS sharing may disconnect the receiver and disable DIGI/iGate. Continue?")))return;
+  const others=[];
+  for(let i=1;i<=2;i++)if($("sec"+i+"-enabled").checked){
+   others.push({id:$("sec"+i+"-id").value.trim(),
+     enabled:true,transport:$("sec"+i+"-type").value,
+     host:$("sec"+i+"-host").value.trim(),
+     port:Number($("sec"+i+"-tcp").value),
+     serial_port:$("sec"+i+"-serial").value.trim(),
+     baud:Number($("sec"+i+"-baud").value)});
+  }
+  const tx_scheduler={
+    min_gap_s:Number($("tnc-tx-gap").value),
+    max_per_minute:Number($("tnc-tx-minute").value),
+    max_pending:Number($("tnc-tx-pending").value)};
   const result=await command("save",{config:{tnc:t,serial:{port:$("tnc-serial-port").value.trim()||"auto"},
-    archive:{retention_days:Number($("tnc-retention").value),max_rows:Number($("tnc-max-rows").value)}}});
+    archive:{retention_days:Number($("tnc-retention").value),max_rows:Number($("tnc-max-rows").value)},
+    tx_scheduler,secondary_tncs:{devices:others}}});
   notice("tnc-notice",result);await loadTncConfig();
  }catch(e){notice("tnc-notice","CHYBA: "+e.message);}
 };
