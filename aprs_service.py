@@ -587,6 +587,9 @@ class APRSService:
         self._update_position()
 
     def _disconnect_reader(self):
+        # A dropped USB/TCP link revokes previously granted RF permissions.
+        # The operator must explicitly enable DIGI/network TX again.
+        self.want_digi = False
         self.tnc_tx_permission=False
         if self.tcp_hub:
             self.tcp_hub.allow_tx=False
