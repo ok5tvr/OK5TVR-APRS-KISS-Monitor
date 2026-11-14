@@ -343,6 +343,7 @@ class APRSService:
             self._disable_igate()
             self.messages.usb_closed()
             old_port=self.config.data['serial']['port']
+            old_tnc=dict(self.config.data['tnc'])
             self.config.update(restored)
             self.messages.configure(self.config.data['igate']['call'],
                     self.config.data['messages']['path'],False,
@@ -356,7 +357,18 @@ class APRSService:
             self.digi_last_rf_position = float('-inf')
             self.digi=self._make_digi()
             self.state.update_digi(self.digi.snapshot())
-            if old_port!=self.config.data['serial']['port']:
+            self.tnc_tx_permission=False
+            if self.tcp_hub:
+                self.tcp_hub.allow_tx=False
+            if old_tnc != self.config.data['tnc']:
+                self._start_tnc_hub()
+            self.archive.retention_days=self.config.data['archive']['retention_days']
+            self.archive.max_rows=self.config.data['archive']['max_rows']
+            self.archive.prune()
+            if old_port!=self.config.data['serial']['port'] or (
+                    old_tnc['transport']!=self.config.data['tnc']['transport'] or
+                    old_tnc['tcp_host']!=self.config.data['tnc']['tcp_host'] or
+                    old_tnc['tcp_port']!=self.config.data['tnc']['tcp_port']):
                 self._disconnect_reader()
                 self.next_serial_attempt=0
             self.journal.log('CONFIG','restore',detail='Credentials preserved; RF/IS autostart off')
