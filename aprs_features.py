@@ -319,6 +319,7 @@ class MonitorState:
     def _new_station(call):
         return dict(call=call,count=0,last='',lat=None,lon=None,kind='',summary='',
                     direct=None,position_direct=None,direct_count=0,via_count=0,
+                    receivers=[], 
                     is_object=False,source_call=None,position_format=None,symbol=None)
 
     def add(self, packet):
@@ -331,12 +332,17 @@ class MonitorState:
                                          kind=packet.kind,summary=packet.summary,
                                          direct=packet.heard_direct,
                                          demo=bool(packet.simulated),gate=getattr(packet,'gate',''),
+                                         receiver=getattr(packet,'receiver','primary'),
                                          payload=getattr(packet,'payload','')[:260],
                                          hex_data=getattr(packet,'hex_data','')[:1200]))
             if packet.source == '?' or packet.simulated:
                 return
             entry=self.stations.setdefault(packet.source,self._new_station(packet.source))
             entry['count']+=1;entry['last']=packet.timestamp
+            receiver=getattr(packet,'receiver','primary')
+            if receiver not in entry['receivers']:
+                entry['receivers'].append(receiver)
+                entry['receivers']=entry['receivers'][-3:]
             entry['kind']=packet.kind;entry['summary']=packet.summary[:180]
             if packet.heard_direct is not None:
                 entry['direct']=packet.heard_direct
