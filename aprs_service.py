@@ -23,6 +23,7 @@ from aprs_digi import DigiConfig, DigiRepeater
 from aprs_messages import MessageManager
 from aprs_features import (APRSISClient, MonitorState, encode_ui_packet,
                            encode_kiss_data, igate_tnc2)
+from aprs_is_to_rf import SelectiveISGate, server_filter
 from aprs_serial import SerialReader
 from aprs_tcp import TCPKissReader, TCPKissHub
 from aprs_archive import APRSArchive
@@ -80,6 +81,7 @@ class APRSService:
         self.igate_events = None  # dedicated queue; stale client events cannot overwrite a new session
         self.want_digi = bool(config.data['digi']['autostart'])
         self.gate_cache = {}
+        self.isrf = SelectiveISGate(config.data['is_to_rf'], config.data['igate']['call'])
         m = config.data['messages']
         self.messages = MessageManager(config.path.with_name('messages.sqlite3'),
                                       config.data['igate']['call'], m['path'],
@@ -191,6 +193,9 @@ class APRSService:
             'igate_connected':bool(self.igate_client and self.igate_client.connected.is_set()),
             'igate_last_error':self.last_igate_error,
             'igate_enabled':self.igate_client is not None,
+            'is_to_rf':self.isrf.snapshot(),
+            'aprsis_received_lines':self.igate_client.received_lines if self.igate_client else 0,
+            'aprsis_rx_dropped':self.igate_client.incoming_dropped if self.igate_client else 0,
             'digi':self.digi.snapshot(),
             'counters':dict(self.stats),
             'recent_objects':list(self.object_history),
@@ -281,6 +286,39 @@ class APRSService:
 
     def _execute(self, action, data):
         # HDMI panel toggle does not touch USB, DIGI, iGate, RF, or messages.
+        if action == 'isrf_save':
+            rules = data.get('rules')
+            if not isinstance(rules, dict):
+                raise ValueError('IS->RF: expected rules object')
+            self.config.update({'is_to_rf':rules})
+            self.isrf.configure(self.config.data['is_to_rf'],self.config.data['igate']['call'])
+            # Subscription lives in the APRS-IS login. Reconnect deliberately;
+            # no automatic Internet->RF activation after a rule change.
+            if self.igate_client is not None:
+                self._disable_igate()
+            self.journal.log('ISRF','rules-changed',detail='Filters saved; IS->RF TX off')
+            return 'IS->RF filtry uloženy. Směr IS->RF je vypnutý. Znovu připoj iGate a pak jej výslovně zapni.'
+        if action == 'isrf_on':
+            if data.get('confirm') is not True:
+                raise ValueError('Explicit IS->RF RF transmission confirmation required')
+            if not self.radio_ready or self.reader is None or self.igate_client is None or (
+                    not self.igate_client.connected.is_set()):
+                raise ValueError('First connect the KISS TNC and verified APRS-IS')
+            self.isrf.start()
+            self.reader.isrf_allowed.set()
+            self.journal.log('ISRF','enabled',detail='Runtime-only; transmit limits apply')
+            return 'APRS-IS -> RF ZAPNUTO, pouze povolené stanice/objekty a platné bezpečnostní filtry.'
+        if action == 'isrf_off':
+            self.isrf.stop()
+            if self.reader:
+                self.reader.isrf_allowed.clear()
+            self.journal.log('ISRF','disabled')
+            return 'APRS-IS -> RF vypnuto; žádné další pakety se nebudou řadit k odeslání.'
+        if action == 'isrf_check':
+            line = data.get('line', '')
+            if type(line) is not str or len(line) > 400:
+                raise ValueError('Test APRS-IS: invalid line')
+            return self.isrf.inspect(line)
         if action == 'tnc_server_tx':
             # Enabling requires a real runtime confirmation; never persists
             # across restart or USB disconnect.
@@ -346,6 +384,7 @@ class APRSService:
             old_port=self.config.data['serial']['port']
             old_tnc=dict(self.config.data['tnc'])
             self.config.update(restored)
+            self.isrf.configure(self.config.data['is_to_rf'], self.config.data['igate']['call'])
             self.messages.configure(self.config.data['igate']['call'],
                     self.config.data['messages']['path'],False,
                     self.config.data['messages']['retry_seconds'],
@@ -465,6 +504,7 @@ class APRSService:
             previous_call = self.config.data['igate']['call']
             previous_messages = dict(self.config.data['messages'])
             self.config.update(changes, passcode=passcode)
+            self.isrf.configure(self.config.data['is_to_rf'], self.config.data['igate']['call'])
             if previous_call != self.config.data['igate']['call'] or previous_messages != self.config.data['messages']:
                 # Persisted pending transmissions are invalid when callsign/path changes.
                 self.messages.usb_closed()
@@ -560,7 +600,8 @@ class APRSService:
         i = self.config.data['igate']
         own_events = queue.Queue(maxsize=500)
         client = APRSISClient(i['call'], self.config.secrets['igate_passcode'],
-                            i['host'], i['port'], own_events)
+                            i['host'], i['port'], own_events,
+                            subscription=server_filter(self.config.data['is_to_rf']))
         client.configure_position(self._beacon_line(),
                                   self.config.data['position']['beacon_interval'])
         self.igate_client = client
@@ -570,6 +611,9 @@ class APRSService:
         LOG.info('Spuštěna iGate RF->APRS-IS %s (%s:%s)', i['call'], i['host'], i['port'])
 
     def _disable_igate(self):
+        self.isrf.stop()
+        if self.reader:
+            self.reader.isrf_allowed.clear()
         old = self.igate_client
         self.igate_client = None
         self.igate_events = None
@@ -600,6 +644,9 @@ class APRSService:
         self._update_position()
 
     def _disconnect_reader(self):
+        self.isrf.stop()  # revoke Internet-to-RF gate after any KISS outage
+        if self.reader:
+            self.reader.isrf_allowed.clear()
         # A dropped USB/TCP link revokes previously granted RF permissions.
         # The operator must explicitly enable DIGI/network TX again.
         self.want_digi = False
@@ -678,6 +725,10 @@ class APRSService:
                 if isinstance(value, dict):
                     category=value.get('category','unknown')
                     self.telemetry.record_tx(category)
+                    if category == 'igate_is_to_rf':
+                        self.stats['isrf_usb_written'] += 1
+                        self.journal.log('ISRF','usb-written',
+                            detail='USB KISS write successful; RF transmission unverified')
                     if category == 'telemetry_rf':
                         self.journal.log('TELEM','rf-usb-written',self.config.data['digi']['call'])
                     if category == 'digi_beacon_rf':
@@ -722,6 +773,26 @@ class APRSService:
                     break
                 if event == 'igate_status':
                     self.state.update_status(igate=value)
+                    if str(value).startswith(('Odpojeno', 'Vypnuto')):
+                        self.isrf.stop()
+                        if self.reader:
+                            self.reader.isrf_allowed.clear()
+                elif event == 'igate_received':
+                    # Parse all incoming APRS-IS packets on the service thread,
+                    # never on the socket thread; only explicitly selected
+                    # sources can reach the existing single-slot KISS TX queue.
+                    ready = bool(self.radio_ready and self.reader is not None)
+                    is_online = bool(self.igate_client and
+                                     self.igate_client.connected.is_set())
+                    accepted,reason = self.isrf.process(
+                        value,
+                        send=(lambda frame:self.reader.send(
+                            frame,category='igate_is_to_rf')) if ready else None,
+                        rf_ready=ready, is_ready=is_online)
+                    self.stats['isrf_'+reason] += 1
+                    if accepted:
+                        self.journal.log('ISRF','rf-queued',
+                            detail='APRS-IS selected packet queued for USB KISS')
                 elif event == 'igate_sent':
                     self.journal.log('IGATE','sent',detail=str(value))
                     self.stats['igate_sent']+=1
@@ -746,6 +817,7 @@ class APRSService:
         self.last_frame_at=time.monotonic()
         self.last_rx_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
         self.stats['rx']+=1
+        self.isrf.note_rf(packet)
         loc=self.config.data['position']
         own=(loc['latitude'],loc['longitude']) if loc['latitude'] is not None else None
         if not packet.simulated and packet.source != '?':

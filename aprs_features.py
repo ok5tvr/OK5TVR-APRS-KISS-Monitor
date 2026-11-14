@@ -1,6 +1,6 @@
-"""Radio TX, position parsing, RF->IS gating, local statistics and IS-only beacon.
+"""APRS packet handling, RF->IS gateway, receive-only APRS-IS feed and state.
 
-No APRS-IS->RF forwarding. Radio DIGI is separately enabled by operator.
+IS->RF policy lives in aprs_is_to_rf.py and is disabled until activated.
 """
 from __future__ import annotations
 
@@ -443,8 +443,9 @@ class MonitorState:
 
 
 class APRSISClient(threading.Thread):
-    """Dedicated worker. Explicitly started by operator; RF->IS only."""
-    def __init__(self, call: str, passcode: str, host: str, port: int, events: queue.Queue):
+    """Verified APRS-IS connection; receive/subscribe and RF->IS publishing."""
+    def __init__(self, call: str, passcode: str, host: str, port: int, events: queue.Queue,
+                 subscription: str = ''):
         super().__init__(name="APRS-IS", daemon=True)
         self.call, self.passcode, self.host, self.port, self.events = call, passcode, host, port, events
         self.stop = threading.Event()
@@ -456,6 +457,12 @@ class APRSISClient(threading.Thread):
         self.last_beacon_at = float('-inf')
         self.last_beacon_line = None
         self.connection_epoch = 0
+        if not isinstance(subscription, str) or len(subscription) > 230 or any(c in subscription for c in '\r\n'):
+            raise ValueError('Invalid APRS-IS subscription')
+        self.subscription = subscription
+        self.incoming_dropped = 0
+        self.received_lines = 0
+        self._incoming_buffer = b''
 
     def configure_position(self, line: str | None, every_minutes: int = 30):
         if line and ('\r' in line or '\n' in line):
@@ -469,7 +476,29 @@ class APRSISClient(threading.Thread):
                 self.last_beacon_at = float('-inf')
 
     def emit(self, event, data):
-        self.events.put((-1, event, data))
+        try:
+            self.events.put_nowait((-1, event, data))
+        except queue.Full:
+            # Never let Internet traffic stall the local APRS RX or TNC.
+            self.incoming_dropped += 1
+
+    def _receive_feed(self, data: bytes):
+        """Incrementally parse APRS-IS lines; discard overlong/invalid lines."""
+        self._incoming_buffer += data
+        if len(self._incoming_buffer) > 16384:
+            self._incoming_buffer = b''  # Fail closed if a server sends huge lines.
+            self.incoming_dropped += 1
+            return
+        while b'\n' in self._incoming_buffer:
+            raw, self._incoming_buffer = self._incoming_buffer.split(b'\n', 1)
+            raw = raw.rstrip(b'\r')
+            if not raw or raw.startswith(b'#'):
+                continue
+            if len(raw) > 400:
+                self.incoming_dropped += 1
+                continue
+            self.received_lines += 1
+            self.emit('igate_received', raw.decode('latin-1', errors='replace'))
 
     def enqueue(self, line: str) -> bool:
         if not self.connected.is_set() or self.stop.is_set(): return False
@@ -506,7 +535,8 @@ class APRSISClient(threading.Thread):
                 # Read server banner when available, then send login.
                 try: conn.recv(2048)
                 except socket.timeout: pass
-                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 1.7\r\n"
+                sub = ' filter ' + self.subscription if self.subscription else ''
+                login = f"user {self.call} pass {self.passcode} vers OK5TVR-KISS 1.7{sub}\r\n"
                 conn.sendall(login.encode("ascii"))
                 buffer = b""
                 verified = False
@@ -528,6 +558,9 @@ class APRSISClient(threading.Thread):
                             break
                     if verified: break
                 if not verified: raise ConnectionError("APRS-IS nepotvrdil ověřené přihlášení")
+                self._incoming_buffer = b''
+                if buffer:
+                    self._receive_feed(buffer)
                 self.connected.set()
                 self.connection_epoch += 1
                 self.emit("igate_status", f"Online: {self.call} @ {self.host}:{self.port}")
@@ -559,7 +592,7 @@ class APRSISClient(threading.Thread):
                     try:
                         got = conn.recv(2048)
                         if not got: raise ConnectionError("APRS-IS odpojil spojení")
-                        # Incoming IS packets intentionally NOT forwarded to the radio.
+                        self._receive_feed(got)
                     except socket.timeout:
                         pass
             except Exception as exc:

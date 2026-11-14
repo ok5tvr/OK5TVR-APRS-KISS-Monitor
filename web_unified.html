@@ -94,6 +94,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <button type="button" data-tab="diagnostics" role="tab" aria-selected="false" data-cs="Diagnostika / deník" data-en="Diagnostics / log">Diagnostika / deník</button>
   <button type="button" data-tab="tnc" role="tab" aria-selected="false" data-cs="TNC / Síť / Historie" data-en="TNC / Network / History">TNC / Síť / Historie</button>
   <button type="button" data-tab="weather" role="tab" aria-selected="false" data-cs="APRS Počasí" data-en="APRS Weather">APRS Počasí</button>
+  <button type="button" data-tab="isrf" role="tab" aria-selected="false" data-cs="IS → RF / Filtry" data-en="IS → RF / Filters">IS → RF / Filtry</button>
 </nav>
 <main>
 <section class="view" id="tab-home">
@@ -122,6 +123,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <button class="home-link" data-open="diagnostics"><strong>07 · Diagnostika</strong><span>Provozní deník, chyby USB a APRS-IS, export a zálohy.</span></button>
     <button class="home-link" data-open="tnc"><strong>08 · TNC / Síť / Historie</strong><span>USB nebo TCP KISS, sdílení TNC, reconnect a SQLite archiv poloh a rámců.</span></button>
     <button class="home-link" data-open="weather"><strong>09 · APRS Počasí</strong><span>Přijaté meteorologické stanice, teplota, vítr, tlak a historie měření.</span></button>
+    <button class="home-link" data-open="isrf"><strong>10 · IS → RF Gateway</strong><span>Výběr stanic a objektů z internetu, kontrolní filtry, náhled a řízené vysílání přes KISS TNC.</span></button>
   </div>
 </section>
 <section class="view" id="tab-rx" hidden>
@@ -254,6 +256,60 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <div class="scroll"><table><thead><tr><th>UTC</th><th>Stanice</th><th>°C</th><th>Vítr km/h</th><th>Náraz km/h</th><th>Tlak hPa</th><th>Vlhkost %</th><th>Srážky 1 h mm</th></tr></thead><tbody id="wx-rows"></tbody></table></div>
   </div>
 </section>
+<section class="view" id="tab-isrf" hidden>
+  <div class="panel">
+    <h2 data-cs="APRS-IS → RF · selektivní iGate" data-en="APRS-IS → RF · Selective IGate">APRS-IS → RF · selektivní iGate</h2>
+    <p class="note" data-cs="Internet se NIKDY nepřeposílá automaticky celý na RF. Nejprve vyber konkrétní značky / objekty a ulož filtry. Teprve poté zapni přenos výslovným potvrzením. Po odpojení rádia nebo APRS-IS se přenos vypne."
+      data-en="The entire APRS-IS feed is NEVER forwarded to RF. Select exact callsigns/objects, save filters, and explicitly enable transmission. Radio/APRS-IS disconnect revokes permission.">Internet se NIKDY nepřeposílá automaticky celý na RF. Nejprve vyber konkrétní značky / objekty a ulož filtry. Teprve poté zapni přenos výslovným potvrzením.</p>
+    <div class="two">
+      <div>
+        <label for="isrf-calls" data-cs="Povolené zdrojové značky z APRS-IS (jedna na řádek)" data-en="Allowed APRS-IS source callsigns (one per line)">Povolené zdrojové značky z APRS-IS (jedna na řádek)</label>
+        <textarea id="isrf-calls" rows="6" placeholder="OK1ABC-7&#10;OK5XYZ-9" spellcheck="false" style="width:100%;background:#101f2e;color:#e8f7ff;border-radius:8px;padding:8px"></textarea>
+        <p class="note">Povolené značky jsou přesné (včetně SSID), bez * a prefixových pravidel.</p>
+      </div>
+      <div>
+        <label for="isrf-objects" data-cs="Povolené názvy APRS objektů (jeden na řádek)" data-en="Allowed APRS object names (one per line)">Povolené názvy APRS objektů (jeden na řádek)</label>
+        <textarea id="isrf-objects" rows="6" placeholder="EVENT1&#10;WXSTN" spellcheck="false" style="width:100%;background:#101f2e;color:#e8f7ff;border-radius:8px;padding:8px"></textarea>
+        <p class="note">Objekty se vybírají podle názvu, bez wildcard. Nemusí být od vybrané zdrojové značky.</p>
+      </div>
+    </div>
+    <h3 data-cs="Typy paketů povolené pro RF" data-en="Packet types allowed on RF">Typy paketů povolené pro RF</h3>
+    <div class="toolbar">
+      <label class="check"><input id="isrf-type-message" type="checkbox" checked> APRS zprávy / ACK</label>
+      <label class="check"><input id="isrf-type-position" type="checkbox" checked> Polohy</label>
+      <label class="check"><input id="isrf-type-object" type="checkbox"> Objekty</label>
+      <label class="check"><input id="isrf-type-weather" type="checkbox"> Počasí</label>
+    </div>
+    <p class="note">Zprávy se předají pouze stanici slyšené přímo na RF v nastaveném časovém okně; stanice dostupné přímo přes internet jsou vyloučené.</p>
+    <div class="form-grid">
+      <div><label for="isrf-path">RF cesta</label><select id="isrf-path"><option value="">DIRECT (doporučeno)</option><option value="WIDE1-1">WIDE1-1</option></select></div>
+      <div><label for="isrf-heard">Stanice slyšená na RF (min)</label><input id="isrf-heard" type="number" min="5" max="120" value="30"></div>
+      <div><label for="isrf-minute">Max. TX/min</label><input id="isrf-minute" type="number" min="1" max="6" value="2"></div>
+      <div><label for="isrf-hour">Max. TX/h</label><input id="isrf-hour" type="number" min="1" max="60" value="12"></div>
+      <div><label for="isrf-gap">Min. odstup (s)</label><input id="isrf-gap" type="number" min="10" max="120" value="15"></div>
+      <div><label for="isrf-dup">Opakovaný paket blokovat (s)</label><input id="isrf-dup" type="number" min="60" max="3600" value="120"></div>
+    </div>
+    <div class="toolbar" style="margin-top:12px">
+      <button class="primary" type="button" id="isrf-save" data-cs="Uložit filtry (bez TX)" data-en="Save filters (no TX)">Uložit filtry (bez TX)</button>
+      <button type="button" id="isrf-on" class="warn" data-cs="Zapnout IS → RF" data-en="Enable IS → RF">Zapnout IS → RF</button>
+      <button type="button" id="isrf-off" class="stop" data-cs="Vypnout IS → RF" data-en="Disable IS → RF">Vypnout IS → RF</button>
+      <button type="button" id="isrf-reload" data-cs="Obnovit stav" data-en="Refresh status">Obnovit stav</button>
+    </div>
+    <div id="isrf-message" class="message" role="status" aria-live="polite"></div>
+    <div id="isrf-status" class="details">Není aktivní</div>
+  </div>
+  <div class="panel">
+    <h2 data-cs="Simulace rozhodnutí – bez RF vysílání" data-en="Decision preview – no RF transmission">Simulace rozhodnutí – bez RF vysílání</h2>
+    <label for="isrf-test-line">Vlož testovací APRS-IS rámec TNC2</label>
+    <input id="isrf-test-line" value="OK1ABC-7&gt;APRS,TCPIP*,qAC,T2CZECH:!4944.40N/01322.20E&gt;TEST" style="width:100%">
+    <button type="button" id="isrf-test">Vyhodnotit pouze filtry</button>
+    <div id="isrf-test-result" class="message"></div>
+  </div>
+  <div class="panel">
+    <h2 data-cs="Přijaté APRS-IS pakety a rozhodnutí" data-en="Received APRS-IS packets and decisions">Přijaté APRS-IS pakety a rozhodnutí</h2>
+    <div class="scroll"><table><thead><tr><th>UTC</th><th>Zdroj</th><th>Příjemce/objekt</th><th>Typ</th><th>Rozhodnutí</th></tr></thead><tbody id="isrf-rows"></tbody></table></div>
+  </div>
+</section>
 </main>
 <footer data-cs="Lokální webové ovládání. Administrátorský odkaz umožňuje RF vysílání – nepublikuj jej na internetu. Přístup zvenčí pouze přes důvěryhodnou VPN s HTTPS." data-en="Local web control. The admin link permits RF TX – never publish it to the Internet. Use a trusted VPN with HTTPS for remote access.">Lokální webové ovládání. Administrátorský odkaz umožňuje RF vysílání – nepublikuj jej na internetu. Přístup zvenčí pouze přes důvěryhodnou VPN s HTTPS.</footer>
 <script src="/assets/web_locale.js"></script>
@@ -266,7 +322,7 @@ const tr = (cs,en) => language === "en" ? en : cs;
 let language = window.OK5TVRLocale ? window.OK5TVRLocale.language : "cs";
 let currentTab = "rx", lastState = {}, lastDiagnostics = {}, rxHistory = [];
 let rxSignature = "", selectedFrame = null, configLoaded = false, pollBusy = false;
-const tabIds = ["home","rx","map","messages","objects","igate","telemetry","diagnostics","tnc","weather"];
+const tabIds = ["home","rx","map","messages","objects","igate","telemetry","diagnostics","tnc","weather","isrf"];
 const destinations = {
   map:"/map", messages:"/messages", objects:"/operations",
   igate:"/control", diagnostics:"/operations"
@@ -278,7 +334,26 @@ function setLanguage(value) {
   document.documentElement.lang = language;
   $("language").value = language;
   if (window.OK5TVRLocale) window.OK5TVRLocale.setLanguage(language);
-  document.querySelectorAll("[data-cs][data-en]").forEach(el => { el.textContent = el.dataset[language]; });
+  // IMPORTANT: Some translated labels contain <input> or <select> elements.
+  // Replacing the label's textContent would REMOVE these controls from the DOM.
+  document.querySelectorAll("[data-cs][data-en]").forEach(el => {
+    const translated = el.dataset[language];
+    if (!el.children.length) {
+      el.textContent = translated;
+      return;
+    }
+    // Translate just the label's own text node, preserving child controls,
+    // event listeners and current form values across CS/EN switches.
+    const ownText = Array.from(el.childNodes).find(node =>
+      node.nodeType === Node.TEXT_NODE && node.nodeValue.trim());
+    if (ownText) {
+      const leading = ownText.nodeValue.match(/^\s*/)[0];
+      const trailing = ownText.nodeValue.match(/\s*$/)[0];
+      ownText.nodeValue = leading + translated + trailing;
+    } else {
+      el.insertBefore(document.createTextNode(translated + " "), el.firstChild);
+    }
+  });
   for (const name of Object.keys(destinations)) {
     const frame = document.querySelector("#tab-" + name + " iframe");
     if (frame && frame.contentWindow && frame.contentWindow.OK5TVRLocale) {
@@ -311,6 +386,7 @@ function showTab(name) {
   if (name === "telemetry" && !configLoaded) loadTelemetryConfig();
   if (name === "tnc") {loadTncConfig();loadHistory();}
   if (name === "weather") loadWeather();
+  if (name === "isrf") {loadIsrfRules();refreshIsrf();}
   history.replaceState(null,"","#" + name);
 }
 function trimEmbedded(frame,name) {
@@ -714,12 +790,94 @@ async function loadWeather(){
  }catch(e){$("wx-metrics").textContent="Chyba: "+e.message;}
 }
 $("wx-refresh").onclick=loadWeather;
+function isrfLines(value){
+ return value.split(/[\s,;]+/).map(v=>v.trim().toUpperCase()).filter(Boolean);
+}
+function readIsrfForm(){
+ const types=["message","position","object","weather"]
+   .filter(v=>$("isrf-type-"+v).checked);
+ return {calls:isrfLines($("isrf-calls").value),objects:isrfLines($("isrf-objects").value),
+   types,rf_path:$("isrf-path").value,
+   heard_minutes:Number($("isrf-heard").value),
+   max_per_minute:Number($("isrf-minute").value),
+   max_per_hour:Number($("isrf-hour").value),
+   min_gap_seconds:Number($("isrf-gap").value),
+   duplicate_seconds:Number($("isrf-dup").value)};
+}
+async function loadIsrfRules(){
+ try{
+  const cfg=(await get("/api/config")).is_to_rf;
+  $("isrf-calls").value=(cfg.calls||[]).join("\n");
+  $("isrf-objects").value=(cfg.objects||[]).join("\n");
+  for(const type of ["message","position","object","weather"])
+    $("isrf-type-"+type).checked=cfg.types.includes(type);
+  $("isrf-path").value=cfg.rf_path;
+  $("isrf-heard").value=cfg.heard_minutes;
+  $("isrf-minute").value=cfg.max_per_minute;
+  $("isrf-hour").value=cfg.max_per_hour;
+  $("isrf-gap").value=cfg.min_gap_seconds;
+  $("isrf-dup").value=cfg.duplicate_seconds;
+ }catch(e){notice("isrf-message","ERROR: "+e.message);}
+}
+async function refreshIsrf(){
+ try{
+  const d=await get("/api/diagnostics"),g=d.is_to_rf||{};
+  const counters=g.counters||{};
+  $("isrf-status").textContent=
+   "IS → RF: "+(g.active?"ZAPNUTO – RF TX povolen":"VYPNUTO – pouze náhled")+
+   "\nAPRS-IS: "+(d.igate_connected?"online":"offline")+
+   " | USB/TCP TNC: "+(d.radio_connected?"online":"offline")+
+   " | IS příjem: "+(d.aprsis_received_lines||0)+
+   " | Zahozeno na IS socketu: "+(d.aprsis_rx_dropped||0)+
+   "\nServer filter: "+(g.filter||"žádný; jen výchozí zprávy")+
+   "\nTX v této minutě: "+(g.sent_this_minute||0)+"/"+(g.limits?.per_minute||0)+
+   " | za hodinu: "+(g.sent_this_hour||0)+"/"+(g.limits?.per_hour||0)+
+   "\nSlyšeno DIRECT na RF: "+(g.rf_heard_direct_recent||[]).slice(0,20).join(", ")+
+   "\nRozhodnutí: "+Object.entries(counters).map(([k,v])=>k+"="+v).join(" · ");
+  const root=$("isrf-rows");root.replaceChildren();
+  for(const p of (g.recent||[]).slice(0,45)){
+   const row=document.createElement("tr");
+   for(const value of [p.at,p.source,p.target,p.type,p.reason]){
+    const td=document.createElement("td");td.textContent=String(value??"");row.appendChild(td);
+   }
+   root.appendChild(row);
+  }
+  $("isrf-on").disabled=!!g.active;
+  $("isrf-off").disabled=!g.active;
+ }catch(e){notice("isrf-message","ERROR: "+e.message);}
+}
+$("isrf-save").onclick=async()=>{
+ try{
+  if(!confirm(tr("Uložit IS→RF filtry? Aktivní iGate bude odpojena a je potřeba ji znovu připojit. IS→RF zůstane vypnuto.",
+  "Save IS→RF rules? APRS-IS connection must restart. IS→RF stays disabled.")))return;
+  const text=await command("isrf_save",{rules:readIsrfForm()});
+  notice("isrf-message",String(text));
+  await loadIsrfRules();await refreshIsrf();
+ }catch(e){notice("isrf-message","ERROR: "+e.message);}
+};
+$("isrf-on").onclick=async()=>{
+ if(!confirm(tr("POZOR: zapnout automatické RF vysílání vybraných paketů z veřejné APRS-IS? Omezení platí, ale jde o skutečný RF TX.",
+ "WARNING: Enable automatic RF transmission of selected public APRS-IS packets? This causes real RF TX.")))return;
+ await act("isrf_on",{confirm:true},"isrf-message");await refreshIsrf();
+};
+$("isrf-off").onclick=async()=>{
+ await act("isrf_off",{},"isrf-message");await refreshIsrf();
+};
+$("isrf-reload").onclick=async()=>{await loadIsrfRules();await refreshIsrf();};
+$("isrf-test").onclick=async()=>{
+ try{
+  const result=await command("isrf_check",{line:$("isrf-test-line").value});
+  notice("isrf-test-result",(result.match?"FILTR POVOLUJE":"FILTR ZAMÍTÁ")+
+      " | "+result.reason+" | "+(result.source||"")+" → "+(result.target||""));
+ }catch(e){notice("isrf-test-result","ERROR: "+e.message);}
+};
 async function refresh() {
   if(pollBusy)return;pollBusy=true;
   try{
     const [s,d]=await Promise.all([get("/api/state"),get("/api/diagnostics")]);
     lastState=s;lastDiagnostics=d;
     updateHealth(s,d);renderRx(s.history);renderTelemetry(d.telemetry||{});
+    if(currentTab==='isrf')refreshIsrf();
     if(currentTab in destinations){
       const f=$("tab-"+currentTab).querySelector("iframe");
       if(f)resizeFrame(f);

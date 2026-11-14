@@ -6,6 +6,36 @@ Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplika
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
 
+## v2.2 – Selektivní APRS-IS → RF iGate / pokročilé filtry (vývojová větev)
+
+Nový modul vychází z principů **Dire Wolf**, **YAAC** a [APRS-IS IGate Details](https://www.aprs-is.net/IGateDetails.aspx). Program stále používá výhradně existující **USB/COM nebo TCP KISS TNC**, nikoli softwarový DSP modem. Současná podpora RF → APRS-IS zůstává zachovaná.
+
+### Nová záložka webu: IS → RF / Filtry
+
+- **Povolené zdrojové značky APRS-IS:** až 24 přesných callsign/SSID, jedna značka na řádek. Nikdy nebereme `K*` ani wildcard.
+- **Povolené APRS objekty:** až 16 přesných názvů, s vlastní povolenou kategorií `object`.
+- **Druhy paketů:** `message`, `position`, `object`, `weather`. Ve výchozím stavu jsou vybrány zprávy a polohy, ale seznam zdrojových značek je prázdný.
+- **Odeslání zprávy na RF:** jen pro platného RF adresáta slyšeného **přímo** na lokálním KISS TNC v posledních 30 minutách; pokud je adresát v poslední době dostupný přímo na APRS-IS, paket se zamítne.
+- **RF wrapper:** správný třetí-stranou zapouzdřený AX.25 UI rámec `OURCALL>APRS[,WIDE1-1]:}FROM>DEST,TCPIP,OURCALL*:INFO`. Žádné APRS-IS q konstrukce se do RF cesty nepřepisují; původní path se odstraňuje.
+- **Zákazy:** zdroje již slyšené na RF, opakované pakety, `NOGATE`, `RFONLY`, `TCPXX`, vnořené third-party pakety, příliš dlouhé/nevalidní rámce a pakety s vlastní značkou v cestě.
+- **Ochrana kanálu:** volba `DIRECT` (doporučeno) / `WIDE1-1`, konfigurovatelné limity 1–6 TX/min a 1–60 TX/h, nejméně 10 s mezi TX, potlačení duplicit nejméně 60 s.
+- **Serverový APRS-IS filter:** automaticky z předem schválených značek a objektů, např. `filter b/OK1ABC-7/OK2XYZ-9 o/EVENT1`; **serverový filtr není RF oprávnění** — každému paketu následně musí vyhovět místní filtry.
+- **Náhled bez RF TX:** vlastní příklad TNC2 lze vyhodnotit bez vysílání; seznam posledních 60 rozhodnutí vysvětlí stav `preview_only`, `sender_not_selected`, `recipient_not_heard_direct`, `duplicate`, `rate_limit` apod.
+- **Žádné automatické zapnutí:** IS → RF se po startu služby / restartu spojení / USB odpojení **vypne**. Vysílat začne až po samostatném výslovném kliknutí **Zapnout IS → RF**. Při zastavení se dodatečně zamítnou i ještě čekající IS → RF pakety ve frontě TNC, pokud fyzický zápis již nezačal.
+
+### Aktivace krok za krokem
+
+1. Otevři původní web `http://IP_ADRESA:8765/` a přihlas se.
+2. Zkontroluj příjem přes KISS TNC, bez potřeby zapínat DIGI.
+3. V **IS → RF / Filtry** zadej konkrétní zdroje (například `OK1ABC-7`) a případně názvy objektů. Pro první test vyber `DIRECT`, **2 TX/min**, **12 TX/h**, **15 s odstup**.
+4. Klikni **Uložit filtry (bez TX)**. Aktualizace serverového `filter` vyžaduje znovu připojit APRS-IS iGate. V kartě **Nastavení / iGate / DIGI** aktivuj ověřenou APRS-IS iGate.
+5. Nejprve na kartě IS → RF použij **Vyhodnotit pouze filtry** a sleduj seznam kandidátů. Skutečný RF TX začne **až** po kliknutí **Zapnout IS → RF** a potvrzení. Přehled `queued_usb_not_rf_proof` znamená pouze zařazení do USB KISS fronty, nikoli potvrzené odvysílání.
+6. Po testu stiskni **Vypnout IS → RF**. Konfigurace výběru stanic zůstane uložená; samotné oprávnění vysílat se neukládá.
+
+APRS-IS posílá pakety jen z odběru a ze svých výchozích mechanismů pro zprávy: **ne každý existující paket se musí zobrazit**. Konkrétní registrace a platnost APRS-IS hesla jsou nezbytné pro běžný provoz. Doporučujeme zvlášť ověřit smyčky, dostupnost RF adresáta a příliš dlouhé pakety. Nepřepojuj celou veřejnou APRS-IS na místní 1200baud RF kanál.
+
+**Bezpečnostní upozornění:** automatický IS → RF přenos používej pouze tam, kde je to povoleno podle místních radioamatérských podmínek. Provoz na sdíleném APRS kanálu má přednost před maximálními počty paketů. Nastavení vždy kontroluj po změně TNC nebo antény. Pokud procesor iGate ztratí TNC nebo APRS-IS, IS → RF zůstane vypnutá až do dalšího výslovného zapnutí.
+
 ## Šetrné SQLite zápisy pro SD kartu (v2.1 optimalizace)
 
 Příjem APRS a provozní deník již **neprovádějí SQLite COMMIT po každém paketu**. Obě používané databáze (`aprs_history.sqlite3`, `operations.sqlite3`) mají samostatnou omezenou RAM frontu a zapisovací vlákno:
