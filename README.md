@@ -6,6 +6,37 @@ Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplika
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
 
+## v2.3 – APRS TNC Command Center: šest rozšíření (vývojová větev)
+
+Tato větev zahrnuje v2.2 (selektivní APRS-IS → RF) a přidává **šest nových oblastí**. Stále žádný DSP/AFSK modem; pouze externí sériová/USB nebo TCP KISS TNC. Kód je určen k automatickému i praktickému ověření na Windows a Raspberry Pi 2.
+
+1. **Centrální RF TX Scheduler:** všechny požadavky `DIGI`, zprávy/ACK, manuální status/objekty, IS → RF a telemetrie sdílejí jednu prioritní frontu **primárního** KISS TNC (modul `aprs_rf_scheduler.py`). Mezera mezi zápisy do KISS (výchozí 2 s), společný limit 12 TX/min a max. 12 rámců ve frontě. Priorita ACK > zprávy > manuální TX > DIGI > IS → RF > telemetrie. Čekající rámce starší 90 s expirovat; režimy RF TX se tím nikdy samy neaktivují. Přenos do USB KISS **není důkaz VF odvysílání**.
+2. **Heard Map / RF doslech:** samostatná záložka s přehledem DIRECT / VIA po jednotlivých TNC, vzdáleností od QTH, poslední cestou a počtem paketů; volba 60 min / 24 h / 7 d / 30 d, export CSV, APRS mapový iframe s předvoleným filtrem DIRECT. Databáze rozlišuje `receiver`; stará SQLite schémata se automaticky migrují. Vzdálenosti vycházejí z GPS udávané stanicemi, nejde o ověřenou TX mapu pokrytí.
+3. **APRS Messaging 2.0:** seznam konverzací, nepřečtené zprávy a jejich označení přečtení, samostatné ukládání APRS `BLN` bulletinů, ignorování vybraných odesílatelů, zachované stávající RF zprávy a jejich ACK/REJ. Migrace `messages.sqlite3` doplňuje sloupec `read` a tabulku `bulletins`. Blokované zprávy **nevysílají automatická potvrzení**.
+4. **Více KISS TNC:** vedle primárního RX/TX až **dvě nezávislá RX-only** zařízení přes TCP KISS nebo přes explicitní USB/COM port. Každé má vlastní připojení/reconnect/počítadla, jeho pakety se přiřazují ke správnému zdroji ve SQLite a Heard Map. **Bez DIGI, iGate a RF TX na sekundárních TNC** – to je bezpečnostní hranice této verze. Žádné automatické propojení LoRa ↔ VHF ani duplicitní otevření jednoho primárního portu.
+5. **Upozornění a MQTT:** detekce odpojeného primárního TNC, nedostupné APRS-IS, dlouhé prodlevy bez RF, příjmu vybraných volacích značek a teplotního/tlakového limitu z APRS WX; omezená historie RAM, potlačení opakovaných upozornění, webová stránka a volitelné desktopové notifikace. Volitelný **MQTT QoS0** publish do LAN brokeru přes `paho-mqtt` (musí být nainstalován zvlášť); výchozí vypnuto, bez autentizace/TLS, používat jen důvěryhodnou lokální síť. Upozornění nikdy nevysílají APRS rámce.
+6. **Pokročilé mapy a objekty:** lokální import GPX/KML/GeoJSON (do 2 MB a 5000 GPS bodů) jako nepersistentní grafická vrstva APRS mapy; tlačítko Smazat import. Importované mapové podklady zůstávají v prohlížeči, nikoli v SQLite/RF. Formulář APRS objektů má předvolby převaděč/akce/počasí a volitelnou frekvenci MHz + CTCSS v textu objektu. Každé odeslání objektu stále vyžaduje samostatné potvrzení.
+
+### Aktualizace Raspberry Pi (vývojový build)
+
+Zálohovat **po zastavení služby** celé `~/.config/ok5tvr-aprs/`; nové SQLite migrace nemusí být kompatibilní při návratu ke starému zdrojovému kódu. Nový instalační skript z této větve obsahuje `aprs_rf_scheduler.py`, `aprs_secondary_tnc.py`, `aprs_alerts.py` a ostatní moduly. Instalátor **nevytváří nové rádio TX oprávnění**:
+
+```bash
+sudo systemctl stop ok5tvr-aprs
+cp -a ~/.config/ok5tvr-aprs ~/ok5tvr-aprs-backup-v23-$(date +%Y%m%d-%H%M%S)
+cd ~
+git clone --depth 1 -b feature/tnc-command-center-v23 https://github.com/ok5tvr/OK5TVR-APRS-KISS-Monitor.git OK5TVR-APRS-v23
+cd OK5TVR-APRS-v23
+sh install_raspberry.sh --lan
+sudo systemctl status ok5tvr-aprs --no-pager
+```
+
+Při současném klonování již existující složky použij místo `git clone` `git -C ~/OK5TVR-APRS-v23 pull --ff-only`. Web: `http://IP_RASPBERRY:8765/`. Pro RF TX, DIGI a IS → RF jsou stále nutné původní individuální potvrzovací kroky.
+
+### Technické omezení a nasazení
+
+Nová funkčnost nepřidává DSP, interní APRS modem ani práci přímo s RF mimo TNC. Sekundární rozhraní jsou vědomě RX-only. MQTT bez TLS/hesla neprovozuj na internetu. Pokud je na Raspberry Pi OS Lite nainstalován pouze systém bez X serveru, volitelný HDMI panel stále vyžaduje grafickou relaci. GUI Windows má zatím společné webové nové funkce, nikoli nové nativní karty ve starém Tkinter monitoru.
+
 ## v2.2 – Selektivní APRS-IS → RF iGate / pokročilé filtry (vývojová větev)
 
 Nový modul vychází z principů **Dire Wolf**, **YAAC** a [APRS-IS IGate Details](https://www.aprs-is.net/IGateDetails.aspx). Program stále používá výhradně existující **USB/COM nebo TCP KISS TNC**, nikoli softwarový DSP modem. Současná podpora RF → APRS-IS zůstává zachovaná.
