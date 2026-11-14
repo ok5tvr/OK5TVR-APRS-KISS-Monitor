@@ -234,7 +234,7 @@ $('add_digi_alias').onclick=()=>{
 $('save').onclick=async()=>{const target=$('default_target').value.trim().toUpperCase(),path=$('default_path').value.trim(),auto=$('autoack').checked;
  if(auto&&!confirm(tr('Povolit automatické RF vysílání ACK při každé příchozí zprávě s ID? Bude pokračovat i po restartu.')))return;
  try{const aliases=$('aliases').value.split(',').map(v=>v.trim().toUpperCase()).filter(Boolean);
-  toast(await request('save',{config:{messages:{target,path,receive_aliases:aliases,auto_ack:auto,retry_seconds:Number($('retry').value),max_attempts:Number($('attempts').value)}},confirm_auto_ack:auto}));
+  toast(await request('messages_save',{messages:{target,path,receive_aliases:aliases,auto_ack:auto,retry_seconds:Number($('retry').value),max_attempts:Number($('attempts').value)},confirm_auto_ack:auto}));
   configured=false;await refresh();}catch(e){toast(e.message,true);}};
 $('tabin').onclick=()=>{pane='inbox';render();};$('tabout').onclick=()=>{pane='outbox';render();};$('refresh').onclick=refresh;
 window.addEventListener('ok5tvr:language',()=>{if(last)render();$('body').oninput();});
