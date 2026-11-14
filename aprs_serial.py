@@ -19,10 +19,12 @@ class SerialReader(threading.Thread):
         self.stop = stop
         self.session = session
         self.outgoing = queue.Queue(maxsize=1)  # Never build a TX queue in the background.
-        self.digi_allowed = threading.Event()  # OFF until operator starts DIGI
+        self.digi_allowed = threading.Event()
+        self.isrf_allowed = threading.Event()  # OFF unless explicitly enabled by admin  # OFF until operator starts DIGI
 
     def send(self, encoded_kiss: bytes, category: str = "manual") -> bool:
-        if self.stop.is_set():
+        if self.stop.is_set() or (
+                category == 'igate_is_to_rf' and not self.isrf_allowed.is_set()):
             return False
         try:
             self.outgoing.put_nowait((encoded_kiss, category))
@@ -55,6 +57,9 @@ class SerialReader(threading.Thread):
                         payload, category = outgoing
                         if category in ('digi', 'telemetry_rf', 'digi_beacon_rf') and not self.digi_allowed.is_set():
                             self.emit('tx_cancelled', 'DIGI vypnuté: čekající RF DIGI/telemetrie/maják neodeslán')
+                            continue
+                        if category == 'igate_is_to_rf' and not self.isrf_allowed.is_set():
+                            self.emit('tx_cancelled', 'IS->RF disabled: queued packet cancelled')
                             continue
                         try:
                             written = conn.write(payload)
