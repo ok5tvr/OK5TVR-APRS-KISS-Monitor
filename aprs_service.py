@@ -305,10 +305,13 @@ class APRSService:
                     not self.igate_client.connected.is_set()):
                 raise ValueError('First connect the KISS TNC and verified APRS-IS')
             self.isrf.start()
+            self.reader.isrf_allowed.set()
             self.journal.log('ISRF','enabled',detail='Runtime-only; transmit limits apply')
             return 'APRS-IS -> RF ZAPNUTO, pouze povolené stanice/objekty a platné bezpečnostní filtry.'
         if action == 'isrf_off':
             self.isrf.stop()
+            if self.reader:
+                self.reader.isrf_allowed.clear()
             self.journal.log('ISRF','disabled')
             return 'APRS-IS -> RF vypnuto; žádné další pakety se nebudou řadit k odeslání.'
         if action == 'isrf_check':
@@ -609,6 +612,8 @@ class APRSService:
 
     def _disable_igate(self):
         self.isrf.stop()
+        if self.reader:
+            self.reader.isrf_allowed.clear()
         old = self.igate_client
         self.igate_client = None
         self.igate_events = None
@@ -640,6 +645,8 @@ class APRSService:
 
     def _disconnect_reader(self):
         self.isrf.stop()  # revoke Internet-to-RF gate after any KISS outage
+        if self.reader:
+            self.reader.isrf_allowed.clear()
         # A dropped USB/TCP link revokes previously granted RF permissions.
         # The operator must explicitly enable DIGI/network TX again.
         self.want_digi = False
@@ -768,6 +775,8 @@ class APRSService:
                     self.state.update_status(igate=value)
                     if str(value).startswith(('Odpojeno', 'Vypnuto')):
                         self.isrf.stop()
+                        if self.reader:
+                            self.reader.isrf_allowed.clear()
                 elif event == 'igate_received':
                     # Parse all incoming APRS-IS packets on the service thread,
                     # never on the socket thread; only explicitly selected
