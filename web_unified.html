@@ -87,11 +87,14 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <button type="button" data-tab="home" role="tab" aria-selected="true" data-cs="Přehled" data-en="Overview">Přehled</button>
   <button type="button" data-tab="rx" role="tab" aria-selected="true" data-cs="Příjem / TX" data-en="Receive / TX">Příjem / TX</button>
   <button type="button" data-tab="map" role="tab" aria-selected="false" data-cs="Mapa" data-en="Map">Mapa</button>
+  <button type="button" data-tab="heard" role="tab" aria-selected="false" data-cs="Mapa doslechu" data-en="RF Heard Map">Mapa doslechu</button>
   <button type="button" data-tab="messages" role="tab" aria-selected="false" data-cs="Zprávy" data-en="Messages">Zprávy</button>
+  <button type="button" data-tab="chat2" role="tab" aria-selected="false" data-cs="Konverzace / bulletiny" data-en="Conversations / Bulletins">Konverzace / bulletiny</button>
   <button type="button" data-tab="objects" role="tab" aria-selected="false" data-cs="Objekty" data-en="Objects">Objekty</button>
   <button type="button" data-tab="igate" role="tab" aria-selected="false" data-cs="Nastavení / iGate / DIGI" data-en="Settings / iGate / DIGI">Nastavení / iGate / DIGI</button>
   <button type="button" data-tab="telemetry" role="tab" aria-selected="false" data-cs="Telemetrie" data-en="Telemetry">Telemetrie</button>
   <button type="button" data-tab="diagnostics" role="tab" aria-selected="false" data-cs="Diagnostika / deník" data-en="Diagnostics / log">Diagnostika / deník</button>
+  <button type="button" data-tab="alerts" role="tab" aria-selected="false" data-cs="Upozornění" data-en="Alerts">Upozornění</button>
   <button type="button" data-tab="tnc" role="tab" aria-selected="false" data-cs="TNC / Síť / Historie" data-en="TNC / Network / History">TNC / Síť / Historie</button>
   <button type="button" data-tab="weather" role="tab" aria-selected="false" data-cs="APRS Počasí" data-en="APRS Weather">APRS Počasí</button>
   <button type="button" data-tab="isrf" role="tab" aria-selected="false" data-cs="IS → RF / Filtry" data-en="IS → RF / Filters">IS → RF / Filtry</button>
@@ -115,7 +118,10 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   </div>
   <div class="home-links">
     <button class="home-link" data-open="rx"><strong>01 · Příjem / TX</strong><span>USB KISS, poslední rámce, dekódování AX.25 a volba místního HDMI panelu.</span></button>
-    <button class="home-link" data-open="map"><strong>02 · APRS mapa</strong><span>Online a offline mapy, APRS symboly, polohy a přímý příjem.</span></button>
+    <button class="home-link" data-open="map"><strong>02 · APRS mapa</strong><span>Online a offline mapy, APRS symboly, polohy, GPX / KML / GeoJSON.</span></button>
+    <button class="home-link" data-open="heard"><strong>11 · Mapa RF doslechu</strong><span>Doslech po přijímačích, přímý a opakovaný provoz, DX a historie.</span></button>
+    <button class="home-link" data-open="chat2"><strong>12 · Konverzace a bulletiny</strong><span>Nepřečtené zprávy, historie konverzací, blokované stanice a APRS bulletiny.</span></button>
+    <button class="home-link" data-open="alerts"><strong>13 · Automatická upozornění</strong><span>Výpadky TNC/iGate, sledované stanice, počasí a volitelné MQTT.</span></button>
     <button class="home-link" data-open="igate"><strong>03 · Nastavení</strong><span>iGate, DIGI, USB, GPS, symboly, majáky a připojení k APRS-IS.</span></button>
     <button class="home-link" data-open="messages"><strong>04 · Zprávy</strong><span>Inbox, Outbox, potvrzení ACK/REJ a odeslání RF zpráv.</span></button>
     <button class="home-link" data-open="objects"><strong>05 · APRS objekty</strong><span>Správa objektů a ruční vysílání polohových rámců.</span></button>
@@ -171,7 +177,39 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <div class="panel"><h2 data-cs="Detail rámce · dekódování / HEX" data-en="Frame details · decode / HEX">Detail rámce · dekódování / HEX</h2><div id="rx-details" class="details" data-cs="Vyber přijatý rámec v tabulce." data-en="Select a received frame.">Vyber přijatý rámec v tabulce.</div></div>
 </section>
 <section class="view" id="tab-map" hidden></section>
+<section class="view" id="tab-heard" hidden>
+  <div class="panel">
+    <h2>Mapa doslechu · DIRECT / VIA / přijímače</h2>
+    <div class="toolbar">
+      <label>Interval <select id="heard-period"><option value="60">60 minut</option><option value="1440" selected>24 hodin</option>
+         <option value="10080">7 dní</option><option value="43200">30 dní</option></select></label>
+      <label>Přijímač <select id="heard-device"><option value="">Všechny TNC</option><option value="primary">Primární TNC</option></select></label>
+      <button id="heard-refresh">Obnovit doslech</button>
+      <button id="heard-csv">Export CSV</button>
+    </div>
+    <p class="note">DIRECT označuje paket přijatý bez opakování; GPS je poloha odesílatele, nikoliv mapa zaručeného RF pokrytí.</p>
+    <div id="heard-summary" class="muted"></div>
+    <div class="scroll"><table><thead><tr><th>Stanice</th><th>Přijímač</th><th>DIRECT</th><th>VIA</th><th>km</th><th>Poslední RF příjem</th><th>Cesta</th></tr></thead><tbody id="heard-rows"></tbody></table></div>
+  </div>
+</section>
 <section class="view" id="tab-messages" hidden></section>
+<section class="view" id="tab-chat2" hidden>
+  <div class="panel">
+    <h2>APRS Messaging 2.0</h2>
+    <p class="note">Přijaté RF zprávy mají stav přečtení; bulletiny se ukládají odděleně. Odesílání a ACK/REJ najdeš ve stávající záložce Zprávy.</p>
+    <div class="toolbar"><button id="chat2-refresh">Načíst zprávy</button>
+      <span id="chat2-unread" class="muted"></span></div>
+    <h3>Konverzace</h3>
+    <div class="scroll"><table><thead><tr><th>Stanice</th><th>RX</th><th>TX</th><th>Nepřečtené</th><th>Poslední</th></tr></thead><tbody id="chat2-conversations"></tbody></table></div>
+    <h3>Inbox – nepřečtené a poslední zprávy</h3>
+    <div class="scroll"><table><thead><tr><th>UTC</th><th>Od</th><th>Komu</th><th>Text</th><th>Stav</th></tr></thead><tbody id="chat2-inbox"></tbody></table></div>
+    <h3>APRS bulletiny (BLN)</h3>
+    <div class="scroll"><table><thead><tr><th>UTC</th><th>Zdroj</th><th>Bulletin</th><th>Text</th><th>Stav</th></tr></thead><tbody id="chat2-bulletins"></tbody></table></div>
+    <h3>Blokovaní odesílatelé</h3>
+    <textarea id="chat2-blocked" rows="3" placeholder="OK1ABC-7&#10;OK2XYZ-9" style="width:100%;background:#101f2e;color:#eff8fd;border-radius:8px"></textarea>
+    <div class="toolbar"><button class="primary" id="chat2-block-save">Uložit seznam blokovaných stanic</button><span id="chat2-notice"></span></div>
+  </div>
+</section>
 <section class="view" id="tab-objects" hidden></section>
 <section class="view" id="tab-igate" hidden></section>
 <section class="view" id="tab-telemetry" hidden>
@@ -195,6 +233,32 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <div class="panel"><h2 data-cs="Statistiky za posledních 15 minut" data-en="Statistics for the last 15 minutes">Statistiky za posledních 15 minut</h2><div class="metric-list" id="telem-metrics"></div><div class="details" id="telem-extras">—</div></div>
 </section>
 <section class="view" id="tab-diagnostics" hidden></section>
+<section class="view" id="tab-alerts" hidden>
+  <div class="panel">
+    <h2>Upozornění a monitoring</h2>
+    <p class="note">Upozornění zobrazujeme v prohlížeči a volitelně posíláme do lokálního MQTT brokeru. Nevyvolávají žádné APRS/RF vysílání.</p>
+    <div class="form-grid">
+      <label class="check"><input id="alert-enabled" type="checkbox" checked> Zapnout pravidla</label>
+      <div><label for="alert-offline">TNC offline (s)</label><input type="number" id="alert-offline" min="30" max="3600"></div>
+      <div><label for="alert-no-rf">Bez RF příjmu (min)</label><input type="number" id="alert-no-rf" min="5" max="240"></div>
+      <div><label for="alert-temp">Teplota nad °C (prázdné = vypnuto)</label><input type="number" id="alert-temp" min="-50" max="70" step="0.1"></div>
+      <div><label for="alert-pressure">Tlak pod hPa</label><input type="number" id="alert-pressure" min="800" max="1100" step="0.1"></div>
+      <div><label for="alert-watch">Sledované APRS stanice (oddělit čárkou)</label><input id="alert-watch" placeholder="OK1ABC-7, OK2XYZ-9"></div>
+      <label class="check"><input id="alert-mqtt" type="checkbox"> MQTT (lokální broker, bez TLS)</label>
+      <div><label for="alert-mqtt-host">MQTT host</label><input id="alert-mqtt-host"></div>
+      <div><label for="alert-mqtt-port">MQTT port</label><input type="number" id="alert-mqtt-port" min="1" max="65535"></div>
+      <div><label for="alert-mqtt-topic">MQTT topic</label><input id="alert-mqtt-topic"></div>
+    </div>
+    <div class="toolbar">
+      <button class="primary" id="alert-save">Uložit pravidla</button>
+      <button id="alert-refresh">Obnovit upozornění</button>
+      <button id="alert-browser">Zapnout upozornění v prohlížeči</button>
+    </div>
+    <div id="alert-notice" class="message"></div>
+    <div id="alert-status" class="muted"></div>
+    <div class="scroll"><table><thead><tr><th>UTC</th><th>Typ</th><th>Stanice</th><th>Upozornění</th></tr></thead><tbody id="alert-rows"></tbody></table></div>
+  </div>
+</section>
 <section class="view" id="tab-tnc" hidden>
   <div class="panel">
     <h2 data-cs="TNC Manager – USB / TCP KISS" data-en="TNC Manager – USB / TCP KISS">TNC Manager – USB / TCP KISS</h2>
@@ -322,9 +386,9 @@ const tr = (cs,en) => language === "en" ? en : cs;
 let language = window.OK5TVRLocale ? window.OK5TVRLocale.language : "cs";
 let currentTab = "rx", lastState = {}, lastDiagnostics = {}, rxHistory = [];
 let rxSignature = "", selectedFrame = null, configLoaded = false, pollBusy = false;
-const tabIds = ["home","rx","map","messages","objects","igate","telemetry","diagnostics","tnc","weather","isrf"];
+const tabIds = ["home","rx","map","heard","messages","chat2","objects","igate","telemetry","diagnostics","alerts","tnc","weather","isrf"];
 const destinations = {
-  map:"/map", messages:"/messages", objects:"/operations",
+  map:"/map", heard:"/map?heard=1", messages:"/messages", objects:"/operations",
   igate:"/control", diagnostics:"/operations"
 };
 const auth = path => key ? path + (path.includes("?") ? "&" : "?") + "admin=" + encodeURIComponent(key) : path;
@@ -368,6 +432,9 @@ function showTab(name) {
   if (name === "tnc") {loadTncConfig();loadHistory();}
   if (name === "weather") loadWeather();
   if (name === "isrf") {loadIsrfRules();refreshIsrf();}
+  if (name === "heard") {loadHeardReceivers();loadHeard();}
+  if (name === "chat2") loadChat2();
+  if (name === "alerts") {loadAlertConfig();refreshAlerts();}
   history.replaceState(null,"","#" + name);
 }
 function trimEmbedded(frame,name) {
