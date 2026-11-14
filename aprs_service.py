@@ -180,6 +180,7 @@ class APRSService:
             'tnc_transport':self.config.data['tnc']['transport'],
             'tnc':self.tnc_snapshot(),
             'archive':self.archive.summary(),
+            'journal_storage':self.journal.stats(),
             'latest_weather':list(self.latest_weather.values())[-20:],
             'usb_connections':self.serial_connections,
             'last_rf_frame_utc':self.last_rx_utc,
@@ -968,9 +969,15 @@ class APRSService:
                 self.tcp_hub.close()
                 self.tcp_hub=None
             self.tnc_tx_permission=False
-            self.archive.close()
-            self.messages.close()
-            self.journal.close()
+            # Always close all resources even if a full/missing SD card prevents
+            # one of the two SQLite queues from draining at shutdown.
+            for name, resource in (('APRS archive', self.archive),
+                                   ('APRS messages', self.messages),
+                                   ('APRS operations journal', self.journal)):
+                try:
+                    resource.close()
+                except Exception:
+                    LOG.exception('%s: shutdown/flush failed; check SQLite storage', name)
             LOG.info('Služba OK5TVR zastavena.')
 
 
