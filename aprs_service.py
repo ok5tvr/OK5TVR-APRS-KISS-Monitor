@@ -756,7 +756,9 @@ class APRSService:
             self.archive.add(packet, wx)
         except (OSError, ValueError) as exc:
             self.stats['archive_errors']+=1
-            LOG.warning('APRS archive failed: %s',exc)
+            if self.stats['archive_errors']==1 or self.stats['archive_errors']%100==0:
+                LOG.warning('APRS archive failed (%d events): %s',
+                            self.stats['archive_errors'], exc)
         if wx:
             self.latest_weather[packet.source]={'source':packet.source,
                 'received_at':self.last_rx_utc,**wx}
