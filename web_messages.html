@@ -151,7 +151,7 @@ function render(){if(!last)return;
   header.append(elem('span','badge '+(msg.status==='ack'?'good':msg.status==='rej'||msg.status==='failed'?'bad':''),status));card.append(header);
   card.append(elem('div','entry-body',msg.text));
   const footer=elem('div','entry-footer');
-  const info=pane==='inbox'?msg.arrived_at+' · '+tr('Komu')+' '+msg.recipient+' · ID +(msg.message_id||tr('bez ID'))+' · '+tr('cesta')+' '+(msg.path||'DIRECT')+(msg.duplicates?' · '+tr('opakování')+' '+msg.duplicates:'')
+  const info=pane==='inbox'?msg.arrived_at+' · '+tr('Komu')+' '+msg.recipient+' · ID '+(msg.message_id||tr('bez ID'))+' · '+tr('cesta')+' '+(msg.path||'DIRECT')+(msg.duplicates?' · '+tr('opakování')+' '+msg.duplicates:'')
    :msg.created_at+' · ID '+msg.message_id+' · '+(msg.path||'DIRECT')+' · TX '+msg.attempts+'/'+msg.max_attempts;
   footer.append(elem('span','',info));
   const buttons=elem('div','');
