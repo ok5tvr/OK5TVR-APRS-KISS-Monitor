@@ -20,11 +20,21 @@ class WebV23Tests(unittest.TestCase):
                       'map-clear-import','getElementsByTagName','heard'):
             with self.subTest(label=label):self.assertIn(label,dashboard)
 
+    def test_message_page_loader_and_ssid_controls(self):
+        html=(Path(__file__).parent/'web_messages.html').read_text(encoding='utf-8')
+        self.assertIn('id="add_digi_alias"',html)
+        self.assertIn('id="messages_load_error"',html)
+        self.assertIn("msg.message_id||tr('bez ID')",html)
+        self.assertNotIn(" · ID +(msg.message_id||tr(",html)
+        self.assertIn("last.digi_call",html)
+        self.assertIn("last.receive_calls",html)
+
     @unittest.skipUnless(shutil.which('node'),'Node.js is optional for JS syntax checks')
     def test_inline_scripts_parse_as_javascript(self):
         for path in (Path(__file__).parent/'web_unified.html',
                      Path(__file__).parent/'web_dashboard.html',
-                     Path(__file__).parent/'web_operations.html'):
+                     Path(__file__).parent/'web_operations.html',
+                     Path(__file__).parent/'web_messages.html'):
             source=path.read_text(encoding='utf-8')
             scripts=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>',source)
             scripts=[script for script in scripts if script.strip()]
