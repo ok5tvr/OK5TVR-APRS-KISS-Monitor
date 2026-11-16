@@ -841,31 +841,46 @@ async function loadTncConfig(){
 async function refreshTnc(){
  try{
   const [t,d]=await Promise.all([get("/api/tnc"),get("/api/diagnostics")]);
-  const s=t.server||{};
-  const a=d.archive?.storage||{},j=d.journal_storage||{};
-  $("tnc-status").textContent="Transport: "+t.transport+"  |  "+(t.connected?"ONLINE":"OFFLINE")+
-    "\nTNC: "+(t.endpoint||"—")+"  |  Reconnect attempts: "+t.reconnect_attempts+
-    "  |  Connections: "+t.reconnect_count+
-    "\nTCP KISS server: "+(s.running?"ONLINE":"OFF")+"  "+s.host+":"+s.port+
-    "  |  Clients: "+s.clients+"  |  Sent to clients: "+s.frames_published+
-    "  |  Dropped: "+s.frames_dropped+
-    "\nTCP client TX allowed: "+(t.tx_permission?"YES":"NO")+
-    "  |  Rejected TX requests: "+s.tx_rejected+
-    (s.last_error?"\nError: "+s.last_error:"")+
-    "\nSQLite APRS: čeká "+(a.pending??0)+" / "+(a.max_pending??1000)+
-    "  |  Dávky: "+(a.batches_written??0)+"  |  Ztraceno: "+(a.dropped??0)+
-    "  |  Chyby zápisu: "+(a.write_errors??0)+
-    "\nSQLite deník: čeká "+(j.pending??0)+"  |  Dávky: "+(j.batches_written??0)+
-    "  |  Ztraceno: "+(j.dropped??0)+"  |  Chyby zápisu: "+(j.write_errors??0)+
-    (a.last_error?"\nSQLite APRS ERROR: "+a.last_error:"")+
-    (j.last_error?"\nSQLite LOG ERROR: "+j.last_error:"")+
-    "\nRF Scheduler: "+(t.tx_scheduler?.pending??0)+" čeká, "+
-         (t.tx_scheduler?.in_last_minute??0)+" / min, min. odstup "+
-         (t.tx_scheduler?.min_gap_s??0)+" s"+
-    "\nDalší KISS: "+(t.secondary_receivers||[]).map(x=>x.id+" ["+
-     (x.connected?"ONLINE":"OFF")+"] RX "+x.rx+" "+(x.last_error||"")).join("; ");
- }catch(e){notice("tnc-notice",e.message);}
+  const server=t.server||{},archive=d.archive?.storage||{},journal=d.journal_storage||{};
+  const tx=t.tx_scheduler||{};
+  const lines=[
+   tr("Transport: ","Transport: ")+t.transport+
+     "  |  "+(t.connected?"ONLINE":"OFFLINE"),
+   "TNC: "+(t.endpoint||"—")+"  |  "+
+     tr("Pokusy o opětovné připojení: ","Reconnect attempts: ")+t.reconnect_attempts+
+     "  |  "+tr("Připojení: ","Connections: ")+t.reconnect_count,
+   "TCP KISS "+tr("server: ","server: ")+(server.running?"ONLINE":"OFF")+
+     "  "+(server.host||"")+":"+(server.port??"—")+
+     "  |  "+tr("Klienti: ","Clients: ")+(server.clients??0)+
+     "  |  "+tr("Odesláno klientům: ","Sent to clients: ")+(server.frames_published??0)+
+     "  |  "+tr("Zahozena: ","Dropped: ")+(server.frames_dropped??0),
+   tr("TCP TX povolen: ","TCP TX permitted: ")+(t.tx_permission?"YES":"NO")+
+     "  |  "+tr("Zamítnuté TX: ","Rejected TX: ")+(server.tx_rejected??0),
+   "SQLite APRS: "+tr("ve frontě ","pending ")+(archive.pending??0)+
+      " / "+(archive.max_pending??1000)+
+      "  |  "+tr("Dávky: ","Batches: ")+(archive.batches_written??0)+
+      "  |  "+tr("Ztraceno: ","Dropped: ")+(archive.dropped??0)+
+      "  |  "+tr("Chyby zápisu: ","Write errors: ")+(archive.write_errors??0),
+   "SQLite "+tr("deník: ","journal: ")+tr("ve frontě ","pending ")+(journal.pending??0)+
+      "  |  "+tr("Dávky: ","Batches: ")+(journal.batches_written??0)+
+      "  |  "+tr("Ztraceno: ","Dropped: ")+(journal.dropped??0)+
+      "  |  "+tr("Chyby zápisu: ","Write errors: ")+(journal.write_errors??0),
+   "RF Scheduler: "+(tx.pending??0)+" "+tr("ve frontě","pending")+
+      ", "+(tx.in_last_minute??0)+" / min, "+
+      tr("minimální odstup ","minimum gap ")+(tx.min_gap_s??0)+" s",
+   tr("Další KISS přijímače: ","Additional KISS receivers: ")+
+      (t.secondary_receivers||[]).map(x=>x.id+" ["+
+       (x.connected?"ONLINE":"OFF")+"] RX "+x.rx+" "+(x.last_error||"")).join("; ")
+  ];
+  if(server.last_error)lines.push("TCP KISS ERROR: "+server.last_error);
+  if(archive.last_error)lines.push("SQLite APRS ERROR: "+archive.last_error);
+  if(journal.last_error)lines.push("SQLite JOURNAL ERROR: "+journal.last_error);
+  $("tnc-status").textContent=lines.join("\n");
+ }catch(e){
+  notice("tnc-notice",tr("Chyba načtení stavu TNC: ","TNC status load error: ")+e.message);
+ }
 }
+
 $("tnc-reload").onclick=loadTncConfig;
 $("tnc-refresh").onclick=refreshTnc;
 $("tnc-save").onclick=async()=>{
