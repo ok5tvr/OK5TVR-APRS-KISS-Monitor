@@ -20,6 +20,7 @@ ADMIN_HTML = (_ASSET_DIR / 'web_control.html').read_text(encoding='utf-8') if (_
 OPERATIONS_HTML = (_ASSET_DIR / 'web_operations.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_operations.html').exists() else ''
 MESSAGES_HTML = (_ASSET_DIR / 'web_messages.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_messages.html').exists() else ''
 BBS_HTML = (_ASSET_DIR / 'web_bbs.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_bbs.html').exists() else ''
+THEME_CSS = (_ASSET_DIR / 'web_theme.css').read_text(encoding='utf-8')
 LOCALE_JS = (_ASSET_DIR / 'web_locale.js').read_text(encoding='utf-8')
 UNIFIED_HTML = (_ASSET_DIR / 'web_unified.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_unified.html').exists() else ''
 LOGIN_HTML = (_ASSET_DIR / 'web_login.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_login.html').exists() else ''
@@ -160,6 +161,9 @@ class WebPanel:
                         self._respond(404, '{"error":"APRS sprite missing"}')
                         return
                     self._respond(200, contents, 'image/png', 'public, max-age=86400')
+                    return
+                if parsed.path == '/assets/web_theme.css':
+                    self._respond(200, THEME_CSS, 'text/css; charset=utf-8', 'public, max-age=3600')
                     return
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')

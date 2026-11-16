@@ -6,6 +6,16 @@ Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplika
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
 
+## Modernizované webové rozhraní
+
+- Jednotný tmavý vzhled konzole, nastavení, mapy, zpráv, BBS a přihlášení. Sdílený lokální styl bez CDN nebo dalších závislostí.
+- Boční navigace na počítači; na mobilu výběr všech stránek v jednom poli. Aktuální stránka má vlastní nadpis a zvýraznění. Funguje historie prohlížeče a ovládání záložek šipkami, Home/End.
+- Čitelnější karty, formuláře, tabulky a zvýraznění klávesového fokusu. Volba CZ/EN v Nastavení překládá i novou navigaci.
+- Upozornění na přerušené spojení se službou na každé stránce; po obnovení spojení se automaticky skryje.
+- Opravené měření výšky vložených stránek, které dříve mohlo při obnovování postupně zvětšovat iframe.
+
+Aktualizace vyžaduje znovu spustit `sh install_raspberry.sh --lan` z této větve a obnovit web přes **Ctrl+F5**. Instalační i Windows EXE skript zahrnují `web_theme.css`.
+
 ## v2.4 – úpravy jednotného webu / Heard Map / CZ–EN
 
 - **Jednotný přepínač jazyka:** nefunkční/duplicitní volby CZ/EN v pravé části hlavičky a v podpůrných stránkách byly odstraněny. Jazyk se nyní volí na **Nastavení / iGate / DIGI → Jazyk webového rozhraní**. Pamatuje si ho prohlížeč (localStorage) pro všechny připojené stránky, včetně mapy, APRS zpráv, operací a BBS. Samostatně otevřené stránky používají naposledy uloženou volbu.

@@ -93,8 +93,10 @@ header{padding:13px clamp(14px,2vw,26px)}
 footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
 @media(max-width:750px){main{padding:9px}.two{grid-template-columns:1fr}header{padding:13px}nav.tabs{padding:7px}.tabs button{padding:9px}.panel{padding:12px}.metric-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
+<link rel="stylesheet" href="/assets/web_theme.css?v=25">
 </head>
-<body>
+<body class="console-shell">
+<a class="skip-link" href="#main-content" data-cs="Přejít k obsahu" data-en="Skip to content">Přejít k obsahu</a>
 <header>
   <div><div class="brand"><b>OK5TVR</b> APRS KISS Monitor <small style="color:#9acbdf;font-weight:normal">v2.4 dev</small></div><div class="sub" data-cs="Jednotné webové ovládání · Windows / Raspberry Pi" data-en="Unified web console · Windows / Raspberry Pi">Jednotné webové ovládání · Windows / Raspberry Pi</div></div>
   <div class="health">
@@ -104,7 +106,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <button id="logout" type="button" data-cs="Odhlásit" data-en="Log out">Odhlásit</button>
   </div>
 </header>
-<nav class="tabs" role="tablist" aria-label="APRS Monitor">
+<nav class="tabs" role="tablist" aria-orientation="vertical" aria-label="APRS Monitor">
   <button type="button" data-tab="home" role="tab" aria-selected="true" data-cs="Přehled" data-en="Overview">Přehled</button>
   <button type="button" data-tab="rx" role="tab" aria-selected="false" data-cs="Příjem / TX" data-en="Receive / TX">Příjem / TX</button>
   <button type="button" data-tab="map" role="tab" aria-selected="false" data-cs="Mapa" data-en="Map">Mapa</button>
@@ -121,7 +123,12 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <button type="button" data-tab="weather" role="tab" aria-selected="false" data-cs="APRS Počasí" data-en="APRS Weather">APRS Počasí</button>
   <button type="button" data-tab="isrf" role="tab" aria-selected="false" data-cs="IS → RF / Filtry" data-en="IS → RF / Filters">IS → RF / Filtry</button>
 </nav>
-<main>
+<main id="main-content" tabindex="-1">
+<div class="page-heading">
+  <div><div class="eyebrow">APRS · COMMAND CENTER</div><h1 id="page-title">Přehled</h1></div>
+  <div class="mobile-navigation"><label for="page-select" data-cs="Přejít na stránku" data-en="Go to page">Přejít na stránku</label><select id="page-select"></select></div>
+</div>
+<div id="service-notice" class="service-notice" role="status" aria-live="polite" hidden></div>
 <section class="view" id="tab-home">
   <div class="home-intro">
     <div class="section-row"><div>
@@ -520,6 +527,7 @@ function setLanguage(value) {
       el.insertBefore(document.createTextNode(translated + " "), el.firstChild);
     }
   });
+  syncNavigation();
   for (const frame of document.querySelectorAll("iframe")) {
     try {
       if (frame.contentWindow && frame.contentWindow.OK5TVRLocale &&
@@ -528,8 +536,25 @@ function setLanguage(value) {
     } catch (_) { /* isolated embedded window */ }
   }
 }
+function syncNavigation() {
+  const buttons = Array.from(document.querySelectorAll("nav.tabs [data-tab]"));
+  const select = $("page-select");
+  if (!select) return;
+  select.replaceChildren(...buttons.map(btn => {
+    const option = document.createElement("option");
+    option.value = btn.dataset.tab;
+    option.textContent = btn.textContent;
+    return option;
+  }));
+  select.value = currentTab;
+  const active = buttons.find(btn => btn.dataset.tab === currentTab);
+  if (active) {
+    $("page-title").textContent = active.textContent;
+    document.title = active.textContent + " · OK5TVR APRS";
+  }
+}
 function showTab(name) {
-  if (!tabIds.includes(name)) name = "rx";
+  if (!tabIds.includes(name)) name = "home";
   currentTab = name;
   for (const tab of tabIds) {
     $("tab-" + tab).hidden = tab !== name;
@@ -557,14 +582,16 @@ function showTab(name) {
   if (name === "heard") {loadHeardReceivers();loadHeard();}
   if (name === "chat2") loadChat2();
   if (name === "alerts") {loadAlertConfig();refreshAlerts();}
-  history.replaceState(null,"","#" + name);
+  syncNavigation();
+  if (location.hash !== "#" + name) history.pushState(null,"","#" + name);
 }
 function trimEmbedded(frame,name) {
   try {
     const doc = frame.contentDocument;
     if (!doc) return;
+    doc.body.classList.add("embedded-view");
     const css = doc.createElement("style");
-    css.textContent = "body{padding:5px!important;background:#101925!important} main{max-width:100%!important;margin:0!important}nav,.app-nav{display:none!important}header{display:none!important}";
+    css.textContent = "body{padding:5px!important;background:var(--bg)!important} main{max-width:100%!important;margin:0!important}nav,.app-nav{display:none!important}header{display:none!important}";
     doc.head.appendChild(css);
     if (name === "objects") {
       const objs = doc.querySelector("#objects");
@@ -590,20 +617,53 @@ function resizeFrame(frame) {
   try {
     const doc=frame.contentDocument;
     if (!doc) return;
-    frame.style.height=Math.max(720,doc.documentElement.scrollHeight+25)+"px";
+    // The document scrollHeight includes the iframe viewport: adding to it
+    // on every poll would grow an otherwise empty frame indefinitely.
+    const style=frame.contentWindow.getComputedStyle(doc.body);
+    const height=doc.body.offsetHeight+(parseFloat(style.marginTop)||0)+(parseFloat(style.marginBottom)||0);
+    frame.style.height=Math.max(720,height+24)+"px";
     if(frame.contentWindow)frame.contentWindow.dispatchEvent(new Event("resize"));
   }catch(_){}
 }
-document.querySelectorAll("nav.tabs button").forEach(btn => btn.addEventListener("click",() => showTab(btn.dataset.tab)));
+document.querySelectorAll("nav.tabs button").forEach((btn,index) => {
+  btn.dataset.index = String(index + 1).padStart(2,"0");
+  btn.id = "nav-" + btn.dataset.tab;
+  btn.setAttribute("aria-controls", "tab-" + btn.dataset.tab);
+  const panel = $("tab-" + btn.dataset.tab);
+  panel.setAttribute("role", "tabpanel");
+  panel.setAttribute("aria-labelledby", btn.id);
+  btn.addEventListener("click", () => showTab(btn.dataset.tab));
+  btn.addEventListener("keydown", event => {
+    const buttons = Array.from(document.querySelectorAll("nav.tabs button"));
+    let next = index;
+    if (["ArrowDown","ArrowRight"].includes(event.key)) next = (index+1)%buttons.length;
+    else if (["ArrowUp","ArrowLeft"].includes(event.key)) next = (index-1+buttons.length)%buttons.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = buttons.length-1;
+    else return;
+    event.preventDefault();
+    buttons[next].focus();
+    showTab(buttons[next].dataset.tab);
+  });
+});
+$("page-select").addEventListener("change", event => showTab(event.target.value));
+window.addEventListener("hashchange", () => {
+  if (location.hash === "#main-content") return;
+  showTab(location.hash.slice(1));
+});
 document.querySelectorAll("[data-open]").forEach(btn=>btn.addEventListener("click",()=>showTab(btn.dataset.open)));
 $("logout").addEventListener("click",async()=>{
  try{await fetch("/api/logout",{method:"POST",headers:{"X-APRS-CSRF":"1"}});}finally{location.replace("/login");}
 });
 window.addEventListener("ok5tvr:language", () => setLanguage(window.OK5TVRLocale.language));
 async function get(path) {
-  const r=await fetch(auth(path),{cache:"no-store"});
-  if(!r.ok) throw Error("HTTP "+r.status);
-  return r.json();
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),10000);
+  try {
+    const r=await fetch(auth(path),{cache:"no-store",signal:controller.signal});
+    if(!r.ok) throw Error("HTTP "+r.status);
+    return await r.json();
+  } finally { clearTimeout(timer); }
 }
 async function command(action,data={}) {
   const r=await fetch("/api/control",{
@@ -1336,6 +1396,7 @@ async function refresh() {
   if(pollBusy)return;pollBusy=true;
   try{
     const [s,d]=await Promise.all([get("/api/state"),get("/api/diagnostics")]);
+    $("service-notice").hidden=true;
     lastState=s;lastDiagnostics=d;
     updateHealth(s,d);renderRx(s.history);renderTelemetry(d.telemetry||{});
     if(currentTab==='isrf')refreshIsrf();
@@ -1345,7 +1406,11 @@ async function refresh() {
       const f=$("tab-"+currentTab).querySelector("iframe");
       if(f)resizeFrame(f);
     }
-  }catch(e){ if(currentTab==="rx")notice("rx-notice",tr("Spojení se službou: ","Service connection: ")+e.message); }
+  }catch(e){
+    $("service-notice").hidden=false;
+    $("service-notice").textContent=tr("Spojení se službou přerušeno. Zobrazená data mohou být neaktuální. Připojení se automaticky obnovuje.","Service connection lost. Displayed data may be out of date. Reconnecting automatically.");
+    if(currentTab==="rx")notice("rx-notice",tr("Spojení se službou: ","Service connection: ")+e.message);
+  }
   finally{pollBusy=false;}
 }
 reloadPorts();loadHdmiDisplay();setLanguage(language);showTab(location.hash.slice(1)||"home");refresh();
