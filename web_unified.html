@@ -57,6 +57,19 @@ tbody tr.clickable:hover,tbody tr.chosen {background:#27516b}
 .check label {margin:0;font-size:14px;color:inherit}
 .message {margin:10px 0;white-space:pre-wrap;color:var(--muted);min-height:20px}
 .frame {width:100%;border:0;background:var(--bg);min-height:720px;display:block}
+.heard-map-frame{width:100%;height:500px;min-height:0;border:1px solid var(--border);border-radius:10px;display:block;background:#102233}
+.heard-controls{align-items:center;margin:8px 0 14px}
+.heard-controls label{margin:0;font-size:13px}
+.heard-controls select{width:auto;min-width:140px}
+.heard-controls button{white-space:nowrap}
+.heard-overview .metric-list{margin-bottom:0}
+.heard-metrics .metric strong{font-size:25px}
+.heard-map-title{margin-bottom:9px}
+.locale-setting{min-width:200px}
+.locale-setting select{width:100%}
+.home-link{transition:background .15s,border-color .15s,transform .15s}
+.home-link:hover{transform:translateY(-2px)}
+@media(max-width:750px){.heard-map-frame{height:390px}.heard-controls label{width:100%}}
 .home-intro{padding:24px;background:linear-gradient(110deg,#1b3d4b,#163149);border:1px solid #416e76;border-radius:14px;margin-bottom:15px}
 .home-intro h1{color:#eafff9;margin:0 0 7px}
 .home-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin:14px 0}
@@ -79,7 +92,6 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <span id="usb-status" class="pill">USB: —</span>
     <span id="is-status" class="pill">APRS-IS: —</span>
     <span id="digi-status" class="pill">DIGI: —</span>
-    <select id="language" aria-label="Language"><option value="cs">Čeština</option><option value="en">English</option></select>
     <button id="logout" type="button" data-cs="Odhlásit" data-en="Log out">Odhlásit</button>
   </div>
 </header>
@@ -180,18 +192,55 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
 </section>
 <section class="view" id="tab-map" hidden></section>
 <section class="view" id="tab-heard" hidden>
-  <div class="panel">
-    <h2>Mapa doslechu · DIRECT / VIA / přijímače</h2>
-    <div class="toolbar">
-      <label>Interval <select id="heard-period"><option value="60">60 minut</option><option value="1440" selected>24 hodin</option>
-         <option value="10080">7 dní</option><option value="43200">30 dní</option></select></label>
-      <label>Přijímač <select id="heard-device"><option value="">Všechny TNC</option><option value="primary">Primární TNC</option></select></label>
-      <button id="heard-refresh">Obnovit doslech</button>
-      <button id="heard-csv">Export CSV</button>
+  <div class="panel heard-overview">
+    <div class="section-row">
+      <div>
+        <h2 data-cs="Mapa RF doslechu" data-en="RF heard map">Mapa RF doslechu</h2>
+        <p class="muted" data-cs="Historické příjmy z primárního i dalších KISS TNC. Mapa zobrazuje polohy skutečně přijatých APRS stanic."
+           data-en="Historical receptions from primary and secondary KISS TNCs. The map shows reported positions of stations actually heard over RF.">Historické příjmy z primárního i dalších KISS TNC. Mapa zobrazuje polohy skutečně přijatých APRS stanic.</p>
+      </div>
+      <span id="heard-updated" class="pill" aria-live="polite">—</span>
     </div>
-    <p class="note">DIRECT označuje paket přijatý bez opakování; GPS je poloha odesílatele, nikoliv mapa zaručeného RF pokrytí.</p>
-    <div id="heard-summary" class="muted"></div>
-    <div class="scroll"><table><thead><tr><th>Stanice</th><th>Přijímač</th><th>DIRECT</th><th>VIA</th><th>km</th><th>Poslední RF příjem</th><th>Cesta</th></tr></thead><tbody id="heard-rows"></tbody></table></div>
+    <div class="metric-list heard-metrics">
+      <div class="metric"><span data-cs="Unikátní stanice" data-en="Unique stations">Unikátní stanice</span><strong id="heard-stations-count">0</strong></div>
+      <div class="metric"><span data-cs="Slyšené přímo" data-en="Heard directly">Slyšené přímo</span><strong id="heard-direct-count">0</strong></div>
+      <div class="metric"><span data-cs="Pakety DIRECT" data-en="DIRECT packets">Pakety DIRECT</span><strong id="heard-direct-packets">0</strong></div>
+      <div class="metric"><span data-cs="Pakety VIA" data-en="VIA packets">Pakety VIA</span><strong id="heard-via-packets">0</strong></div>
+      <div class="metric"><span data-cs="Nejvzdálenější GPS" data-en="Farthest reported GPS">Nejvzdálenější GPS</span><strong id="heard-dx-km">—</strong></div>
+    </div>
+  </div>
+  <div class="panel heard-map-panel">
+    <div class="section-row heard-map-title">
+      <h2 data-cs="Mapa přijatých stanic" data-en="Map of heard stations">Mapa přijatých stanic</h2>
+      <span class="muted" id="heard-map-count">—</span>
+    </div>
+    <div class="toolbar heard-controls">
+      <label for="heard-period" data-cs="Období" data-en="Period">Období</label>
+      <select id="heard-period" aria-label="Období">
+        <option value="60" data-cs="60 minut" data-en="60 minutes">60 minut</option>
+        <option value="1440" selected data-cs="24 hodin" data-en="24 hours">24 hodin</option>
+        <option value="10080" data-cs="7 dní" data-en="7 days">7 dní</option>
+        <option value="43200" data-cs="30 dní" data-en="30 days">30 dní</option>
+      </select>
+      <label for="heard-device" data-cs="Přijímač" data-en="Receiver">Přijímač</label>
+      <select id="heard-device" aria-label="Přijímač"><option value="" data-cs="Všechna TNC" data-en="All TNCs">Všechna TNC</option><option value="primary" data-cs="Primární TNC" data-en="Primary TNC">Primární TNC</option></select>
+      <button type="button" id="heard-refresh" data-cs="Obnovit doslech" data-en="Refresh receptions">Obnovit doslech</button>
+      <button type="button" id="heard-csv" data-cs="Export CSV" data-en="Export CSV">Export CSV</button>
+    </div>
+    <iframe id="heard-map-frame" class="heard-map-frame" title="Mapa historicky slyšených APRS stanic" loading="lazy" referrerpolicy="no-referrer"></iframe>
+    <p class="note" data-cs="Modře: stanice s alespoň jedním přímým příjmem v období; ostatní body jsou VIA. Vzdálenost vychází z polohy vysílané stanicí – nejde o zaručené RF pokrytí."
+       data-en="Blue: stations with at least one direct reception during the selected period; other pins are VIA. Distance uses reported station GPS and is not a guaranteed RF coverage estimate.">Modře: stanice s alespoň jedním přímým příjmem v období; ostatní body jsou VIA. Vzdálenost vychází z polohy vysílané stanicí – nejde o zaručené RF pokrytí.</p>
+    <div id="heard-summary" class="muted" role="status" aria-live="polite"></div>
+  </div>
+  <div class="panel">
+    <h2 data-cs="Přijaté stanice a cesty" data-en="Heard stations and paths">Přijaté stanice a cesty</h2>
+    <div class="scroll"><table><thead><tr>
+      <th data-cs="Značka" data-en="Callsign">Značka</th>
+      <th data-cs="Přijímač" data-en="Receiver">Přijímač</th>
+      <th>DIRECT</th><th>VIA</th><th>km</th>
+      <th data-cs="Poslední příjem UTC" data-en="Last heard UTC">Poslední příjem UTC</th>
+      <th data-cs="Cesta" data-en="Path">Cesta</th>
+    </tr></thead><tbody id="heard-rows"></tbody></table></div>
   </div>
 </section>
 <section class="view" id="tab-bbs" hidden></section>
@@ -214,7 +263,24 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   </div>
 </section>
 <section class="view" id="tab-objects" hidden></section>
-<section class="view" id="tab-igate" hidden></section>
+<section class="view" id="tab-igate" hidden>
+  <div class="panel" id="language-preferences">
+    <div class="section-row">
+      <div>
+        <h2 data-cs="Jazyk webového rozhraní" data-en="Web interface language">Jazyk webového rozhraní</h2>
+        <p class="muted" data-cs="Volba se ukládá v prohlížeči a platí pro mapy, zprávy, BBS i další stránky."
+           data-en="Your choice is saved in the browser and applies to maps, messages, BBS and all other pages.">Volba se ukládá v prohlížeči a platí pro mapy, zprávy, BBS i další stránky.</p>
+      </div>
+      <div class="locale-setting">
+        <label for="ui-language-choice" data-cs="Jazyk / Language" data-en="Language / Jazyk">Jazyk / Language</label>
+        <select id="ui-language-choice" aria-label="Jazyk / Language">
+          <option value="cs">Čeština</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</section>
 <section class="view" id="tab-telemetry" hidden>
   <div class="panel">
     <h2 data-cs="Odesílání APRS telemetrie T#" data-en="APRS T# telemetry transmission">Odesílání APRS telemetrie T#</h2>
@@ -415,7 +481,7 @@ let currentTab = "rx", lastState = {}, lastDiagnostics = {}, rxHistory = [];
 let rxSignature = "", selectedFrame = null, configLoaded = false, pollBusy = false;
 const tabIds = ["home","rx","map","heard","bbs","messages","chat2","objects","igate","telemetry","diagnostics","alerts","tnc","weather","isrf"];
 const destinations = {
-  map:"/map", heard:"/map?heard=1", bbs:"/bbs", messages:"/messages", objects:"/operations",
+  map:"/map", bbs:"/bbs", messages:"/messages", objects:"/operations",
   igate:"/control", diagnostics:"/operations"
 };
 const auth = path => key ? path + (path.includes("?") ? "&" : "?") + "admin=" + encodeURIComponent(key) : path;
@@ -423,8 +489,8 @@ function notice(id,text) { $(id).textContent = text; }
 function setLanguage(value) {
   language = value === "en" ? "en" : "cs";
   document.documentElement.lang = language;
-  $("language").value = language;
-  if (window.OK5TVRLocale) window.OK5TVRLocale.setLanguage(language);
+  const choice = $("ui-language-choice");
+  if (choice) choice.value = language;
   // IMPORTANT: Some translated labels contain <input> or <select> elements.
   // Replacing the label's textContent would REMOVE these controls from the DOM.
   document.querySelectorAll("[data-cs][data-en]").forEach(el => {
@@ -445,11 +511,12 @@ function setLanguage(value) {
       el.insertBefore(document.createTextNode(translated + " "), el.firstChild);
     }
   });
-  for (const name of Object.keys(destinations)) {
-    const frame = document.querySelector("#tab-" + name + " iframe");
-    if (frame && frame.contentWindow && frame.contentWindow.OK5TVRLocale) {
-      frame.contentWindow.OK5TVRLocale.setLanguage(language);
-    }
+  for (const frame of document.querySelectorAll("iframe")) {
+    try {
+      if (frame.contentWindow && frame.contentWindow.OK5TVRLocale &&
+          frame.contentWindow.OK5TVRLocale.language !== language)
+        frame.contentWindow.OK5TVRLocale.setLanguage(language);
+    } catch (_) { /* isolated embedded window */ }
   }
 }
 function showTab(name) {
@@ -523,7 +590,7 @@ document.querySelectorAll("[data-open]").forEach(btn=>btn.addEventListener("clic
 $("logout").addEventListener("click",async()=>{
  try{await fetch("/api/logout",{method:"POST",headers:{"X-APRS-CSRF":"1"}});}finally{location.replace("/login");}
 });
-$("language").addEventListener("change",e=>setLanguage(e.target.value));
+window.addEventListener("ok5tvr:language", () => setLanguage(window.OK5TVRLocale.language));
 async function get(path) {
   const r=await fetch(auth(path),{cache:"no-store"});
   if(!r.ok) throw Error("HTTP "+r.status);
