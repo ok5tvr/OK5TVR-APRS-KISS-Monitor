@@ -1297,24 +1297,34 @@ $("alert-browser").onclick=async()=>{
      tr("Upozornění povolena v prohlížeči.","Browser notifications enabled."):
      tr("Upozornění nepovolena.","Notifications not permitted."));
 };
+function alertMessage(event){
+ if(language!=="en")return event.message||"";
+ const messages={
+  tnc_offline:"Primary KISS TNC disconnected",
+  no_rf:"No RF APRS packet in the configured period",
+  igate_offline:"APRS-IS connection unavailable",
+  watched_station:(event.callsign||"Station")+" heard on RF"
+ };
+ return messages[event.code]||event.message||"";
+}
 async function refreshAlerts(){
  try{
   const d=await get("/api/alerts"),root=$("alert-rows");
   root.replaceChildren();
-  $("alert-status").textContent="Upozornění: "+(d.enabled?"ON":"OFF")+
+  $("alert-status").textContent=tr("Upozornění: ","Alerts: ")+(d.enabled?"ON":"OFF")+
       " | MQTT: "+(d.mqtt_enabled?"ON":"OFF")+
-      " | MQTT chyby: "+d.mqtt_errors+
-      " | Poslední ID: "+d.latest_id;
+      " | "+tr("MQTT chyby: ","MQTT errors: ")+d.mqtt_errors+
+      " | "+tr("Poslední ID: ","Latest ID: ")+d.latest_id;
   for(const event of d.events||[]){
    const row=document.createElement("tr");
-   for(const value of [event.at,event.code,event.callsign,event.message]){
+   for(const value of [event.at,event.code,event.callsign,alertMessage(event)]){
     const td=document.createElement("td");td.textContent=String(value??"");row.appendChild(td);
    }root.appendChild(row);
   }
   if(lastAlertSeen!=null && d.latest_id>lastAlertSeen && alertBrowserEnabled){
    const found=(d.events||[]).find(e=>e.id>d.latest_id-3 && e.id>lastAlertSeen);
    if(found&&"Notification" in window&&Notification.permission==="granted")
-    new Notification("OK5TVR APRS", {body:found.message});
+    new Notification("OK5TVR APRS", {body:alertMessage(found)});
   }
   lastAlertSeen=d.latest_id;
  }catch(e){notice("alert-notice","ERROR: "+e.message);}
