@@ -106,7 +106,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
 </header>
 <nav class="tabs" role="tablist" aria-label="APRS Monitor">
   <button type="button" data-tab="home" role="tab" aria-selected="true" data-cs="Přehled" data-en="Overview">Přehled</button>
-  <button type="button" data-tab="rx" role="tab" aria-selected="true" data-cs="Příjem / TX" data-en="Receive / TX">Příjem / TX</button>
+  <button type="button" data-tab="rx" role="tab" aria-selected="false" data-cs="Příjem / TX" data-en="Receive / TX">Příjem / TX</button>
   <button type="button" data-tab="map" role="tab" aria-selected="false" data-cs="Mapa" data-en="Map">Mapa</button>
   <button type="button" data-tab="heard" role="tab" aria-selected="false" data-cs="Mapa doslechu" data-en="RF Heard Map">Mapa doslechu</button>
   <button type="button" data-tab="bbs" role="tab" aria-selected="false" data-cs="AX.25 BBS" data-en="AX.25 BBS">AX.25 BBS</button>
@@ -1120,6 +1120,7 @@ $("isrf-test").onclick=async()=>{
  }catch(e){notice("isrf-test-result","ERROR: "+e.message);}
 };
 let lastHeardRows=[];
+let lastHeardLoadedAt=0;
 let heardRequestNumber=0;
 let heardMapUrl="";
 async function loadHeardReceivers(){
@@ -1138,6 +1139,7 @@ async function loadHeardReceivers(){
  }
 }
 async function loadHeard(forceMapRefresh=false){
+ lastHeardLoadedAt=Date.now();
  const requestId=++heardRequestNumber;
  try{
   const period=$("heard-period").value, receiver=$("heard-device").value;
@@ -1338,6 +1340,7 @@ async function refresh() {
     updateHealth(s,d);renderRx(s.history);renderTelemetry(d.telemetry||{});
     if(currentTab==='isrf')refreshIsrf();
     if(currentTab==='alerts')refreshAlerts();
+    if(currentTab==='heard' && Date.now()-lastHeardLoadedAt>=60000)loadHeard();
     if(currentTab in destinations){
       const f=$("tab-"+currentTab).querySelector("iframe");
       if(f)resizeFrame(f);
