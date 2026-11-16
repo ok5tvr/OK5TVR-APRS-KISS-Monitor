@@ -26,6 +26,19 @@ Aktualizace vyžaduje znovu spustit `sh install_raspberry.sh --lan` z této vět
 
 Po instalaci otevři `http://IP_RASPBERRY:8765/`, obnov stránku přes **Ctrl+F5**, pro volbu EN přejdi do Nastavení. Testy `test_web_ux_v24.py` a `test_weather_locale_regression.py` chrání před regresí jazykových formulářů a nepřesnou mapou historického doslechu.
 
+## Vylepšení poštovní schránky BBS
+
+- Celé zprávy do 800 ASCII znaků bez původního omezení na 15 řádků. Zachování prázdných řádků a odsazení; CR, LF i CRLF a oprava překlepů Backspace. Řádek nad 100 znaků se zahodí s hlášením, nikoli tiše zkrátí.
+- `L [stránka]`, `LM [stránka]`, `LN [stránka]` (nepřečtené), `N` (další stránka): 15 zpráv na RF stránku. `*` označuje nepřečtenou poštu. `R číslo` přečte celou zprávu; příznak přečtení znamená vyžádání čtení, nikoli doklad doručení celého textu přes RF.
+- `RE číslo` připraví odpověď původnímu odesílateli s předmětem `Re:`. `/ABORT` zruší koncept včetně rozepsaného předmětu. `/EX` uloží text. `K číslo YES` po potvrzení smaže zprávu, jejímž je připojená značka odesílatelem nebo adresátem; cizí veřejný bulletin mazat nemůže.
+- Web: psaní osobní pošty nebo bulletinu (`ALL`), odpovědi, stránkování po 50 zprávách, celý text a stav přečtení. Zprávy správce mají odesílatele nastavenou BBS značku. Uložení funguje i při vypnuté BBS a samo nepřidává RF rámce. Koncept přetrvá pravidelné obnovování; po potvrzeném uložení se vymaže.
+- Diagnostika: čekající znaky, opakování rámce, doba nečinnosti, RNR protistanice, chyby KISS a poslední důvod odpojení. Správce může vyžádat ukončení aktuálního spojení, BBS zůstane zapnutá.
+- SQLite přidá tabulku stavů čtení; stávající zprávy i jejich ID zachová. Značky se nadále rozlišují včetně SSID. Před aktualizací zastav službu a zálohuj celé `~/.config/ok5tvr-aprs` včetně databází.
+
+Příklad: `SP OK1ABC-7` → předmět → text → `/EX`; adresát se později připojí jako `OK1ABC-7`, použije `LN`, `R číslo` a případně `RE číslo`.
+
+Rozšíření nemění primární TNC, zákaz souběhu BBS s APRS iGate/DIGI, výchozí vypnutí RF ani požadavky na potvrzení. Druhé TX rádio, BBS forwarding a skutečný RF test s UV-K1 nejsou součástí této aktualizace. Automatické testy jsou bez rádiového hardwaru.
+
 ## v2.4 dev – AX.25 connected-mode Packet BBS (PBBS) přes KISS TNC
 
 Rozšíření pro **klasické spojované packet radio**, nikoliv klasické APRS zprávy. Bez DSP/AFSK modemu: rádio/externí KISS TNC obstarává modulaci a FCS; software implementuje omezenou AX.25 modulo-8 stop-and-wait linkovou vrstvu (SABM/UA, I/PID F0, RR/RNR/REJ, DISC/DM), textovou osobní poštovní schránku a samostatnou webovou správu.

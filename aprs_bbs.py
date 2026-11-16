@@ -69,6 +69,7 @@ class BBSStore:
         self.lock = threading.RLock()
         self.db = sqlite3.connect(self.path, timeout=5, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        self.db.execute('PRAGMA foreign_keys=ON')
         with self.lock, self.db:
             self.db.execute('PRAGMA journal_mode=WAL')
             self.db.execute('PRAGMA synchronous=NORMAL')
@@ -78,6 +79,11 @@ class BBSStore:
                 sender TEXT NOT NULL, recipient TEXT NOT NULL,
                 subject TEXT NOT NULL, body TEXT NOT NULL)''')
             self.db.execute('CREATE INDEX IF NOT EXISTS ix_bbs_to ON bbs_mail(recipient,id DESC)')
+            # Additive migration: existing mail IDs and contents stay intact.
+            self.db.execute('''CREATE TABLE IF NOT EXISTS bbs_reads (
+                message_id INTEGER NOT NULL REFERENCES bbs_mail(id) ON DELETE CASCADE,
+                callsign TEXT NOT NULL, read_utc TEXT NOT NULL,
+                PRIMARY KEY(message_id,callsign))''')
         if os.name != 'nt':
             os.chmod(self.path, 0o600)
 
@@ -88,8 +94,9 @@ class BBSStore:
                 recipient == 'ALL' or CALL_RE.fullmatch(recipient)):
             raise ValueError('Invalid BBS callsign')
         if (not 1 <= len(subject) <= 50 or
-                not 1 <= len(body) <= MAX_BODY or
-                any(c not in '\r\n' and not 32 <= ord(c) <= 126 for c in subject + body)):
+                not 1 <= len(body) <= MAX_BODY or not body.strip() or
+                any(not 32 <= ord(c) <= 126 for c in subject) or
+                any(c not in '\r\n' and not 32 <= ord(c) <= 126 for c in body)):
             raise ValueError('BBS subject/body must be bounded printable ASCII')
         with self.lock, self.db:
             row = self.db.execute('''INSERT INTO bbs_mail
@@ -98,34 +105,65 @@ class BBSStore:
             self.db.execute('''DELETE FROM bbs_mail WHERE id IN
                  (SELECT id FROM bbs_mail ORDER BY id DESC LIMIT -1 OFFSET ?)''',
                  (self.max_messages,))
-            return row.lastrowid
+            ident = row.lastrowid
+            self.db.execute('INSERT OR REPLACE INTO bbs_reads VALUES (?,?,?)',
+                            (ident, sender, utcnow()))
+            return ident
 
-    def list_for(self, call, personal=False, limit=15):
+    def list_for(self, call, personal=False, limit=15, offset=0, unread=False):
+        call = call.upper()
         with self.lock:
             condition = ('recipient=? OR sender=?' if personal else
                          "recipient='ALL' OR recipient=? OR sender=?")
+            read = 'EXISTS(SELECT 1 FROM bbs_reads r WHERE r.message_id=m.id AND r.callsign=?)'
+            where = '(' + condition + ')'
+            args = [call, call, call]
+            if unread:
+                where += ' AND NOT ' + read
+                args.append(call)
             rows = self.db.execute(
-                f'''SELECT id,created_utc,sender,recipient,subject FROM bbs_mail
-                    WHERE {condition} ORDER BY id DESC LIMIT ?''',
-                (call,call,min(limit,30))).fetchall()
+                f'''SELECT id,created_utc,sender,recipient,subject,{read} AS is_read
+                    FROM bbs_mail m WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?''',
+                (*args, min(30,max(1,limit)), max(0,offset))).fetchall()
         return [dict(row) for row in rows]
 
-    def read_for(self, number, call):
+    def read_for(self, number, call, mark=True):
         if type(number) is not int or number <= 0:
             return None
-        with self.lock:
+        call = call.upper()
+        with self.lock, self.db:
             row = self.db.execute('SELECT * FROM bbs_mail WHERE id=?', (number,)).fetchone()
-        if row is None or (row['recipient'] not in ('ALL',call) and row['sender'] != call):
-            return None
+            if row is None or (row['recipient'] not in ('ALL',call) and row['sender'] != call):
+                return None
+            if mark:
+                self.db.execute('INSERT OR REPLACE INTO bbs_reads VALUES (?,?,?)',
+                                (number,call,utcnow()))
         return dict(row)
 
-    def admin_list(self, limit=50):
+    def delete_for(self, number, call):
+        if type(number) is not int or number <= 0:
+            return False
+        with self.lock, self.db:
+            cur = self.db.execute('DELETE FROM bbs_mail WHERE id=? AND (sender=? OR recipient=?)',
+                                  (number,call.upper(),call.upper()))
+            return bool(cur.rowcount)
+
+    def admin_list(self, limit=50, offset=0):
         with self.lock:
-            rows = self.db.execute(
-                'SELECT * FROM bbs_mail ORDER BY id DESC LIMIT ?', (min(100,max(1,limit)),)
-            ).fetchall()
+            rows = self.db.execute('''SELECT m.*,
+                EXISTS(SELECT 1 FROM bbs_reads r WHERE r.message_id=m.id
+                       AND r.callsign=m.recipient) AS recipient_read
+                FROM bbs_mail m ORDER BY id DESC LIMIT ? OFFSET ?''',
+                (min(100,max(1,limit)),max(0,offset))).fetchall()
             count = self.db.execute('SELECT COUNT(*) FROM bbs_mail').fetchone()[0]
         return count, [dict(row) for row in rows]
+
+    def admin_get(self, number):
+        if type(number) is not int or number<=0:
+            return None
+        with self.lock:
+            row=self.db.execute('SELECT * FROM bbs_mail WHERE id=?',(number,)).fetchone()
+        return dict(row) if row else None
 
     def admin_delete(self, number):
         if type(number) is not int or number <= 0:
@@ -158,6 +196,10 @@ class Link:
     posts: int = 0
     closing: bool = False
     disc_sent: float | None = None
+    list_mode: str = 'L'
+    list_page: int = 0
+    skip_lf: bool = False
+    input_overflow: bool = False
 
 
 class AX25PBBS:
@@ -174,6 +216,7 @@ class AX25PBBS:
         self.tx_times=deque(maxlen=64)
         self.rejected={}
         self.last_error=''
+        self.last_disconnect='not_connected'
 
     def configure(self, config):
         self.stop()
@@ -187,6 +230,8 @@ class AX25PBBS:
         self.active=True
 
     def stop(self):
+        if self.session is not None:
+            self.last_disconnect='operator_stop'
         self.active=False
         self.session=None
         self.epoch+=1  # invalidates still queued KISS frames
@@ -285,6 +330,7 @@ class AX25PBBS:
                     self.session=None
                     return True
                 self.counters['connections']+=1
+                self.last_disconnect=''
                 self._welcome()
                 return True
             if base==0x6F:  # SABME modulo-128 not supported
@@ -294,14 +340,17 @@ class AX25PBBS:
             if self.session is None or self.session.remote!=source:
                 return True
             if base==0x43:  # DISC
+                self.last_disconnect='remote_disconnect'
                 self._control(send,source,0x73 if ctrl&0x10 else 0x63)
                 self.session=None
                 self.epoch+=1
                 self.counters['disconnects']+=1
             elif base==0x0F:  # DM
+                self.last_disconnect='remote_dm'
                 self.session=None
                 self.epoch+=1
             elif base==0x63 and self.session.disc_sent is not None:
+                self.last_disconnect='local_disconnect'
                 self.session=None
                 self.epoch+=1
             return True
@@ -348,31 +397,74 @@ class AX25PBBS:
     def _accept_text(self, data):
         link=self.session
         for octet in data[:256]:
-            if octet in (10,13):
-                if link.input:
-                    line=link.input.decode('ascii','replace').strip()
-                    link.input.clear()
-                    self._command(line)
+            if octet == 10 and link.skip_lf:
+                link.skip_lf=False
                 continue
-            if 32<=octet<=126 and len(link.input)<MAX_LINE:
-                link.input.append(octet)
+            link.skip_lf=octet==13
+            if octet in (10,13):
+                if link.input_overflow:
+                    self._output('Line too long (100 chars); discarded. Retry or /ABORT.')
+                elif link.input or link.stage=='body':
+                    self._command(link.input.decode('ascii','replace'))
+                link.input.clear()
+                link.input_overflow=False
+                continue
+            if octet in (8,127):
+                if link.input:link.input.pop()
+            elif 32<=octet<=126:
+                if len(link.input)<MAX_LINE:link.input.append(octet)
+                else:link.input_overflow=True
             elif octet not in (9,):
                 self.counters['invalid_input']+=1
 
-    def _command(self, line):
+    def _begin_message(self, target, subject=''):
         link=self.session
-        if not link:return
+        if not self.config['allow_posts']:
+            self._output('Posting disabled by sysop.')
+            return False
+        if link.posts>=3:
+            self._output('Session limit: 3 new messages.')
+            return False
+        link.to=target
+        link.subject=subject
+        link.body=[]
+        link.stage='body' if subject else 'subject'
+        if subject:self._output(f'To {target}, subject: {subject}. Text; /EX saves, /ABORT cancels.')
+        else:self._output(f'Sending to {target}. Enter subject (1-50 chars), or /ABORT:')
+        return True
+
+    def _command(self, line):
+        try:
+            self._run_command(line)
+        except (sqlite3.Error,OSError):
+            self.counters['storage_errors']+=1
+            self.last_error='Mailbox storage unavailable'
+            self._output('Mailbox temporarily unavailable; retry or /ABORT.')
+
+    def _run_command(self, line):
+        link=self.session
+        if not link or link.closing:return
+        cmd=line.strip().upper()
+        if cmd=='/ABORT':
+            link.stage='command'
+            link.body=[]
+            link.to=''
+            link.subject=''
+            self._output('Draft cancelled.')
+            self._prompt()
+            return
         if link.stage=='subject':
+            line=line.strip()
             if not 1<=len(line)<=50:
                 self._output('Subject must be 1-50 printable characters.')
                 return
             link.subject=line
             link.stage='body'
-            self._output('Enter text, finish with /EX on a separate line.')
+            self._output('Enter text; /EX saves, /ABORT cancels on a separate line.')
             return
         if link.stage=='body':
-            if line.upper()=='/EX':
-                if not link.body:
+            if cmd=='/EX':
+                if not any(part.strip() for part in link.body):
                     self._output('Empty message cancelled.')
                 else:
                     try:
@@ -388,52 +480,69 @@ class AX25PBBS:
                 link.to=''
                 self._prompt()
                 return
-            if sum(len(t)+1 for t in link.body)+len(line)>MAX_BODY:
-                self._output('Message exceeds 800 characters; finish /EX or Q.')
+            if sum(map(len,link.body))+len(link.body)+len(line)>MAX_BODY:
+                self._output('Message exceeds 800 characters; /EX saves, /ABORT cancels.')
                 return
             link.body.append(line)
             return
-        cmd=line.upper()
+        # Keep each complete response inside the bounded output buffer.
+        if len(link.output)>2048:
+            self._output('Output busy; wait for the prompt before another command.')
+            return
         if cmd in ('H','?','HELP'):
-            self._output('H = help | L = public/relevant mail | LM = my mail')
-            self._output('R number = read mail | SP CALL = private | SB = bulletin')
-            self._output('Q = disconnect | I = BBS info')
+            self._output('H help | I info | Q disconnect')
+            self._output('L [page] public/relevant | LM [page] mine | LN [page] unread | N next page')
+            self._output('R id read full message | RE id reply | SP CALL personal | SB bulletin')
+            self._output('K id YES delete own mail | /ABORT cancel draft | /EX save draft')
+            self._output('* = unread; exact callsign/SSID matching; RF calls are not authenticated.')
         elif cmd in ('I','INFO'):
             self._output(f'{self.config["call"]} PBBS / AX.25 modulo-8 / direct KISS')
             self._output('Amateur RF is public; callsign is not authenticated.')
-        elif cmd in ('L','LIST','LM'):
-            personal=cmd=='LM'
-            rows=self.store.list_for(link.remote,personal=personal)
-            if not rows:self._output('No messages.')
+        elif re.fullmatch(r'(L|LIST|LM|LN)( +[0-9]{1,4})?',cmd) or cmd=='N':
+            if cmd=='N':
+                mode=link.list_mode
+                page=link.list_page+1
             else:
-                for row in rows:
-                    self._output(f'#{row["id"]} {row["sender"]}>{row["recipient"]} {row["subject"][:42]}')
-        elif cmd.startswith('R ') and cmd[2:].strip().isdigit():
-            item=self.store.read_for(int(cmd[2:].strip()),link.remote)
+                parts=cmd.split()
+                mode='L' if parts[0]=='LIST' else parts[0]
+                page=max(1,int(parts[1])) if len(parts)>1 else 1
+            rows=self.store.list_for(link.remote,personal=mode=='LM',unread=mode=='LN',
+                                     limit=16,offset=(page-1)*15)
+            link.list_mode,link.list_page=mode,page
+            self._output(f'{mode} page {page}')
+            if not rows:self._output('No messages.')
+            for row in rows[:15]:
+                marker=' ' if row['is_read'] else '*'
+                self._output(f'{marker}#{row["id"]} {row["sender"]}>{row["recipient"]} {row["subject"][:42]}')
+            if len(rows)>15:self._output(f'More: {mode} {page+1} or N')
+        elif re.fullmatch(r'R +[0-9]+',cmd):
+            item=self.store.read_for(int(cmd.split()[1]),link.remote)
             if item is None:self._output('Message not available.')
             else:
                 self._output(f'#{item["id"]} From {item["sender"]} To {item["recipient"]}')
                 self._output(f'Subject: {item["subject"]}')
-                for entry in item['body'].splitlines()[:15]:
-                    self._output(entry[:100])
-                if len(item['body'].splitlines())>15:self._output('[truncated]')
-        elif cmd=='Q' or cmd=='QUIT':
+                self._output(item['body'])
+        elif re.fullmatch(r'RE +[0-9]+',cmd):
+            item=self.store.read_for(int(cmd.split()[1]),link.remote,mark=False)
+            if item is None:self._output('Message not available.')
+            else:
+                target=item['recipient'] if item['sender']==link.remote and item['recipient']!='ALL' else item['sender']
+                subject=item['subject'] if item['subject'].upper().startswith('RE:') else 'Re: '+item['subject']
+                if self._begin_message(target,subject[:50]):return
+        elif re.fullmatch(r'K +[0-9]+(?: +YES)?',cmd):
+            parts=cmd.split()
+            if len(parts)<3:self._output(f'Confirm deletion: K {parts[1]} YES')
+            else:
+                removed=self.store.delete_for(int(parts[1]),link.remote)
+                self._output('Message deleted.' if removed else 'Message not available or not yours.')
+        elif cmd in ('Q','QUIT'):
             self._output('73! Disconnecting.')
             link.closing=True
         elif cmd=='SB' or cmd.startswith('SP '):
-            if not self.config['allow_posts']:
-                self._output('Posting disabled by sysop.')
-            elif link.posts>=3:
-                self._output('Session limit: 3 new messages.')
-            else:
-                target='ALL' if cmd=='SB' else cmd[3:].strip()
-                if target!='ALL' and not CALL_RE.fullmatch(target):
-                    self._output('Use SP CALLSIGN, e.g. SP OK1ABC-7.')
-                else:
-                    link.to=target
-                    link.stage='subject'
-                    self._output(f'Sending to {target}. Enter subject (1-50 chars):')
-                    return
+            target='ALL' if cmd=='SB' else cmd[3:].strip()
+            if target!='ALL' and not CALL_RE.fullmatch(target):
+                self._output('Use SP CALLSIGN, e.g. SP OK1ABC-7.')
+            elif self._begin_message(target):return
         else:
             self._output('Unknown command. Type H.')
         self._prompt()
@@ -452,7 +561,9 @@ class AX25PBBS:
         if (category.startswith('bbs_') and
                 category.rsplit(':',1)[-1]==str(self.epoch)):
             self.counters['tx_errors']+=1
-            self.stop()  # fail closed: retry only after explicit admin activation
+            self.last_error='KISS write failed'
+            self.stop()
+            self.last_disconnect='tnc_error'
 
     def tick(self, send):
         if not self.active or self.session is None:return
@@ -460,12 +571,14 @@ class AX25PBBS:
         now=self.clock()
         if now-link.last>=self.config['idle_seconds']:
             self.counters['idle_timeouts']+=1
+            self.last_disconnect='idle_timeout'
             self.session=None
             self.epoch+=1
             return
         if link.waiting_ua:return
         if link.disc_sent is not None:
             if now-link.disc_sent>20:
+                self.last_disconnect='disconnect_timeout'
                 self.session=None
                 self.epoch+=1
             return
@@ -474,6 +587,7 @@ class AX25PBBS:
             if not out['queued'] and now-out['last']>=T1:
                 if out['retries']>=N2:
                     self.counters['retry_timeouts']+=1
+                    self.last_disconnect='ack_timeout'
                     self.session=None
                     self.epoch+=1
                 elif self._send(send,link.remote,out['ctrl'],out['payload'],
@@ -495,8 +609,8 @@ class AX25PBBS:
             if self._control(send,link.remote,0x53):
                 link.disc_sent=now
 
-    def snapshot(self):
-        count,items=self.store.admin_list(limit=50)
+    def snapshot(self, offset=0, limit=50):
+        count,items=self.store.admin_list(limit=limit,offset=offset)
         link=self.session
         return {
             'active':self.active, 'call':self.config['call'],
@@ -507,6 +621,10 @@ class AX25PBBS:
             'mail_count':count, 'messages':items, 'stats':dict(self.counters),
             'max_tx_per_minute':self.config['max_tx_per_minute'],
             'allow_posts':self.config['allow_posts'],
-            'last_error':self.last_error,
+            'last_error':self.last_error, 'last_disconnect':self.last_disconnect,
+            'page_offset':offset, 'page_size':limit,
+            'idle_seconds':round(max(0,self.clock()-link.last),1) if link else 0,
+            'retries':link.unacked['retries'] if link and link.unacked else 0,
+            'remote_busy':bool(link and link.remote_busy),
             'capabilities':'AX.25 v2.0 SABM, direct-only, modulo-8 stop-and-wait, ASCII'
         }

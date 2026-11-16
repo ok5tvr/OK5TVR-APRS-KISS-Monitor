@@ -242,7 +242,13 @@ class WebPanel:
                     elif parsed.path == '/bbs':
                         self._respond(200, BBS_HTML, 'text/html; charset=utf-8')
                     elif parsed.path == '/api/bbs':
-                        self._respond(200, json.dumps(operator.bbs_snapshot(), ensure_ascii=False))
+                        try:
+                            offset=int(parse_qs(parsed.query).get('offset',['0'])[0])
+                            if not 0<=offset<=2000:raise ValueError()
+                        except ValueError:
+                            self._respond(400, '{"error":"Invalid BBS page offset"}')
+                            return
+                        self._respond(200, json.dumps(operator.bbs_snapshot(offset=offset), ensure_ascii=False))
                     else:
                         self._respond(200, json.dumps(operator.public_config(), ensure_ascii=False))
                     return

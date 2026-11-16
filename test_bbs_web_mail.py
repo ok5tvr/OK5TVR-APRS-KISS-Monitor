@@ -14,7 +14,8 @@ class BBSWebMailTests(unittest.TestCase):
         harness = r'''
         const assert=require('node:assert/strict'),vm=require('node:vm');
         class Element {
-          constructor(){this.textContent='';this.children=[];this.listeners={};}
+          constructor(){this.textContent='';this.value='';this.children=[];this.listeners={};}
+          focus(){}
           appendChild(child){this.children.push(child);}
           replaceChildren(...children){this.children=children;}
           addEventListener(name,listener){this.listeners[name]=listener;}
@@ -25,14 +26,15 @@ class BBSWebMailTests(unittest.TestCase):
         const requests=[];
         const context={document:{getElementById:element,createElement:()=>new Element()},
           window:{OK5TVRLocale:{language:'en',tr:text=>text==='Smazat'?'Delete':text},addEventListener:()=>{}},
-          URLSearchParams,location:{search:''},confirm:()=>true,setInterval:()=>{},console,
+          URLSearchParams,AbortController,setTimeout,clearTimeout,location:{search:''},confirm:()=>true,setInterval:()=>{},console,
           fetch:async(path,options)=>{
             if(options && options.method==='POST'){
-              requests.push(JSON.parse(options.body));mail=[];
-              return {ok:true,json:async()=>({ok:true,result:{deleted:true}})};
+              const action=JSON.parse(options.body);requests.push(action);
+              if(action.action==='bbs_delete')mail=[];
+              return {ok:true,json:async()=>({ok:true,result:{deleted:true,id:2}})};
             }
             return {ok:true,json:async()=>path==='/api/config'?{bbs:{}}:
-              {active:false,mail_count:mail.length,messages:mail}};
+              {active:false,call:'OK5TVR-8',mail_count:mail.length,messages:mail}};
           }};
         (async()=>{
           vm.runInNewContext(SOURCE,context);
@@ -48,6 +50,22 @@ class BBSWebMailTests(unittest.TestCase):
           assert.deepEqual(requests[0],{action:'bbs_delete',id:1,confirm:true});
           assert.equal(element('messages').children.length,0,'Deletion refresh must remove the row');
           assert.equal(element('err').textContent,'');
+          // Reply opens an unsent draft. Refreshes must preserve it.
+          rows[0].children[6].children[1].listeners.click();
+          assert.equal(element('mail-to').value,'OK1ABC-7');
+          assert.equal(element('mail-to').disabled,true);
+          assert.equal(element('mail-subject').value,'Re: Test');
+          element('mail-body').value='Reply from sysop';
+          await element('compose').listeners.submit({preventDefault(){}});
+          assert.equal(requests[1].action,'bbs_post');
+          assert.equal(requests[1].reply_to,1);
+          assert.equal(requests[1].body,'Reply from sysop');
+          assert.equal(element('mail-body').value,'');
+          element('mail-to').value='OK1ABC-7';
+          element('mail-subject').value='Test';
+          element('mail-body').value='Příliš';
+          await element('compose').listeners.submit({preventDefault(){}});
+          assert.equal(requests.length,2,'Non-ASCII body must not be submitted');
         })().catch(error=>{console.error(error);process.exitCode=1;});
         '''
         import json

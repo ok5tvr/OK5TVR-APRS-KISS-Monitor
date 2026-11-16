@@ -22,6 +22,7 @@ button:disabled{opacity:.48;cursor:not-allowed}
 .scroll{overflow:auto;max-height:420px}table{width:100%;border-collapse:collapse;font-size:12px}
 td,th{text-align:left;border-bottom:1px solid #2c4a64;padding:8px}
 pre{white-space:pre-wrap;word-break:break-word;font-size:12px}
+#messages td:nth-child(6){white-space:pre-wrap;min-width:220px;max-width:520px;overflow-wrap:anywhere}
 #notice{min-height:26px;color:#ffd18a}#err{color:#ff9fa3}
 </style><link rel="stylesheet" href="/assets/web_theme.css?v=25">
 </head><body>
@@ -40,9 +41,10 @@ Zvol vhodný packet-radio kmitočet a ověř nastavení svého TNC.</strong></p>
 </div>
 <div><button id="activate" class="primary">Zapnout BBS (RF TX)</button>
 <button id="deactivate" class="danger">Vypnout BBS</button>
-<button id="refresh">Obnovit stav</button></div>
+<button id="refresh">Obnovit stav</button><button id="disconnect">Odpojit stanici</button></div>
 <p class="hint">BBS se po spuštění nebo výpadku KISS automaticky nezapne. Přijímá
 maximálně jedno AX.25 spojení, nepřeposílá poštu do APRS-IS a nepouští žádné systémové příkazy.</p>
+<div class="hint" id="link-details"></div>
 <div id="notice" role="status"></div><div id="err" role="alert"></div>
 </section>
 <section><h2>Nastavení osobní BBS</h2>
@@ -66,14 +68,26 @@ Zprávy v BBS nejsou soukromé; sysop může číst všechny.</p></div>
 <pre id="bbs-commands-cs">H                 pomoc
 L                 veřejné a vlastní zprávy
 LM                jen vlastní zprávy
-R 12              číst zprávu číslo 12
+L 2 / LM 2 / LN 2 další stránky pošty
+LN                nepřečtené zprávy (* = nepřečtená)
+N                 další stránka předchozího výpisu
+R 12              číst celou zprávu číslo 12
+RE 12             odpovědět na zprávu 12
+K 12 YES          smazat vlastní zprávu 12
+/ABORT            zrušit rozepsanou zprávu
 SP OK1ABC-7       nová osobní zpráva
 SB                veřejný bulletin
 Q                 odpojit se</pre>
 <pre id="bbs-commands-en" hidden>H                 help
 L                 list public and my messages
 LM                my messages only
-R 12              read message number 12
+L 2 / LM 2 / LN 2 further mail pages
+LN                unread messages (* = unread)
+N                 next page of previous listing
+R 12              read full message number 12
+RE 12             reply to message 12
+K 12 YES          delete own message 12
+/ABORT            cancel current draft
 SP OK1ABC-7       write personal message
 SB                write public bulletin
 Q                 disconnect</pre>
@@ -81,9 +95,20 @@ Q                 disconnect</pre>
 samostatný řádek <code>/EX</code> zprávu uloží. Maximum 800 ASCII znaků.
 Jedno spojení může uložit maximálně 3 zprávy.</p>
 </section>
+<section id="compose-section"><h2>Nová zpráva / odpověď</h2>
+<p class="hint">Pošta se uloží do místní BBS. Adresát si ji vyzvedne připojením přes RF; uložení samo nespouští vysílání.</p>
+<form id="compose">
+<label for="mail-to">Adresát / SSID (ALL = bulletin)</label><input id="mail-to" maxlength="9" placeholder="OK1ABC-7" required autocomplete="off" spellcheck="false">
+<label for="mail-subject">Předmět (1–50 ASCII znaků)</label><input id="mail-subject" maxlength="50" required spellcheck="false">
+<label for="mail-body">Text (1–800 ASCII znaků)</label><textarea id="mail-body" maxlength="800" rows="5" required spellcheck="false"></textarea>
+<div class="hint" id="draft-info" role="status"></div>
+<button id="mail-save" class="primary" type="submit">Uložit do BBS</button><button id="draft-cancel" type="button">Zrušit koncept</button>
+</form></section>
 <section><h2>Uložené zprávy / správa sysop</h2>
-<div class="scroll"><table><thead><tr><th>ID</th><th>UTC</th><th>Od</th><th>Komu</th><th>Předmět</th><th>Text</th><th>Akce</th></tr></thead>
+<div><button id="mail-prev">Předchozí stránka</button><span id="mail-page" class="hint"></span><button id="mail-next">Další stránka</button></div>
+<div class="scroll"><table><thead><tr><th>ID</th><th>UTC</th><th>Od</th><th>Komu</th><th>Předmět</th><th>Text</th><th>Akce</th><th>Přečteno adresátem</th></tr></thead>
 <tbody id="messages"></tbody></table></div>
+<p class="hint">Příznak přečtení znamená vyžádání zprávy příkazem R, nikoli potvrzení jejího úplného RF doručení.</p>
 <p class="hint">Obsah pošty je z bezpečnostních důvodů přístupný jen přihlášenému správci webu.
 Adresáti jej mohou číst přes RF, nikoli veřejné HTTP API.</p>
 </section>
@@ -94,12 +119,39 @@ const $=id=>document.getElementById(id);
 const tr=value=>window.OK5TVRLocale.tr(value);
 const key=new URLSearchParams(location.search).get("admin")||"";
 const auth=path=>path+(key?(path.includes("?")?"&":"?")+"admin="+encodeURIComponent(key):"");
-let everLoaded=false, busy=false, current=null;
+let everLoaded=false, busy=false, current=null, mailOffset=0, replyId=null, saving=false;
 function note(text,error=false){$(error?"err":"notice").textContent=tr(String(text));}
+function disconnectReason(code){
+ const reasons={not_connected:"Dosud nepřipojeno",operator_stop:"Zastaveno správcem nebo změnou nastavení",
+  remote_disconnect:"Odpojeno protistanicí",remote_dm:"Protistanice ukončila spojení (DM)",
+  local_disconnect:"Místní odpojení potvrzeno",tnc_error:"Chyba zápisu do KISS TNC",
+  idle_timeout:"Vypršel čas nečinnosti",disconnect_timeout:"Vypršel čas potvrzení odpojení",
+  ack_timeout:"Vypršel čas potvrzení AX.25"};
+ return tr(reasons[code]||code||"—");
+}
+function updateDraftInfo(){
+ $("draft-info").textContent=(replyId?tr("Odpověď na zprávu #")+replyId+" · ":"")+$("mail-body").value.length+" / 800";
+}
+function clearDraft(){
+ replyId=null;$("mail-to").value="";$("mail-subject").value="";$("mail-body").value="";
+ $("mail-to").disabled=false;updateDraftInfo();
+}
+function replyTo(mail){
+ if(saving)return;
+ if(($("mail-body").value||$("mail-subject").value) && !confirm(tr("Nahradit rozepsaný koncept?")))return;
+ replyId=mail.id;
+ $("mail-to").value=mail.sender===current.call?mail.recipient:mail.sender;
+ $("mail-to").disabled=true;
+ $("mail-subject").value=(/^re:/i.test(mail.subject)?mail.subject:"Re: "+mail.subject).slice(0,50);
+ $("mail-body").value="";updateDraftInfo();$("mail-body").focus();
+}
 async function api(path){
- const r=await fetch(auth(path),{cache:"no-store"});
- if(!r.ok)throw Error("GET "+path+" HTTP "+r.status);
- return r.json();
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+ try{
+  const r=await fetch(auth(path),{cache:"no-store",signal:controller.signal});
+  if(!r.ok)throw Error("GET "+path+" HTTP "+r.status);
+  return await r.json();
+ }finally{clearTimeout(timer);}
 }
 async function command(action,args={}){
  const r=await fetch(auth("/api/control"),{method:"POST",
@@ -113,11 +165,24 @@ async function load(){
  if(busy)return;
  busy=true;
  try{
-  const [cfg,rt]=await Promise.all([api("/api/config"),api("/api/bbs")]);
+  const [cfg,rt]=await Promise.all([api("/api/config"),api("/api/bbs?offset="+mailOffset)]);
+  if(mailOffset>0 && !(rt.messages||[]).length){
+   mailOffset=Math.max(0,Math.floor(Math.max(0,rt.mail_count-1)/50)*50);
+   busy=false;return await load();
+  }
   current=rt;
   put("state",tr(rt.active?"ZAPNUTO":"VYPNUTO"));put("call",rt.call||tr("Nenastaveno"));
   put("remote",rt.remote||"—");put("count",rt.mail_count);
   put("waiting",tr(rt.waiting_ack?"Ano":"Ne"));
+  $("err").textContent="";
+  $("disconnect").disabled=!rt.connected;
+  $("link-details").textContent=tr("Fronta znaků: ")+(rt.queued_chars||0)+" · "+tr("Opakování: ")+(rt.retries||0)+
+    " · "+tr("Nečinnost (s): ")+(rt.idle_seconds||0)+" · "+tr("Protistanice zaneprázdněna: ")+tr(rt.remote_busy?"Ano":"Ne")+
+    " · "+tr("Poslední odpojení: ")+disconnectReason(rt.last_disconnect)+
+    " · "+tr("Chyby zápisu: ")+((rt.stats||{}).tx_errors||0);
+  $("mail-prev").disabled=mailOffset===0;
+  $("mail-next").disabled=mailOffset+50>=rt.mail_count;
+  $("mail-page").textContent=(rt.mail_count?mailOffset+1:0)+"–"+Math.min(mailOffset+50,rt.mail_count)+" / "+rt.mail_count;
   $("activate").disabled=rt.active;
   $("deactivate").disabled=!rt.active;
   if(!everLoaded){
@@ -137,21 +202,57 @@ async function load(){
     const td=document.createElement("td");td.textContent=String(value??"");
     row.appendChild(td);
    }
-   const cell=document.createElement("td"),btn=document.createElement("button");
+   const cell=document.createElement("td"),btn=document.createElement("button");btn.className="danger";
    btn.textContent=tr("Smazat");
    btn.addEventListener("click",async()=>{
     if(!confirm(tr("Opravdu smazat zprávu #")+m.id+"?"))return;
     try{await command("bbs_delete",{id:m.id,confirm:true});note("Zpráva smazána.");await load();}
     catch(e){note(String(e),true);}
    });
-   cell.appendChild(btn);row.appendChild(cell);$("messages").appendChild(row);
+   const reply=document.createElement("button");reply.textContent=tr("Odpovědět");
+   reply.addEventListener("click",()=>replyTo(m));
+   cell.appendChild(btn);cell.appendChild(reply);row.appendChild(cell);
+   const status=document.createElement("td");status.textContent=m.recipient==='ALL'?"—":tr(m.recipient_read?"Ano":"Ne");
+   row.appendChild(status);$("messages").appendChild(row);
   }
-  note(""); 
+  // Preserve action feedback until the next explicit operation.
  }catch(e){
   note(tr("Nelze načíst BBS: ")+e.message,true);
   $("activate").disabled=true;
  }finally{busy=false;}
 }
+$("mail-prev").onclick=()=>{if(!busy){mailOffset=Math.max(0,mailOffset-50);load();}};
+$("mail-next").onclick=()=>{if(!busy&&current&&mailOffset+50<current.mail_count){mailOffset+=50;load();}};
+$("mail-body").addEventListener("input",updateDraftInfo);
+$("draft-cancel").onclick=()=>{
+ if(saving)return;
+ if(($("mail-body").value||$("mail-subject").value) && !confirm(tr("Zrušit rozepsaný koncept?")))return;
+ clearDraft();
+};
+$("compose").addEventListener("submit",async event=>{
+ event.preventDefault();if(saving)return;
+ const recipient=$("mail-to").value.trim().toUpperCase(),subject=$("mail-subject").value.trim(),body=$("mail-body").value;
+ if(!/^(?:ALL|[A-Z0-9]{3,6}(?:-(?:[1-9]|1[0-5]))?)$/.test(recipient)){
+  note("Zadej platnou značku včetně SSID nebo ALL.",true);return;
+ }
+ if(!subject||!body.trim()||subject.length>50||body.length>800||!/^[\x20-\x7e]+$/.test(subject)||!/^[\x20-\x7e\r\n]+$/.test(body)){
+  note("Použij ASCII text: předmět 1–50 znaků a tělo 1–800 znaků.",true);return;
+ }
+ if(!confirm(tr("Uložit zprávu do místní BBS? RF vysílání se tím nespustí.")))return;
+ saving=true;$("mail-save").disabled=true;
+ for(const id of ["mail-to","mail-subject","mail-body"])$(id).disabled=true;
+ try{
+  const result=await command("bbs_post",{recipient,subject,body,reply_to:replyId,confirm:true});
+  clearDraft();mailOffset=0;note(tr("Zpráva uložena pod číslem #")+result.id);await load();
+ }catch(e){note(e.message,true);}
+ finally{saving=false;$("mail-save").disabled=false;
+  for(const id of ["mail-to","mail-subject","mail-body"])$(id).disabled=id==="mail-to"&&replyId!==null;
+ }
+});
+$("disconnect").onclick=async()=>{
+ if(!confirm(tr("Odpojit aktuální BBS stanici?")))return;
+ try{note(await command("bbs_disconnect",{confirm:true}));await load();}catch(e){note(e.message,true);}
+};
 $("save").onclick=async()=>{
  const bbs={call:$("bbs-call").value.trim().toUpperCase(),
   welcome:$("bbs-welcome").value.trim(),
@@ -180,13 +281,13 @@ function updateHelpLanguage(){
  $("bbs-commands-cs").hidden=english;
 }
 window.addEventListener("ok5tvr:language",()=>{
- updateHelpLanguage();
+ updateHelpLanguage();updateDraftInfo();
  if(current){
   put("state",tr(current.active?"ZAPNUTO":"VYPNUTO"));
   put("call",current.call||tr("Nenastaveno"));
   put("waiting",tr(current.waiting_ack?"Ano":"Ne"));
-  $("messages").querySelectorAll("button").forEach(b=>b.textContent=tr("Smazat"));
+  load();
  }
 });
-updateHelpLanguage();load();setInterval(load,8000);
+updateHelpLanguage();updateDraftInfo();load();setInterval(load,8000);
 </script></body></html>

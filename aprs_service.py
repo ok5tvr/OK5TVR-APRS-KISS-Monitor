@@ -174,8 +174,8 @@ class APRSService:
         result = self.config.public_view()
         return result
 
-    def bbs_snapshot(self):
-        return self.bbs.snapshot()
+    def bbs_snapshot(self, offset=0):
+        return self.bbs.snapshot(offset=offset)
 
     def _bbs_stop(self):
         self.bbs.stop()
@@ -373,6 +373,33 @@ class APRSService:
             self._bbs_stop()
             self.journal.log('BBS','disabled')
             return 'AX.25 PBBS vypnuta, čekající RF BBS rámce se ruší.'
+        if action == 'bbs_post':
+            if data.get('confirm') is not True:
+                raise ValueError('Confirm storing BBS mail')
+            sender=self.config.data['bbs']['call']
+            if not sender:
+                raise ValueError('Save a separate BBS callsign first')
+            recipient=data.get('recipient','')
+            subject=data.get('subject','')
+            body=data.get('body','')
+            if not all(isinstance(v,str) for v in (recipient,subject,body)):
+                raise ValueError('BBS recipient, subject and body must be text')
+            if data.get('reply_to') is not None:
+                original=self.bbs.store.admin_get(data['reply_to'])
+                if original is None:
+                    raise ValueError('Original BBS message not found')
+                recipient=original['recipient'] if original['sender']==sender else original['sender']
+            number=self.bbs.store.post(sender,recipient.strip().upper(),subject.strip(),
+                                       body.replace('\r\n','\n').replace('\r','\n'))
+            self.journal.log('BBS','mail_posted',sender,detail=f'Message #{number} stored locally')
+            return {'id':number}
+        if action == 'bbs_disconnect':
+            if data.get('confirm') is not True:
+                raise ValueError('Confirm disconnecting the BBS station')
+            if self.bbs.session is not None:
+                self.bbs._output('Sysop requested disconnect. 73!')
+                self.bbs.session.closing=True
+            return 'Odpojení stanice vyžádáno.'
         if action == 'bbs_delete':
             ident=data.get('id')
             if data.get('confirm') is not True:
