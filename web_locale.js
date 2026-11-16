@@ -295,31 +295,17 @@ function apply(lang) {
   window.dispatchEvent(new Event("ok5tvr:language"));
 }
 function install() {
-  const container = document.querySelector("header") || document.querySelector("nav") || document.querySelector("main");
-  if (!container || document.getElementById("ui-language-choice")) return;
-  const label = document.createElement("label");
-  label.className = "ui-language-selector";
-  label.htmlFor = "ui-language-choice";
-  label.style.cssText = "display:inline-flex;align-items:center;gap:7px;font:600 13px system-ui,sans-serif;white-space:nowrap;margin-left:auto;color:inherit";
-  const caption = document.createElement("span");
-  caption.textContent = "CZ / EN";
-  const select = document.createElement("select");
-  select.id = "ui-language-choice";
-  select.setAttribute("aria-label", "Language / Jazyk");
-  select.style.cssText = "width:auto;min-width:68px;margin:0;padding:6px;background:#24384f;color:#fff;border:1px solid #5c758e;border-radius:7px";
-  [["cs", "CZ"], ["en", "EN"]].forEach(pair => {
-    const opt = document.createElement("option");opt.value = pair[0];opt.textContent = pair[1];select.append(opt);
-  });
-  label.append(caption, select);
-  if (container.tagName === 'MAIN') {
-    const heading = container.querySelector('h1');
-    if (heading) heading.insertAdjacentElement('afterend', label);
-    else container.prepend(label);
-  } else container.append(label);
+  // Language choice is provided only by the application's Settings view.
+  // Standalone pages follow the saved choice, without adding a second,
+  // broken CZ/EN selector to their header.
   capture();
-  select.addEventListener("change", () => apply(select.value));
+  const choice = document.getElementById("ui-language-choice");
+  if (choice) {
+    choice.addEventListener("change", () => apply(choice.value));
+  }
   apply(language);
 }
+
 window.OK5TVRLocale = {tr, get language(){return language}, setLanguage:apply};
 // Loaded just before each page's app script, after the static markup.
 // Capture only its initial UI, never later user-supplied APRS message content.
