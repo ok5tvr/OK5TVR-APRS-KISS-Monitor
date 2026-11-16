@@ -360,6 +360,10 @@ class APRSService:
                 raise ValueError('Primary KISS TNC is not connected')
             if self.digi.enabled or self.isrf.active or self.igate_client is not None:
                 raise ValueError('BBS mode requires DIGI, iGate and IS->RF to be stopped on the primary KISS radio')
+            if self.messages.auto_ack or self.messages.ack_queue or any(
+                    item['status'] in ('queued','usb_queued','waiting_ack')
+                    for item in self.messages.snapshot()['outbox']):
+                raise ValueError('Finish/cancel APRS messages and disable automatic RF ACK before BBS mode')
             self.bbs.start()
             self.reader.bbs_epoch=self.bbs.epoch
             self.reader.bbs_allowed.set()
