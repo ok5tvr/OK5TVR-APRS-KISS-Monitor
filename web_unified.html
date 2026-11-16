@@ -88,6 +88,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <button type="button" data-tab="rx" role="tab" aria-selected="true" data-cs="Příjem / TX" data-en="Receive / TX">Příjem / TX</button>
   <button type="button" data-tab="map" role="tab" aria-selected="false" data-cs="Mapa" data-en="Map">Mapa</button>
   <button type="button" data-tab="heard" role="tab" aria-selected="false" data-cs="Mapa doslechu" data-en="RF Heard Map">Mapa doslechu</button>
+  <button type="button" data-tab="bbs" role="tab" aria-selected="false" data-cs="AX.25 BBS" data-en="AX.25 BBS">AX.25 BBS</button>
   <button type="button" data-tab="messages" role="tab" aria-selected="false" data-cs="Zprávy" data-en="Messages">Zprávy</button>
   <button type="button" data-tab="chat2" role="tab" aria-selected="false" data-cs="Konverzace / bulletiny" data-en="Conversations / Bulletins">Konverzace / bulletiny</button>
   <button type="button" data-tab="objects" role="tab" aria-selected="false" data-cs="Objekty" data-en="Objects">Objekty</button>
@@ -123,6 +124,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <button class="home-link" data-open="chat2"><strong>12 · Konverzace a bulletiny</strong><span>Nepřečtené zprávy, historie konverzací, blokované stanice a APRS bulletiny.</span></button>
     <button class="home-link" data-open="alerts"><strong>13 · Automatická upozornění</strong><span>Výpadky TNC/iGate, sledované stanice, počasí a volitelné MQTT.</span></button>
     <button class="home-link" data-open="igate"><strong>03 · Nastavení</strong><span>iGate, DIGI, USB, GPS, symboly, majáky a připojení k APRS-IS.</span></button>
+    <button class="home-link" data-open="bbs"><strong>14 · Packet Radio BBS</strong><span>AX.25 spojovaná BBS přes primární KISS, SQLite pošta, sysop správa a bezpečné zapínání RF TX.</span></button>
     <button class="home-link" data-open="messages"><strong>04 · Zprávy</strong><span>Inbox, Outbox, potvrzení ACK/REJ a odeslání RF zpráv.</span></button>
     <button class="home-link" data-open="objects"><strong>05 · APRS objekty</strong><span>Správa objektů a ruční vysílání polohových rámců.</span></button>
     <button class="home-link" data-open="telemetry"><strong>06 · Telemetrie</strong><span>Statistiky za posledních 15 minut a nastavení T#.</span></button>
@@ -192,6 +194,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <div class="scroll"><table><thead><tr><th>Stanice</th><th>Přijímač</th><th>DIRECT</th><th>VIA</th><th>km</th><th>Poslední RF příjem</th><th>Cesta</th></tr></thead><tbody id="heard-rows"></tbody></table></div>
   </div>
 </section>
+<section class="view" id="tab-bbs" hidden></section>
 <section class="view" id="tab-messages" hidden></section>
 <section class="view" id="tab-chat2" hidden>
   <div class="panel">
@@ -410,9 +413,9 @@ const tr = (cs,en) => language === "en" ? en : cs;
 let language = window.OK5TVRLocale ? window.OK5TVRLocale.language : "cs";
 let currentTab = "rx", lastState = {}, lastDiagnostics = {}, rxHistory = [];
 let rxSignature = "", selectedFrame = null, configLoaded = false, pollBusy = false;
-const tabIds = ["home","rx","map","heard","messages","chat2","objects","igate","telemetry","diagnostics","alerts","tnc","weather","isrf"];
+const tabIds = ["home","rx","map","heard","bbs","messages","chat2","objects","igate","telemetry","diagnostics","alerts","tnc","weather","isrf"];
 const destinations = {
-  map:"/map", heard:"/map?heard=1", messages:"/messages", objects:"/operations",
+  map:"/map", heard:"/map?heard=1", bbs:"/bbs", messages:"/messages", objects:"/operations",
   igate:"/control", diagnostics:"/operations"
 };
 const auth = path => key ? path + (path.includes("?") ? "&" : "?") + "admin=" + encodeURIComponent(key) : path;
