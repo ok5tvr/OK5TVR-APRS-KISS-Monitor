@@ -213,8 +213,8 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <div class="metric-list heard-metrics">
       <div class="metric"><span data-cs="Unikátní stanice" data-en="Unique stations">Unikátní stanice</span><strong id="heard-stations-count">0</strong></div>
       <div class="metric"><span data-cs="Slyšené přímo" data-en="Heard directly">Slyšené přímo</span><strong id="heard-direct-count">0</strong></div>
-      <div class="metric"><span data-cs="Pakety DIRECT" data-en="DIRECT packets">Pakety DIRECT</span><strong id="heard-direct-packets">0</strong></div>
-      <div class="metric"><span data-cs="Pakety VIA" data-en="VIA packets">Pakety VIA</span><strong id="heard-via-packets">0</strong></div>
+      <div class="metric"><span data-cs="Poziční rámce DIRECT" data-en="DIRECT position packets">Poziční rámce DIRECT</span><strong id="heard-direct-packets">0</strong></div>
+      <div class="metric"><span data-cs="Poziční rámce VIA" data-en="VIA position packets">Poziční rámce VIA</span><strong id="heard-via-packets">0</strong></div>
       <div class="metric"><span data-cs="Nejvzdálenější GPS" data-en="Farthest reported GPS">Nejvzdálenější GPS</span><strong id="heard-dx-km">—</strong></div>
     </div>
   </div>
@@ -1155,7 +1155,7 @@ async function loadHeard(forceMapRefresh=false){
      .filter(x=>Number(x.direct_packets)>0).map(x=>x.source)).size;
   const directPackets=lastHeardRows.reduce((n,x)=>n+Number(x.direct_packets||0),0);
   const viaPackets=lastHeardRows.reduce((n,x)=>n+Number(x.via_packets||0),0);
-  const km=lastHeardRows.map(x=>Number(x.distance_km))
+  const km=lastHeardRows.map(x=>x.distance_km==null?NaN:Number(x.distance_km))
     .filter(x=>Number.isFinite(x)&&x>=0);
   const maxDistance=km.length?Math.max(...km):null;
   const numeric=n=>Number(n||0).toLocaleString(language==="en"?"en-GB":"cs-CZ");
