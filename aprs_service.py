@@ -358,6 +358,8 @@ class APRSService:
                 raise ValueError('Confirm real RF TX and a suitable dedicated packet-radio channel')
             if not self.radio_ready or self.reader is None:
                 raise ValueError('Primary KISS TNC is not connected')
+            if self.digi.enabled or self.isrf.active or self.igate_client is not None:
+                raise ValueError('BBS mode requires DIGI, iGate and IS->RF to be stopped on the primary KISS radio')
             self.bbs.start()
             self.reader.bbs_epoch=self.bbs.epoch
             self.reader.bbs_allowed.set()
