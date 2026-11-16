@@ -93,7 +93,7 @@ async function api(path){
 }
 async function command(action,args={}){
  const r=await fetch(auth("/api/control"),{method:"POST",
-  headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...args})});
+  headers:{"Content-Type":"application/json","X-APRS-Admin":key,"X-APRS-CSRF":"1"},body:JSON.stringify({action,...args})});
  const data=await r.json();
  if(!r.ok||!data.ok)throw Error(data.error||"HTTP "+r.status);
  return data.result;
