@@ -179,7 +179,7 @@ class APRSService:
 
     def _bbs_stop(self):
         self.bbs.stop()
-        if self.reader:
+        if self.reader and hasattr(self.reader,'bbs_allowed'):
             self.reader.bbs_allowed.clear()
             self.reader.bbs_epoch=-1
 
