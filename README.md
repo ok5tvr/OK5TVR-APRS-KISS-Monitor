@@ -6,6 +6,47 @@ Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplika
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
 
+## v2.4 dev – AX.25 connected-mode Packet BBS (PBBS) přes KISS TNC
+
+Rozšíření pro **klasické spojované packet radio**, nikoliv klasické APRS zprávy. Bez DSP/AFSK modemu: rádio/externí KISS TNC obstarává modulaci a FCS; software implementuje omezenou AX.25 modulo-8 stop-and-wait linkovou vrstvu (SABM/UA, I/PID F0, RR/RNR/REJ, DISC/DM), textovou osobní poštovní schránku a samostatnou webovou správu.
+
+**Co umí:**
+- Samostatná BBS značka (např. `OK5TVR-8`) **odlišná od** iGate/DIGI SSID.
+- Jedno AX.25 RF spojení najednou, DIRECT bez DIGI cesty, okno 1, max. 96 ASCII bytů na I-rámec, potvrzování a omezený retry.
+- Textové příkazy vzdáleného uživatele: `H`, `I`, `L`, `LM`, `R <id>`, `SP <CALL>`, `SB`, `Q`.
+- Psaní osobních zpráv a bulletinů řádky ukončenými `/EX`, až 800 ASCII znaků / zpráva, 3 nové zprávy na spojení, nejvýše 50–2000 uložených příspěvků.
+- SQLite `bbs.sqlite3` s WAL/NORMAL, oddělené od APRS Inboxu a APRS historie, s automatickou regulací kapacity; uživatel může číst své/veřejné zprávy, webový správce všechny a může je mazat.
+- Nová karta **AX.25 BBS** ve sjednoceném webu; nastavení SSID, uvítání, idle timeoutu, TX/min, povolení příspěvků, aktuální spojení a správa pošty.
+- Bezpečné RF TX: **výchozí vypnuto**; po výpadku TNC, restartu nebo změně konfigurace se oprávnění nepřenáší. Správce musí výslovně potvrdit zapnutí **a vhodný samostatný packet-radio kanál**. Nelze zapnout při současném DIGI/iGate/IS→RF na jednom primárním TNC. Primární KISS TX fronta a omezení se sdílí s ostatními funkcemi; BBS má samostatný limit.
+- Už čekající PBBS pakety se při vypnutí nebo změně AX.25 spojení zablokují pomocí epochy. Nezapíná automaticky DIGI, zprávy ani IS→RF a **nepřeposílá** BBS poštu do internetu.
+
+**Předpoklady:** skutečné rádio/TNC musí propouštět **libovolné AX.25 KISS rámce** (nikoliv jen APRS UI). Toto musí být prakticky ověřeno s UV-K1(8) F4HWN KISS firmware; úspěšný zápis do USB nezaručuje odvysílání/ACK. Pro první test použij samostatný packet-radio kmitočet vhodný pro dané pásmo a lokalitu, zkontroluj vysílací oprávnění a připoj druhé AX.25 klientské rádio. **Na standardní evropské APRS frekvenci 144,800 MHz klasickou spojovanou BBS neprovozuj.**
+
+Webovou kartu otevři v `http://IP_RASPBERRY:8765/` → `AX.25 BBS`. Nejdříve **ulož SSID**, ponech DIGI a iGate vypnuté, teprve potom výslovně povol BBS. Na druhé stanici se připoj AX.25 terminálem na `OK5TVR-8`. Vzor interakce:
+
+```
+H
+L
+SP OK1ABC-7
+Zdravim z packet radia
+Kratka zprava pro protistanici.
+/EX
+Q
+```
+
+BBS používá amatérské veřejné radiové vysílání; volací značka RF protistanice není ověřená jako přihlášení. **Žádné heslo, soubory ani citlivé informace** se přes BBS neposílají. Nejde o plnohodnotnou síťovou FBB/BPQ BBS (žádné BBS forwardování, routing, extended modulo-128 nebo přílohy), pouze lehkou lokální PBBS vhodnou pro Raspberry Pi 2.
+
+**Instalace z vývojové větve:**
+
+```bash
+git clone --depth 1 -b feature/ax25-pbbs-v24 \
+  https://github.com/ok5tvr/OK5TVR-APRS-KISS-Monitor.git ~/OK5TVR-APRS-v24
+cd ~/OK5TVR-APRS-v24
+sh install_raspberry.sh --lan
+```
+
+Před instalací zastav službu a zálohuj celé `~/.config/ok5tvr-aprs`; pokud systém hlásí **Input/output error** z microSD, instalaci **nespouštěj**, nejdříve řeš poškozené úložiště. Automatické testy kontrolují typické řídicí rámce a administrátorskou autentizaci; provozní kompatibilitu konkrétního TNC s AX.25 spojením je nutné ověřit na RF.
+
 ## v2.3 – APRS TNC Command Center: šest rozšíření (vývojová větev)
 
 Tato větev zahrnuje v2.2 (selektivní APRS-IS → RF) a přidává **šest nových oblastí**. Stále žádný DSP/AFSK modem; pouze externí sériová/USB nebo TCP KISS TNC. Kód je určen k automatickému i praktickému ověření na Windows a Raspberry Pi 2.
