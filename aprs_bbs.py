@@ -449,7 +449,8 @@ class AX25PBBS:
             link.unacked['last']=self.clock()
 
     def on_tx_error(self, category):
-        if category.startswith('bbs_'):
+        if (category.startswith('bbs_') and
+                category.rsplit(':',1)[-1]==str(self.epoch)):
             self.counters['tx_errors']+=1
             self.stop()  # fail closed: retry only after explicit admin activation
 
