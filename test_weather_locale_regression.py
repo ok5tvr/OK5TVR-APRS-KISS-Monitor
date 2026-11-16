@@ -67,7 +67,7 @@ const document = {
 };
 const context = {
   document,Node:{TEXT_NODE:3},window:{OK5TVRLocale:{setLanguage(){}}},
-  destinations:{},$:id=>id==='language' ? languageSelect : null,
+  destinations:{},$:id=>id==='ui-language-choice' ? languageSelect : null,
   language:'cs'
 };
 vm.createContext(context);
