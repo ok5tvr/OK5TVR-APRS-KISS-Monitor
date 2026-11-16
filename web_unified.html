@@ -1037,26 +1037,54 @@ async function loadIsrfRules(){
   $("isrf-dup").value=cfg.duplicate_seconds;
  }catch(e){notice("isrf-message","ERROR: "+e.message);}
 }
+const isrfReasons={
+ invalid_packet:["Neplatný rámec","Invalid packet"],
+ preview_only:["Pouze náhled (bez TX)","Preview only (no TX)"],
+ queued_usb_not_rf_proof:["Zařazeno do USB – RF nepotvrzeno","Queued to USB – RF unverified"],
+ sender_not_selected:["Nepovolená značka","Sender not selected"],
+ object_not_selected:["Nepovolený objekt","Object not selected"],
+ type_not_selected:["Nepovolený typ paketu","Packet type not selected"],
+ sender_already_on_rf:["Zdroj již slyšen na RF","Sender already heard on RF"],
+ recipient_not_heard_direct:["Adresát nebyl slyšen přímo","Recipient not heard directly"],
+ recipient_available_via_internet:["Adresát dostupný přes internet","Recipient available via Internet"],
+ not_individual_message:["Nejde o osobní zprávu","Not an individual message"],
+ loop_own_igate:["Zabráněno smyčce iGate","IGate loop prevented"],
+ blocked_path:["Zakázaná APRS cesta","Blocked APRS path"],
+ duplicate:["Duplicitní paket","Duplicate packet"],
+ min_gap:["Minimální odstup TX","Minimum TX gap"],
+ minute_limit:["Minutový limit TX","Per-minute TX limit"],
+ hour_limit:["Hodinový limit TX","Per-hour TX limit"],
+ invalid_rf_wrapper:["Neplatné RF zapouzdření","Invalid RF wrapper"],
+ rf_frame_too_long:["Příliš dlouhý RF rámec","RF frame too long"],
+ transport_offline:["TNC nebo APRS-IS offline","TNC or APRS-IS offline"],
+ tnc_tx_queue_full:["Plná RF TX fronta","RF TX queue full"]
+};
+const isrfReason=k=>isrfReasons[k]?tr(...isrfReasons[k]):k;
 async function refreshIsrf(){
  try{
   const d=await get("/api/diagnostics"),g=d.is_to_rf||{};
-  const counters=g.counters||{};
+  const counters=g.counters||{},limits=g.limits||{};
   $("isrf-status").textContent=
-   "IS → RF: "+(g.active?"ZAPNUTO – RF TX povolen":"VYPNUTO – pouze náhled")+
-   "\nAPRS-IS: "+(d.igate_connected?"online":"offline")+
-   " | USB/TCP TNC: "+(d.radio_connected?"online":"offline")+
-   " | IS příjem: "+(d.aprsis_received_lines||0)+
-   " | Zahozeno na IS socketu: "+(d.aprsis_rx_dropped||0)+
-   "\nServer filter: "+(g.filter||"žádný; jen výchozí zprávy")+
-   "\nTX v této minutě: "+(g.sent_this_minute||0)+"/"+(g.limits?.per_minute||0)+
-   " | za hodinu: "+(g.sent_this_hour||0)+"/"+(g.limits?.per_hour||0)+
-   "\nSlyšeno DIRECT na RF: "+(g.rf_heard_direct_recent||[]).slice(0,20).join(", ")+
-   "\nRozhodnutí: "+Object.entries(counters).map(([k,v])=>k+"="+v).join(" · ");
+    "IS → RF: "+(g.active?
+       tr("ZAPNUTO – povoleno RF TX","ON – RF TX permitted"):
+       tr("VYPNUTO – pouze náhled","OFF – preview only"))+
+    "\nAPRS-IS: "+(d.igate_connected?"online":"offline")+
+    " | USB/TCP TNC: "+(d.radio_connected?"online":"offline")+
+    " | "+tr("IS příjem: ","IS received: ")+(d.aprsis_received_lines||0)+
+    " | "+tr("Zahozena na IS: ","IS dropped: ")+(d.aprsis_rx_dropped||0)+
+    "\n"+tr("Filtr serveru: ","Server filter: ")+(g.filter||tr("žádný","none"))+
+    "\n"+tr("TX v minutě: ","TX this minute: ")+(g.sent_this_minute||0)+"/"+(limits.per_minute||0)+
+    " | "+tr("TX za hodinu: ","TX this hour: ")+(g.sent_this_hour||0)+"/"+(limits.per_hour||0)+
+    "\n"+tr("DIRECT stanice na RF: ","DIRECT RF stations: ")+
+       (g.rf_heard_direct_recent||[]).slice(0,20).join(", ")+
+    "\n"+tr("Rozhodnutí: ","Decisions: ")+
+       Object.entries(counters).map(([k,v])=>isrfReason(k)+"="+v).join(" · ");
   const root=$("isrf-rows");root.replaceChildren();
   for(const p of (g.recent||[]).slice(0,45)){
    const row=document.createElement("tr");
-   for(const value of [p.at,p.source,p.target,p.type,p.reason]){
-    const td=document.createElement("td");td.textContent=String(value??"");row.appendChild(td);
+   for(const value of [p.at,p.source,p.target,p.type,isrfReason(p.reason)]){
+    const td=document.createElement("td");td.textContent=String(value??"");
+    row.appendChild(td);
    }
    root.appendChild(row);
   }
@@ -1064,6 +1092,7 @@ async function refreshIsrf(){
   $("isrf-off").disabled=!g.active;
  }catch(e){notice("isrf-message","ERROR: "+e.message);}
 }
+
 $("isrf-save").onclick=async()=>{
  try{
   if(!confirm(tr("Uložit IS→RF filtry? Aktivní iGate bude odpojena a je potřeba ji znovu připojit. IS→RF zůstane vypnuto.",
@@ -1085,8 +1114,9 @@ $("isrf-reload").onclick=async()=>{await loadIsrfRules();await refreshIsrf();};
 $("isrf-test").onclick=async()=>{
  try{
   const result=await command("isrf_check",{line:$("isrf-test-line").value});
-  notice("isrf-test-result",(result.match?"FILTR POVOLUJE":"FILTR ZAMÍTÁ")+
-      " | "+result.reason+" | "+(result.source||"")+" → "+(result.target||""));
+  notice("isrf-test-result",(result.match?
+       tr("FILTR POVOLUJE","FILTER ALLOWS"):tr("FILTR ZAMÍTÁ","FILTER REJECTS"))+
+      " | "+isrfReason(result.reason)+" | "+(result.source||"")+" → "+(result.target||""));
  }catch(e){notice("isrf-test-result","ERROR: "+e.message);}
 };
 let lastHeardRows=[];
