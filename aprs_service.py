@@ -28,6 +28,7 @@ from aprs_serial import SerialReader
 from aprs_tcp import TCPKissReader, TCPKissHub
 from aprs_secondary_tnc import SecondaryTNCManager
 from aprs_alerts import AlertEngine
+from aprs_bbs import AX25PBBS
 from aprs_geo import distance_bearing
 from aprs_archive import APRSArchive
 from aprs_weather import decode_weather
@@ -89,6 +90,7 @@ class APRSService:
         self.gate_cache = {}
         self.isrf = SelectiveISGate(config.data['is_to_rf'], config.data['igate']['call'])
         m = config.data['messages']
+        self.bbs = AX25PBBS(config.path.with_name('bbs.sqlite3'),config.data['bbs'])
         self.messages = MessageManager(config.path.with_name('messages.sqlite3'),
                                       config.data['igate']['call'], m['path'],
                                       m['auto_ack'], m['retry_seconds'], m['max_attempts'],
@@ -172,6 +174,25 @@ class APRSService:
         result = self.config.public_view()
         return result
 
+    def bbs_snapshot(self):
+        return self.bbs.snapshot()
+
+    def _bbs_stop(self):
+        self.bbs.stop()
+        if self.reader:
+            self.reader.bbs_allowed.clear()
+            self.reader.bbs_epoch=-1
+
+    def _bbs_send(self, payload, category):
+        if not self.radio_ready or self.reader is None or not self.bbs.active:
+            return False
+        # New SABM creates a new session epoch; revoke any queued frames
+        # from the previous session before accepting further BBS frames.
+        self.reader.bbs_epoch=self.bbs.epoch
+        if not self.reader.bbs_allowed.is_set():
+            return False
+        return self.reader.send(payload,category=category)
+
     def messages_snapshot(self):
         result = self.messages.snapshot()
         result['default_target'] = self.config.data['messages']['target']
@@ -204,6 +225,7 @@ class APRSService:
             'igate_last_error':self.last_igate_error,
             'igate_enabled':self.igate_client is not None,
             'is_to_rf':self.isrf.snapshot(),
+            'bbs':self.bbs.snapshot(),
             'aprsis_received_lines':self.igate_client.received_lines if self.igate_client else 0,
             'aprsis_rx_dropped':self.igate_client.incoming_dropped if self.igate_client else 0,
             'digi':self.digi.snapshot(),
@@ -322,6 +344,34 @@ class APRSService:
 
     def _execute(self, action, data):
         # HDMI panel toggle does not touch USB, DIGI, iGate, RF, or messages.
+        if action == 'bbs_save':
+            settings=data.get('bbs')
+            if type(settings) is not dict:
+                raise ValueError('BBS setting must be an object')
+            self._bbs_stop()
+            self.config.update({'bbs':settings})
+            self.bbs.configure(self.config.data['bbs'])
+            self.journal.log('BBS','config',detail='Saved, PBBS RF TX remains OFF')
+            return 'Nastavení PBBS uloženo. BBS zůstává vypnutá.'
+        if action == 'bbs_on':
+            if data.get('confirm') is not True or data.get('confirm_channel') is not True:
+                raise ValueError('Confirm real RF TX and a suitable dedicated packet-radio channel')
+            if not self.radio_ready or self.reader is None:
+                raise ValueError('Primary KISS TNC is not connected')
+            self.bbs.start()
+            self.reader.bbs_epoch=self.bbs.epoch
+            self.reader.bbs_allowed.set()
+            self.journal.log('BBS','enabled',self.config.data['bbs']['call'])
+            return 'AX.25 PBBS zapnuta na primárním KISS TNC, do restartu/odpojení.'
+        if action == 'bbs_off':
+            self._bbs_stop()
+            self.journal.log('BBS','disabled')
+            return 'AX.25 PBBS vypnuta, čekající RF BBS rámce se ruší.'
+        if action == 'bbs_delete':
+            ident=data.get('id')
+            if data.get('confirm') is not True:
+                raise ValueError('PBBS deletion requires explicit confirmation')
+            return {'deleted':self.bbs.store.admin_delete(ident)}
         if action == 'alerts_save':
             rules=data.get('rules')
             if type(rules) is not dict:
@@ -463,10 +513,12 @@ class APRSService:
             # Always disable transmit before applying restored settings.
             self._disable_digi()
             self._disable_igate()
+            self._bbs_stop()
             self.messages.usb_closed()
             old_port=self.config.data['serial']['port']
             old_tnc=dict(self.config.data['tnc'])
             self.config.update(restored)
+            self.bbs.configure(self.config.data['bbs'])
             self.alerts.configure(self.config.data['alerts'])
             self.secondary.configure(self.config.data['secondary_tncs']['devices'])
             self._configure_radio_scheduler()
@@ -590,8 +642,10 @@ class APRSService:
             previous_archive = dict(self.config.data['archive'])
             previous_call = self.config.data['igate']['call']
             previous_messages = dict(self.config.data['messages'])
+            self._bbs_stop()
             previous_secondary = list(self.config.data['secondary_tncs']['devices'])
             self.config.update(changes, passcode=passcode)
+            self.bbs.configure(self.config.data['bbs'])
             self._configure_radio_scheduler()
             self.alerts.configure(self.config.data['alerts'])
             if previous_secondary != self.config.data['secondary_tncs']['devices']:
@@ -737,6 +791,7 @@ class APRSService:
         self._update_position()
 
     def _disconnect_reader(self):
+        self._bbs_stop()
         self.isrf.stop()  # revoke Internet-to-RF gate after any KISS outage
         if self.reader:
             self.reader.isrf_allowed.clear()
@@ -818,6 +873,8 @@ class APRSService:
                 self.state.note_tx()
                 if isinstance(value, dict):
                     category=value.get('category','unknown')
+                    if category.startswith('bbs_'):
+                        self.bbs.on_tx_written(category)
                     self.telemetry.record_tx(category)
                     if category == 'igate_is_to_rf':
                         self.stats['isrf_usb_written'] += 1
@@ -839,6 +896,9 @@ class APRSService:
                 self.stats['tx_error']+=1
                 self.telemetry.record_tx_error()
                 LOG.warning('TX USB selhal: %s', value)
+                if isinstance(value, dict) and value.get('category','').startswith('bbs_'):
+                    self.bbs.on_tx_error(value['category'])
+                    if self.reader:self.reader.bbs_allowed.clear()
                 if isinstance(value, dict) and value.get('category', '').startswith(('msg:', 'msgack:')):
                     self.messages.tx_error(value['category'], value.get('error', 'Chyba USB'))
                 if isinstance(value, dict) and value.get('category') == 'digi':
@@ -937,6 +997,9 @@ class APRSService:
             self.tcp_hub.publish(packet.raw_ax25)
         self.journal.log('RX','accepted',packet.source,packet.destination,
                          (packet.raw_info.decode('latin-1','replace') if isinstance(packet.raw_info,bytes) else str(packet.raw_info))[:250])
+        if self.bbs.on_frame(packet,self._bbs_send):
+            self.state.add(packet)
+            return
         msg = self.messages.receive(packet, self.radio_ready)
         if msg:
             LOG.info('APRS zpráva: %s od %s', msg.get('kind'), msg.get('from'))
@@ -986,6 +1049,10 @@ class APRSService:
                          last_rf_at=self.last_frame_at,
                          igate_online=bool(self.igate_client and self.igate_client.connected.is_set()),
                          igate_enabled=self.igate_client is not None)
+
+    def _bbs_tick(self):
+        if self.radio_ready and self.reader is not None and self.bbs.active:
+            self.bbs.tick(self._bbs_send)
 
     def _messages_tick(self):
         self.messages.tx_tick(self.reader, self.radio_ready)
@@ -1153,6 +1220,7 @@ class APRSService:
                     primary_endpoint=str(self.reader.port) if self.reader else '')
                 self._alerts_tick()
                 self._messages_tick()
+                self._bbs_tick()
                 self._digi_tick()
                 self._telemetry_tick()
                 self.stop.wait(0.08)
@@ -1161,6 +1229,7 @@ class APRSService:
             self._disconnect_reader()
             self.secondary.close()
             self.alerts.close()
+            self.bbs.close()
             self._disable_igate()
             self.web.close()
             if self.tcp_hub:
