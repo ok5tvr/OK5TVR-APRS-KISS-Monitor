@@ -132,10 +132,10 @@ async function load(){
   }
   $("messages").replaceChildren();
   for(const m of rt.messages||[]){
-   const tr=document.createElement("tr");
+   const row=document.createElement("tr");
    for(const value of [m.id,m.created_utc,m.sender,m.recipient,m.subject,m.body]){
     const td=document.createElement("td");td.textContent=String(value??"");
-    tr.appendChild(td);
+    row.appendChild(td);
    }
    const cell=document.createElement("td"),btn=document.createElement("button");
    btn.textContent=tr("Smazat");
@@ -144,7 +144,7 @@ async function load(){
     try{await command("bbs_delete",{id:m.id,confirm:true});note("Zpráva smazána.");await load();}
     catch(e){note(String(e),true);}
    });
-   cell.appendChild(btn);tr.appendChild(cell);$("messages").appendChild(tr);
+   cell.appendChild(btn);row.appendChild(cell);$("messages").appendChild(row);
   }
   note(""); 
  }catch(e){
