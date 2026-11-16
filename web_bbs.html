@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="cs"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OK5TVR AX.25 Packet BBS</title>
+<style>
+:root{color-scheme:dark;font:14px system-ui,Arial,sans-serif;background:#0b1725;color:#eaf2ff}
+*{box-sizing:border-box}body{margin:0;padding:14px;max-width:1350px}
+h1{font-size:23px;color:#59d8c7}h2{font-size:17px;color:#59d8c7}
+section{border:1px solid #35536d;background:#15273b;border-radius:12px;margin:0 0 15px;padding:16px}
+p{line-height:1.5}.hint{font-size:12px;color:#b0cce3}
+.warning{color:#ffc67b}input,select,textarea{display:block;background:#0c1c2d;color:#eaf2ff;
+border:1px solid #4b6887;border-radius:6px;padding:9px;width:100%;font:inherit}
+label{display:block;margin:7px 0 3px;font-weight:600}
+input[type=checkbox]{display:inline-block;width:auto;vertical-align:middle}
+button{border:1px solid #43627b;border-radius:6px;background:#23445c;color:white;
+padding:10px;cursor:pointer;margin:5px 6px 5px 0;font:inherit}
+button.primary{background:#0b8178;border-color:#15ada2}button.danger{background:#8d3f45}
+button:disabled{opacity:.48;cursor:not-allowed}
+.flex{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.stat{background:#1c3347;border-radius:8px;padding:12px}.stat b{font-size:22px}
+.scroll{overflow:auto;max-height:420px}table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{text-align:left;border-bottom:1px solid #2c4a64;padding:8px}
+pre{white-space:pre-wrap;word-break:break-word;font-size:12px}
+#notice{min-height:26px;color:#ffd18a}#err{color:#ff9fa3}
+</style></head><body>
+<h1>OK5TVR · AX.25 Packet BBS</h1>
+<p>Jednoduchá osobní BBS (PBBS) přes <strong>primární externí USB / TCP KISS TNC</strong>.
+Používá spojovaný režim AX.25, není to APRS Inbox ani APRS-IS.
+<strong class="warning">Nevysílej trvalou BBS na sdíleném APRS kanálu 144,800 MHz.
+Zvol vhodný packet-radio kmitočet a ověř nastavení svého TNC.</strong></p>
+<section><h2>Stav BBS a aktivního AX.25 spojení</h2>
+<div class="grid">
+<div class="stat">RF BBS<br><b id="state">Načítám</b></div>
+<div class="stat">BBS značka<br><b id="call">—</b></div>
+<div class="stat">Připojená stanice<br><b id="remote">—</b></div>
+<div class="stat">Zprávy v SQLite<br><b id="count">0</b></div>
+<div class="stat">Čeká na ACK<br><b id="waiting">Ne</b></div>
+</div>
+<div><button id="activate" class="primary">Zapnout BBS (RF TX)</button>
+<button id="deactivate" class="danger">Vypnout BBS</button>
+<button id="refresh">Obnovit stav</button></div>
+<p class="hint">BBS se po spuštění nebo výpadku KISS automaticky nezapne. Přijímá
+maximálně jedno AX.25 spojení, nepřeposílá poštu do APRS-IS a nepouští žádné systémové příkazy.</p>
+<div id="notice" role="status"></div><div id="err" role="alert"></div>
+</section>
+<section><h2>Nastavení osobní BBS</h2>
+<div class="flex">
+<div><label for="bbs-call">Samostatná značka / SSID</label><input id="bbs-call" placeholder="OK5TVR-8" maxlength="9">
+<label for="bbs-welcome">Uvítací text (ASCII, 75 znaků)</label>
+<input id="bbs-welcome" maxlength="75" placeholder="OK5TVR Packet Radio PBBS"></div>
+<div><label for="bbs-idle">Odpojení při nečinnosti (s)</label>
+<input id="bbs-idle" type="number" min="60" max="600">
+<label for="bbs-rate">Maximum BBS TX za minutu</label>
+<input id="bbs-rate" type="number" min="2" max="24"></div>
+<div><label for="bbs-max">Maximum uložených zpráv</label>
+<input id="bbs-max" type="number" min="50" max="2000">
+<label><input id="bbs-posts" type="checkbox"> Povolit ukládání zpráv z RF</label>
+<p class="hint">Značka stanice na RF není kryptografická autentizace.
+Zprávy v BBS nejsou soukromé; sysop může číst všechny.</p></div>
+</div>
+<button id="save">Uložit nastavení (BBS vypnuta)</button>
+</section>
+<section><h2>Příkazy vzdáleného uživatele</h2>
+<pre>H                 pomoc
+L                 veřejné a vlastní zprávy
+LM                jen vlastní zprávy
+R 12              číst zprávu číslo 12
+SP OK1ABC-7       nová osobní zpráva
+SB                veřejný bulletin
+Q                 odpojit se</pre>
+<p class="hint">Při psaní zprávy se zadává nejprve předmět, potom řádky textu;
+samostatný řádek <code>/EX</code> zprávu uloží. Maximum 800 ASCII znaků.
+Jedno spojení může uložit maximálně 3 zprávy.</p>
+</section>
+<section><h2>Uložené zprávy / správa sysop</h2>
+<div class="scroll"><table><thead><tr><th>ID</th><th>UTC</th><th>Od</th><th>Komu</th><th>Předmět</th><th>Text</th><th>Akce</th></tr></thead>
+<tbody id="messages"></tbody></table></div>
+<p class="hint">Obsah pošty je z bezpečnostních důvodů přístupný jen přihlášenému správci webu.
+Adresáti jej mohou číst přes RF, nikoli veřejné HTTP API.</p>
+</section>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const key=new URLSearchParams(location.search).get("admin")||"";
+const auth=path=>path+(key?(path.includes("?")?"&":"?")+"admin="+encodeURIComponent(key):"");
+let everLoaded=false, busy=false, current=null;
+function note(text,error=false){$(error?"err":"notice").textContent=text;}
+async function api(path){
+ const r=await fetch(auth(path),{cache:"no-store"});
+ if(!r.ok)throw Error("GET "+path+" HTTP "+r.status);
+ return r.json();
+}
+async function command(action,args={}){
+ const r=await fetch(auth("/api/control"),{method:"POST",
+  headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...args})});
+ const data=await r.json();
+ if(!r.ok||!data.ok)throw Error(data.error||"HTTP "+r.status);
+ return data.result;
+}
+function put(id,value){$(id).textContent=String(value??"");}
+async function load(){
+ if(busy)return;
+ busy=true;
+ try{
+  const [cfg,rt]=await Promise.all([api("/api/config"),api("/api/bbs")]);
+  current=rt;
+  put("state",rt.active?"ZAPNUTO":"VYPNUTO");put("call",rt.call||"Nenastaveno");
+  put("remote",rt.remote||"—");put("count",rt.mail_count);
+  put("waiting",rt.waiting_ack?"Ano":"Ne");
+  $("activate").disabled=rt.active;
+  $("deactivate").disabled=!rt.active;
+  if(!everLoaded){
+   const conf=cfg.bbs||{};
+   $("bbs-call").value=conf.call||"";
+   $("bbs-welcome").value=conf.welcome||"";
+   $("bbs-idle").value=conf.idle_seconds||180;
+   $("bbs-rate").value=conf.max_tx_per_minute||10;
+   $("bbs-max").value=conf.max_messages||500;
+   $("bbs-posts").checked=!!conf.allow_posts;
+   everLoaded=true;
+  }
+  $("messages").replaceChildren();
+  for(const m of rt.messages||[]){
+   const tr=document.createElement("tr");
+   for(const value of [m.id,m.created_utc,m.sender,m.recipient,m.subject,m.body]){
+    const td=document.createElement("td");td.textContent=String(value??"");
+    tr.appendChild(td);
+   }
+   const cell=document.createElement("td"),btn=document.createElement("button");
+   btn.textContent="Smazat";
+   btn.addEventListener("click",async()=>{
+    if(!confirm("Opravdu smazat zprávu #"+m.id+"?"))return;
+    try{await command("bbs_delete",{id:m.id,confirm:true});note("Zpráva smazána.");await load();}
+    catch(e){note(String(e),true);}
+   });
+   cell.appendChild(btn);tr.appendChild(cell);$("messages").appendChild(tr);
+  }
+  note(""); 
+ }catch(e){
+  note("Nelze načíst BBS: "+e.message,true);
+  $("activate").disabled=true;
+ }finally{busy=false;}
+}
+$("save").onclick=async()=>{
+ const bbs={call:$("bbs-call").value.trim().toUpperCase(),
+  welcome:$("bbs-welcome").value.trim(),
+  idle_seconds:Number($("bbs-idle").value),
+  max_tx_per_minute:Number($("bbs-rate").value),
+  max_messages:Number($("bbs-max").value),
+  allow_posts:$("bbs-posts").checked};
+ if(!confirm("Uložit nastavení BBS? BBS se vypne. RF vysílání se nespustí."))return;
+ try{note(await command("bbs_save",{bbs}));everLoaded=false;await load();}
+ catch(e){note(e.message,true);}
+};
+$("activate").onclick=async()=>{
+ const prompt="Zapnout AX.25 BBS RF TX? Ověř, že radiostanice NEVYSÍLÁ na 144,800 MHz APRS a že máš vhodný packet-radio kanál.";
+ if(!confirm(prompt))return;
+ try{note(await command("bbs_on",{confirm:true,confirm_channel:true}));await load();}
+ catch(e){note(e.message,true);}
+};
+$("deactivate").onclick=async()=>{
+ try{note(await command("bbs_off"));await load();}
+ catch(e){note(e.message,true);}
+};
+$("refresh").onclick=load;
+load();setInterval(load,8000);
+</script></body></html>
