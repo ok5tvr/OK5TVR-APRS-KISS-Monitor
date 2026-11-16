@@ -130,7 +130,7 @@ class PbbsEngineTests(unittest.TestCase):
         self.connect()
         self.pbbs._command('SB')
         self.pbbs._command('Test')
-        self.pbbs._command('x'*110)
+        self.pbbs._command('x'*900)
         self.assertEqual(self.pbbs.session.stage,'body')
         self.pbbs._command('/EX')
         self.assertEqual(self.pbbs.snapshot()['mail_count'],0)
