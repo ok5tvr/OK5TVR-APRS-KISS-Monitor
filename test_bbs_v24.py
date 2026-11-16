@@ -154,6 +154,7 @@ class PbbsEngineTests(unittest.TestCase):
         self.assertTrue(self.pbbs.on_frame(rx(control=0x53),self.send))
         self.assertEqual(self.parsed_output().control,0x73)
         self.assertFalse(self.pbbs.snapshot()['connected'])
+        self.out.clear()  # fresh connection starts a new independent TX trace
         self.connect()
         self.clock.step(200)
         self.pbbs.tick(self.send)
