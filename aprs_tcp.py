@@ -29,6 +29,8 @@ class TCPKissReader(threading.Thread):
         self.session = session
         self.digi_allowed = threading.Event()
         self.isrf_allowed = threading.Event()  # OFF unless explicitly enabled by admin
+        self.bbs_allowed = threading.Event()  # explicit runtime-only AX.25 PBBS TX
+        self.bbs_epoch = -1  # discard queued BBS frames from old RF sessions
         self.outgoing = RFOutputScheduler()  # single bounded queue for every TX category
         self.connected = False
         self.last_error = ''
@@ -41,6 +43,10 @@ class TCPKissReader(threading.Thread):
 
     def send(self, encoded_kiss, category='manual'):
         if self.stop.is_set() or not self.connected or (category == 'igate_is_to_rf' and not self.isrf_allowed.is_set()):
+            return False
+        if category.startswith('bbs_') and (
+                not self.bbs_allowed.is_set() or
+                category.rsplit(':',1)[-1] != str(self.bbs_epoch)):
             return False
         try:
             self.outgoing.put_nowait((bytes(encoded_kiss), category))
@@ -68,6 +74,11 @@ class TCPKissReader(threading.Thread):
                             continue
                         if category == 'igate_is_to_rf' and not self.isrf_allowed.is_set():
                             self.emit('tx_cancelled', 'IS->RF disabled: pending packet cancelled')
+                            continue
+                        if category.startswith('bbs_') and (
+                                not self.bbs_allowed.is_set() or
+                                category.rsplit(':',1)[-1] != str(self.bbs_epoch)):
+                            self.emit('tx_cancelled', 'BBS stopped/session changed: old KISS frame cancelled')
                             continue
                         try:
                             conn.sendall(payload)
