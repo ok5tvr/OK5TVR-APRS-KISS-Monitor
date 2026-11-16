@@ -733,14 +733,14 @@ function updateHealth(state,diag) {
   $("home-digi").textContent=String(diag.digi?.tx_written||0);
   $("home-stations").textContent=String(state.station_count||0);
   $("home-clock").textContent=new Date().toLocaleString(language==="en"?"en-GB":"cs-CZ");
-  $("home-status").textContent="USB: "+(diag.usb_port||"odpojeno")+
-     "  |  "+(diag.radio_connected?"Připojeno":"Odpojeno")+
+  $("home-status").textContent="USB: "+(diag.usb_port||tr("odpojeno","disconnected"))+
+     "  |  "+(diag.radio_connected?tr("Připojeno","Connected"):tr("Odpojeno","Disconnected"))+
      "  |  APRS-IS: "+(diag.igate_connected?"online":"offline")+
      "  |  DIGI: "+(diag.digi?.enabled?"ON":"OFF");
 
   const u=$("usb-status"),i=$("is-status"),d=$("digi-status");
-  u.textContent="USB: "+(state.rf_status||"—");
-  i.textContent="APRS-IS: "+(state.igate_status||"—");
+  u.textContent="USB: "+(state.rf_status?window.OK5TVRLocale.tr(state.rf_status):"—");
+  i.textContent="APRS-IS: "+(state.igate_status?window.OK5TVRLocale.tr(state.igate_status):"—");
   d.textContent="DIGI: "+(diag.digi?.enabled?tr("Zapnuto","On"):tr("Vypnuto","Off"));
   u.className="pill "+(diag.radio_connected?"ok":"bad");
   i.className="pill "+(diag.igate_connected?"ok":"");
@@ -906,9 +906,9 @@ async function loadHistory(){
  try{
   const source=$("history-source").value.trim();
   const result=await get("/api/archive?limit=100&source="+encodeURIComponent(source));
-  $("history-info").textContent="SQLite: "+result.summary.packets+" paketů, "+
-   result.summary.positions+" poloh, "+result.summary.weather+" WX; uchování "+
-   result.summary.retention_days+" dní";
+  $("history-info").textContent="SQLite: "+result.summary.packets+tr(" paketů, "," packets, ")+
+   result.summary.positions+tr(" poloh, "," positions, ")+result.summary.weather+
+   tr(" WX; uchování "," WX; retention ")+result.summary.retention_days+tr(" dní"," days");
   const root=$("history-rows");root.replaceChildren();
   for(const p of result.packets){
    const row=document.createElement("tr");
@@ -917,13 +917,13 @@ async function loadHistory(){
    }
    root.appendChild(row);
   }
- }catch(e){$("history-info").textContent="Chyba: "+e.message;}
+ }catch(e){$("history-info").textContent=tr("Chyba: ","Error: ")+e.message;}
 }
 $("history-refresh").onclick=loadHistory;
 $("history-geojson").onclick=async()=>{
  try{
   const source=$("history-source").value.trim();
-  if(!source)throw Error("Zadej přesnou značku stanice.");
+  if(!source)throw Error(tr("Zadej přesnou značku stanice.","Enter an exact callsign."));
   const data=await get("/api/archive/positions?limit=1000&source="+encodeURIComponent(source));
   const features=data.positions.filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)).map(p=>({
     type:"Feature",geometry:{type:"Point",coordinates:[p.lon,p.lat]},
@@ -944,7 +944,7 @@ function drawWeatherChart(){
  const width=canvas.width,height=canvas.height;
  ctx.clearRect(0,0,width,height);ctx.fillStyle="#102133";ctx.fillRect(0,0,width,height);
  ctx.fillStyle="#9cb5c9";ctx.font="14px sans-serif";
- if(!rows.length){ctx.fillText("Žádná naměřená data pro vybranou veličinu.",20,40);$("wx-chart-info").textContent="";return;}
+ if(!rows.length){ctx.fillText(tr("Žádná naměřená data pro vybranou veličinu.","No measurements for the selected quantity."),20,40);$("wx-chart-info").textContent="";return;}
  const min=Math.min(...rows.map(r=>r[field])),max=Math.max(...rows.map(r=>r[field]));
  const lo=min===max?min-1:min,hi=min===max?max+1:max;
  ctx.strokeStyle="#365267";ctx.lineWidth=1;
@@ -961,7 +961,7 @@ function drawWeatherChart(){
  ctx.fillStyle="#b5cfdf";ctx.font="12px sans-serif";
  ctx.fillText(String(rows[0].received_at||"").slice(11,19),48,height-6);
  ctx.fillText(String(rows[rows.length-1].received_at||"").slice(11,19),width-96,height-6);
- $("wx-chart-info").textContent=(wxLastRows[0]?.source||"—")+" · "+rows.length+" hodnot";
+ $("wx-chart-info").textContent=(wxLastRows[0]?.source||"—")+" · "+rows.length+tr(" hodnot"," measurements");
 }
 $("wx-chart-field").addEventListener("change",drawWeatherChart);
 async function loadWeather(){
@@ -972,9 +972,9 @@ async function loadWeather(){
   // Never connect measurements from different stations into one weather curve.
   const chartCall=source.toUpperCase()||data.records[0]?.source||"";
   wxLastRows=[...data.records.filter(row=>row.source===chartCall)].reverse();
-  $("wx-chart-info").textContent=chartCall?"Stanice: "+chartCall:"";
-  const fields=[["temperature_c","Teplota °C"],["pressure_hpa","Tlak hPa"],
-    ["wind_kmh","Vítr km/h"],["humidity_pct","Vlhkost %"]];
+  $("wx-chart-info").textContent=chartCall?tr("Stanice: ","Station: ")+chartCall:"";
+  const fields=[["temperature_c",tr("Teplota °C","Temperature °C")],["pressure_hpa",tr("Tlak hPa","Pressure hPa")],
+    ["wind_kmh",tr("Vítr km/h","Wind km/h")],["humidity_pct",tr("Vlhkost %","Humidity %")]];
   const latest=wxLastRows[wxLastRows.length-1]||{};
   for(const [field,label] of fields){
    const div=document.createElement("div");div.className="metric";
@@ -990,7 +990,7 @@ async function loadWeather(){
    }root.appendChild(row);
   }
   drawWeatherChart();
- }catch(e){$("wx-metrics").textContent="Chyba: "+e.message;}
+ }catch(e){$("wx-metrics").textContent=tr("Chyba: ","Error: ")+e.message;}
 }
 $("wx-refresh").onclick=loadWeather;
 function isrfLines(value){
@@ -1167,8 +1167,8 @@ async function loadChat2(){
   const d=await get("/api/messages"),root=$("chat2-conversations"),
         inbox=$("chat2-inbox"),bulletins=$("chat2-bulletins");
   root.replaceChildren();inbox.replaceChildren();bulletins.replaceChildren();
-  $("chat2-unread").textContent=(d.unread||0)+" nepřečtených zpráv, "+
-    (d.unread_bulletins||0)+" nepřečtených bulletinů";
+  $("chat2-unread").textContent=(d.unread||0)+tr(" nepřečtených zpráv, "," unread messages, ")+
+    (d.unread_bulletins||0)+tr(" nepřečtených bulletinů"," unread bulletins");
   $("chat2-blocked").value=(d.blocked_senders||[]).join("\n");
   for(const c of (d.conversations||[])){
    const row=document.createElement("tr");
@@ -1185,10 +1185,10 @@ async function loadChat2(){
      const td=document.createElement("td");td.textContent=String(value??"");row.appendChild(td);
     }
     const td=document.createElement("td");
-    if(r.read){td.textContent="Přečteno";}
+    if(r.read){td.textContent=tr("Přečteno","Read");}
     else{
      const button=document.createElement("button");
-     button.textContent="Označit jako přečtené";
+     button.textContent=tr("Označit jako přečtené","Mark as read");
      button.addEventListener("click",async()=>{
       try{await command("message_read",{kind,id:r.id});await loadChat2();}
       catch(e){notice("chat2-notice","ERROR: "+e.message);}
@@ -1245,10 +1245,12 @@ $("alert-save").onclick=async()=>{
  }catch(e){notice("alert-notice","ERROR: "+e.message);}
 };
 $("alert-browser").onclick=async()=>{
- if(!("Notification" in window)){notice("alert-notice","Prohlížeč nepodporuje systémové notifikace.");return;}
+ if(!("Notification" in window)){notice("alert-notice",tr("Prohlížeč nepodporuje systémové notifikace.","Browser notifications are not supported."));return;}
  const state=await Notification.requestPermission();
  alertBrowserEnabled=state==="granted";
- notice("alert-notice",alertBrowserEnabled?"Upozornění povolena v prohlížeči.":"Upozornění nepovolena.");
+ notice("alert-notice",alertBrowserEnabled?
+     tr("Upozornění povolena v prohlížeči.","Browser notifications enabled."):
+     tr("Upozornění nepovolena.","Notifications not permitted."));
 };
 async function refreshAlerts(){
  try{
