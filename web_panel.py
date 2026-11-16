@@ -19,6 +19,7 @@ HTML = (_ASSET_DIR / 'web_dashboard.html').read_text(encoding='utf-8')
 ADMIN_HTML = (_ASSET_DIR / 'web_control.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_control.html').exists() else ''
 OPERATIONS_HTML = (_ASSET_DIR / 'web_operations.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_operations.html').exists() else ''
 MESSAGES_HTML = (_ASSET_DIR / 'web_messages.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_messages.html').exists() else ''
+BBS_HTML = (_ASSET_DIR / 'web_bbs.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_bbs.html').exists() else ''
 LOCALE_JS = (_ASSET_DIR / 'web_locale.js').read_text(encoding='utf-8')
 UNIFIED_HTML = (_ASSET_DIR / 'web_unified.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_unified.html').exists() else ''
 LOGIN_HTML = (_ASSET_DIR / 'web_login.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_login.html').exists() else ''
@@ -163,7 +164,7 @@ class WebPanel:
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/app', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/api/heard', '/api/alerts', '/api/tx-scheduler', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
+                if parsed.path in ('/app', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/api/heard', '/api/alerts', '/api/tx-scheduler', '/messages', '/api/messages', '/bbs', '/api/bbs', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
@@ -234,6 +235,10 @@ class WebPanel:
                         self._respond(200, MESSAGES_HTML, 'text/html; charset=utf-8')
                     elif parsed.path == '/api/messages':
                         self._respond(200, json.dumps(operator.messages_snapshot(), ensure_ascii=False))
+                    elif parsed.path == '/bbs':
+                        self._respond(200, BBS_HTML, 'text/html; charset=utf-8')
+                    elif parsed.path == '/api/bbs':
+                        self._respond(200, json.dumps(operator.bbs_snapshot(), ensure_ascii=False))
                     else:
                         self._respond(200, json.dumps(operator.public_config(), ensure_ascii=False))
                     return
