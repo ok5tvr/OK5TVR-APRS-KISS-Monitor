@@ -1,5 +1,6 @@
 """Integration smoke test for v2.1 service, read-only web APIs and RF TX safeguards."""
 import json
+import socket
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,7 +54,12 @@ class TNCServiceWebTests(unittest.TestCase):
             self.assertEqual(json.load(response)['records'],[])
 
     def test_tcp_tx_never_turns_on_from_saved_settings(self):
-        self.config.update({'tnc':{'kiss_server_enabled':True,'kiss_server_port':49152}})
+        # Use an ephemeral free localhost port: fixed 49152 can be occupied by
+        # another service on shared CI runners, causing unrelated test failures.
+        with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as probe:
+            probe.bind(('127.0.0.1',0))
+            port=probe.getsockname()[1]
+        self.config.update({'tnc':{'kiss_server_enabled':True,'kiss_server_port':port}})
         self.service._start_tnc_hub()
         try:
             self.assertFalse(self.service.tnc_snapshot()['tx_permission'])

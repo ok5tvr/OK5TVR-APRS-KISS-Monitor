@@ -62,13 +62,20 @@ Zprávy v BBS nejsou soukromé; sysop může číst všechny.</p></div>
 <button id="save">Uložit nastavení (BBS vypnuta)</button>
 </section>
 <section><h2>Příkazy vzdáleného uživatele</h2>
-<pre>H                 pomoc
+<pre id="bbs-commands-cs">H                 pomoc
 L                 veřejné a vlastní zprávy
 LM                jen vlastní zprávy
 R 12              číst zprávu číslo 12
 SP OK1ABC-7       nová osobní zpráva
 SB                veřejný bulletin
 Q                 odpojit se</pre>
+<pre id="bbs-commands-en" hidden>H                 help
+L                 list public and my messages
+LM                my messages only
+R 12              read message number 12
+SP OK1ABC-7       write personal message
+SB                write public bulletin
+Q                 disconnect</pre>
 <p class="hint">Při psaní zprávy se zadává nejprve předmět, potom řádky textu;
 samostatný řádek <code>/EX</code> zprávu uloží. Maximum 800 ASCII znaků.
 Jedno spojení může uložit maximálně 3 zprávy.</p>
@@ -79,13 +86,15 @@ Jedno spojení může uložit maximálně 3 zprávy.</p>
 <p class="hint">Obsah pošty je z bezpečnostních důvodů přístupný jen přihlášenému správci webu.
 Adresáti jej mohou číst přes RF, nikoli veřejné HTTP API.</p>
 </section>
+<script src="/assets/web_locale.js"></script>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
+const tr=value=>window.OK5TVRLocale.tr(value);
 const key=new URLSearchParams(location.search).get("admin")||"";
 const auth=path=>path+(key?(path.includes("?")?"&":"?")+"admin="+encodeURIComponent(key):"");
 let everLoaded=false, busy=false, current=null;
-function note(text,error=false){$(error?"err":"notice").textContent=text;}
+function note(text,error=false){$(error?"err":"notice").textContent=tr(String(text));}
 async function api(path){
  const r=await fetch(auth(path),{cache:"no-store"});
  if(!r.ok)throw Error("GET "+path+" HTTP "+r.status);
@@ -105,9 +114,9 @@ async function load(){
  try{
   const [cfg,rt]=await Promise.all([api("/api/config"),api("/api/bbs")]);
   current=rt;
-  put("state",rt.active?"ZAPNUTO":"VYPNUTO");put("call",rt.call||"Nenastaveno");
+  put("state",tr(rt.active?"ZAPNUTO":"VYPNUTO"));put("call",rt.call||tr("Nenastaveno"));
   put("remote",rt.remote||"—");put("count",rt.mail_count);
-  put("waiting",rt.waiting_ack?"Ano":"Ne");
+  put("waiting",tr(rt.waiting_ack?"Ano":"Ne"));
   $("activate").disabled=rt.active;
   $("deactivate").disabled=!rt.active;
   if(!everLoaded){
@@ -128,9 +137,9 @@ async function load(){
     tr.appendChild(td);
    }
    const cell=document.createElement("td"),btn=document.createElement("button");
-   btn.textContent="Smazat";
+   btn.textContent=tr("Smazat");
    btn.addEventListener("click",async()=>{
-    if(!confirm("Opravdu smazat zprávu #"+m.id+"?"))return;
+    if(!confirm(tr("Opravdu smazat zprávu #")+m.id+"?"))return;
     try{await command("bbs_delete",{id:m.id,confirm:true});note("Zpráva smazána.");await load();}
     catch(e){note(String(e),true);}
    });
@@ -138,7 +147,7 @@ async function load(){
   }
   note(""); 
  }catch(e){
-  note("Nelze načíst BBS: "+e.message,true);
+  note(tr("Nelze načíst BBS: ")+e.message,true);
   $("activate").disabled=true;
  }finally{busy=false;}
 }
@@ -149,12 +158,12 @@ $("save").onclick=async()=>{
   max_tx_per_minute:Number($("bbs-rate").value),
   max_messages:Number($("bbs-max").value),
   allow_posts:$("bbs-posts").checked};
- if(!confirm("Uložit nastavení BBS? BBS se vypne. RF vysílání se nespustí."))return;
+ if(!confirm(tr("Uložit nastavení BBS? BBS se vypne. RF vysílání se nespustí.")))return;
  try{note(await command("bbs_save",{bbs}));everLoaded=false;await load();}
  catch(e){note(e.message,true);}
 };
 $("activate").onclick=async()=>{
- const prompt="Zapnout AX.25 BBS RF TX? Ověř, že radiostanice NEVYSÍLÁ na 144,800 MHz APRS a že máš vhodný packet-radio kanál.";
+ const prompt=tr("Zapnout AX.25 BBS RF TX? Ověř, že radiostanice NEVYSÍLÁ na 144,800 MHz APRS a že máš vhodný packet-radio kanál.");
  if(!confirm(prompt))return;
  try{note(await command("bbs_on",{confirm:true,confirm_channel:true}));await load();}
  catch(e){note(e.message,true);}
@@ -164,5 +173,19 @@ $("deactivate").onclick=async()=>{
  catch(e){note(e.message,true);}
 };
 $("refresh").onclick=load;
-load();setInterval(load,8000);
+function updateHelpLanguage(){
+ const english=window.OK5TVRLocale.language==="en";
+ $("bbs-commands-en").hidden=!english;
+ $("bbs-commands-cs").hidden=english;
+}
+window.addEventListener("ok5tvr:language",()=>{
+ updateHelpLanguage();
+ if(current){
+  put("state",tr(current.active?"ZAPNUTO":"VYPNUTO"));
+  put("call",current.call||tr("Nenastaveno"));
+  put("waiting",tr(current.waiting_ack?"Ano":"Ne"));
+  $("messages").querySelectorAll("button").forEach(b=>b.textContent=tr("Smazat"));
+ }
+});
+updateHelpLanguage();load();setInterval(load,8000);
 </script></body></html>

@@ -2,9 +2,19 @@
 
 **Windows / Raspberry Pi APRS TNC Command Center · v2.4 dev · bidirectional selective iGate, multi-KISS RX, DIGI and messaging**
 
-Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.8.2-rc1**.
+Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální vývojová verze zdrojových kódů: **v2.4 dev**.
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
+
+## v2.4 – úpravy jednotného webu / Heard Map / CZ–EN
+
+- **Jednotný přepínač jazyka:** nefunkční/duplicitní volby CZ/EN v pravé části hlavičky a v podpůrných stránkách byly odstraněny. Jazyk se nyní volí na **Nastavení / iGate / DIGI → Jazyk webového rozhraní**. Pamatuje si ho prohlížeč (localStorage) pro všechny připojené stránky, včetně mapy, APRS zpráv, operací a BBS. Samostatně otevřené stránky používají naposledy uloženou volbu.
+- **Doplněné CZ/EN:** úvodní rozcestník, Heard Map, TNC, SQLite diagnostika, filtry IS → RF, počasí, konverzace, upozornění a webová správa BBS. Přijatá APRS data (značky, zprávy, obsah paketů) se **nikdy strojově nepřekládají**.
+- **Nová Mapa doslechu:** nahoře číselné statistiky a skutečná interaktivní mapa, pod nimi detailní tabulka. Výběr **1 hodina / 24 h / 7 dní / 30 dní** a **konkrétního KISS přijímače** filtruje shodně mapu, statistiky i tabulku podle `/api/heard`. Mapu lze přibližovat, posouvat a zobrazit nad OpenStreetMap; při výpadku online dlaždic zůstává offline podklad. Modré značky měly alespoň jeden DIRECT příjem. Do statistiky se započítávají pouze rámce, z nichž lze získat GPS polohu, nikoliv veškerý RF provoz. DX je vzdálenost vypočtená z udané GPS, **nikoliv změřené RF pokrytí**.
+- **Přehlednější konzole:** navigace na úzkých obrazovkách s vodorovným posunem, karty úvodní stránky v pořadí 01–14, upravené rozložení a překlady průběžně aktualizovaných stavů.
+- **Provozní zátěž:** historická mapa obnovuje svůj archiv každých 60 s (běžná živá APRS mapa dál po 2,5 s). Nepřibyla žádná RF funkce, nezměnily se limity TX, iGate, DIGI ani BBS. Používá existující SQLite a mapové podklady.
+
+Po instalaci otevři `http://IP_RASPBERRY:8765/`, obnov stránku přes **Ctrl+F5**, pro volbu EN přejdi do Nastavení. Testy `test_web_ux_v24.py` a `test_weather_locale_regression.py` chrání před regresí jazykových formulářů a nepřesnou mapou historického doslechu.
 
 ## v2.4 dev – AX.25 connected-mode Packet BBS (PBBS) přes KISS TNC
 

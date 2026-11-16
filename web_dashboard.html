@@ -63,6 +63,25 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 #maphint{font-size:12px;color:var(--amber);padding:9px 13px;border-top:1px solid #514837}
 @media(max-width:1000px){.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(3,minmax(0,1fr))}.stations{max-height:330px}}
 @media(max-width:520px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.metric{font-size:23px}header{padding:13px}#map{height:430px}td,th{padding:8px}.map-notice{font-size:11px}}
+/* Compact standalone map inside the Heard Map panel. Data comes from /api/heard. */
+body.heard-embedded{padding:0;margin:0;background:#101925}
+body.heard-embedded>header,
+body.heard-embedded>.app-nav,
+body.heard-embedded>#nav-info,
+body.heard-embedded main>.cards,
+body.heard-embedded main>section.panel,
+body.heard-embedded main>p,
+body.heard-embedded .grid>section:nth-child(2),
+body.heard-embedded .map-header,
+body.heard-embedded .map-filterbar,
+body.heard-embedded .map-help,
+body.heard-embedded #maphint{display:none!important}
+body.heard-embedded main{max-width:none;margin:0;padding:0}
+body.heard-embedded main>.grid{display:block;margin:0}
+body.heard-embedded .grid>section:first-child{margin:0;padding:0;border:0;background:transparent}
+body.heard-embedded #map{height:480px;border-radius:9px}
+body.heard-embedded .map-marker{font-size:11px}
+@media(max-width:750px){body.heard-embedded #map{height:380px}}
 </style>
 </head>
 <body>
@@ -90,9 +109,9 @@ button:hover{background:#305572}button:focus-visible,select:focus-visible{outlin
 <div class="cards" style="padding:14px;margin:0">
 <div class="card"><div class="caption">RX / 15 min</div><div class="metric" id="rx15">0</div></div>
 <div class="card"><div class="caption">TX / 15 min (USB)</div><div class="metric" id="tx15">0</div></div>
-<div class="card"><div class="caption">Unikátní stanice / Unique stations</div><div class="metric" id="unique15">0</div></div>
-<div class="card"><div class="caption">Průměrná vzdálenost / Average (km)</div><div class="metric" id="avg15">–</div></div>
-<div class="card"><div class="caption">Max. vzdálenost / DX (km)</div><div class="metric" id="dx15">–</div></div>
+<div class="card"><div class="caption">Unikátní stanice</div><div class="metric" id="unique15">0</div></div>
+<div class="card"><div class="caption">Průměrná vzdálenost (km)</div><div class="metric" id="avg15">–</div></div>
+<div class="card"><div class="caption">Maximální vzdálenost (km)</div><div class="metric" id="dx15">–</div></div>
 <div class="card"><div class="caption">iGate → IS / 15 min</div><div class="metric" id="gate15">0</div></div>
 <div class="card"><div class="caption">DIGI TX / 15 min</div><div class="metric" id="digi15">0</div></div>
 </div><p class="muted" style="padding:0 16px;font-size:12px">Vzdálenost je vypočtena z GPS poloh unikátních stanic vůči vlastní poloze. Není to měření přímého dosahu RF. / Distances are derived from reported positions, not measured RF range.</p></section>
@@ -140,9 +159,19 @@ const $=id=>document.getElementById(id);
 const tr=value=>window.OK5TVRLocale.tr(value);
 const urlParams=new URLSearchParams(location.search);
 const token=urlParams.get('key')||'';
-if(urlParams.get('heard')==='1') { $('direct-only').checked=true; $('activity-filter').value='1440'; }
+const HEARD_MODE=urlParams.get('heard')==='1';
+const EMBED_HEARD=HEARD_MODE && urlParams.get('embedded')==='1';
+if(HEARD_MODE){
+  $('direct-only').checked=urlParams.get('direct')==='1';
+  $('activity-filter').value='0'; // archive query already filters chosen 1h / 7d / 30d
+  $('show-objects').checked=false;
+  $('show-trails').checked=false;
+  if(EMBED_HEARD) document.body.classList.add('heard-embedded');
+}
 const adminToken=urlParams.get('admin')||'';
-const authPath=(path)=>path+(adminToken?'?admin='+encodeURIComponent(adminToken):token?'?key='+encodeURIComponent(token):'');
+const authPath=path=>path+(adminToken?
+  (path.includes('?')?'&':'?')+'admin='+encodeURIComponent(adminToken):
+  token?(path.includes('?')?'&':'?')+'key='+encodeURIComponent(token):'');
 let capabilityPromise=null;
 function navInfo(message){const box=$('nav-info');box.hidden=false;const prefix='Nelze otevřít administrátorskou stránku: ';box.textContent=message.startsWith(prefix)?tr(prefix)+message.slice(prefix.length):tr(message);}
 async function capabilities(){
@@ -180,6 +209,7 @@ const templates={
 let positions=[], ownPosition=null, ownDigi=null, chosen=null, firstPosition=true, geo=null;
 let importedMapLayers=[];
 let view={lat:49.7384,lon:13.3736,z:8}, effectiveProvider=$('mapstyle').value;
+if(HEARD_MODE){effectiveProvider='osm-light';$('mapstyle').value='osm-light';}
 let tileEpoch=0, mapRedrawTimer=null, pointer=null, tileWatchdog=null, success=0, requested=0, failure=0;
 const mapNode=$('map'), canvas=$('geography'), context=canvas.getContext('2d');
 const trailCanvas=$('tracks'), trailCtx=trailCanvas.getContext('2d');
@@ -485,13 +515,16 @@ function updateMarkers(){
   const pin=document.createElement('button');pin.type='button';pin.className='map-marker'+(s.own?' own':s.digiOwn?' digi-own':s.position_direct===true?' direct':'');
   const icon=aprsIcon(s.symbol);
   if(icon){pin.classList.add('has-symbol');pin.appendChild(icon);}
-  pin.appendChild(document.createTextNode(s.call+(s.own?' · iGate':s.digiOwn?' · DIGI':'')));
+  pin.appendChild(document.createTextNode(s.call+
+     (HEARD_MODE&&s.receiver?' · '+s.receiver:'')+
+     (s.own?' · iGate':s.digiOwn?' · DIGI':'')));
   pin.style.left=(p.x+(s.digiOwn?18:0))+'px';pin.style.top=(p.y+(s.digiOwn?-20:0))+'px';
   pin.title=s.call+' · '+s.lat.toFixed(5)+', '+s.lon.toFixed(5)+' · '+
             (s.position_direct===true?'DIRECT':s.position_direct===false?'VIA DIGI':'')+' · '+
             (s.distance_km==null?'':`${s.distance_km} km / ${s.bearing_deg??'—'}°`);
-  pin.addEventListener('click',e=>{e.stopPropagation();chosen=chosen===s.call?null:s.call;updateMarkers();});
-  if(s.call===chosen){pin.classList.add('active');active={p,s};}
+  const markerId=s.stationKey||s.call;
+  pin.addEventListener('click',e=>{e.stopPropagation();chosen=chosen===markerId?null:markerId;updateMarkers();});
+  if(markerId===chosen){pin.classList.add('active');active={p,s};}
   holder.appendChild(pin);
  }
  if(active){
@@ -503,6 +536,7 @@ function updateMarkers(){
       `${tr('Pakety')}: ${s.count}`,
       ...(s.direct==null?[]:[s.direct?'DIRECT':'VIA DIGI']),
       ...(s.distance_km==null?[]:[`${s.distance_km.toFixed(1)} km / ${s.bearing_deg==null?'—':s.bearing_deg.toFixed(0)+'°'} ${s.compass_en||''}`]),
+      ...(HEARD_MODE?[tr('Přijímač: ','Receiver: ')+(s.receiver||'primary')]:[]),
       `${tr('Poslední')}: ${s.last}`,
       ...(s.symbol?[`APRS symbol: ${s.symbol}`]:[])]){
    const row=document.createElement('div');row.textContent=line;pop.appendChild(row);
@@ -619,6 +653,46 @@ async function loadLocalGeography(){
 }
 async function refresh(){
  try{
+  if(HEARD_MODE){
+    const minutes=Math.min(43200,Math.max(1,Number(urlParams.get('minutes'))||1440));
+    const receiver=(urlParams.get('receiver')||'').slice(0,16);
+    const params=new URLSearchParams({minutes:String(minutes),receiver});
+    const response=await fetch(authPath('/api/heard?'+params),{cache:'no-store'});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    const payload=await response.json();
+    positions=(payload.stations||[]).filter(row=>
+        Number.isFinite(Number(row.lat))&&Number.isFinite(Number(row.lon)))
+      .map(row=>{
+        const direct=Number(row.direct_packets||0),via=Number(row.via_packets||0);
+        return {
+          call:String(row.source||''),
+          stationKey:String(row.source||'')+'|'+String(row.receiver||'primary'),
+          receiver:String(row.receiver||'primary'),
+          lat:Number(row.lat),lon:Number(row.lon),
+          position_direct:direct>0,direct:direct>0,
+          path:row.path||'',last:row.last_seen||'',
+          count:direct+via,
+          distance_km:row.distance_km==null?null:Number(row.distance_km),
+          bearing_deg:row.bearing_deg==null?null:Number(row.bearing_deg),
+          compass_en:row.compass_en||'',
+          is_object:false,symbol:null,trail:[]
+        };
+      }).sort((a,b)=>b.last.localeCompare(a.last));
+    ownPosition=null;ownDigi=null;
+    $('stations').textContent=positions.length;
+    $('positions').textContent=positions.length;
+    renderStations();
+    renderMap(false);
+    if(firstPosition&&positions.length){
+      fitStations(positions);
+      firstPosition=false;
+    }
+    $('filtered-count').textContent=positions.length+
+       tr(' záznamů doslechu',' heard records');
+    $('update').textContent=tr('Aktualizováno ','Updated ')+
+       new Date().toLocaleTimeString(window.OK5TVRLocale.language==='en'?'en-GB':'cs-CZ');
+    return;
+  }
   const response=await fetch(authPath('/api/state'),{cache:'no-store'});
   if(!response.ok)throw new Error('HTTP '+response.status);
   const st=await response.json();
@@ -654,7 +728,7 @@ async function refresh(){
  }catch(err){$('update').textContent=tr('Spojení s monitorem není dostupné: ')+err.message;}
 }
 window.addEventListener('ok5tvr:language',()=>{renderStations();renderMap(true);refresh();});
-loadLocalGeography();renderMap(true);refresh();setInterval(refresh,2500);
+loadLocalGeography();renderMap(true);refresh();setInterval(refresh,HEARD_MODE?60000:2500);
 </script>
 </body>
 </html>
