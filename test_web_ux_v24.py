@@ -30,7 +30,7 @@ class WebUXV24Tests(unittest.TestCase):
         self.assertNotIn('createElement("select")', self.locale)
         self.assertIn('addEventListener("change", () => apply(choice.value))', self.locale)
         self.assertIn('ok5tvr:language', self.unified)
-        self.assertIn('window.OK5TVRLocale.setLanguage', self.unified)
+        self.assertIn('frame.contentWindow.OK5TVRLocale.setLanguage', self.unified)
         self.assertIn('web_locale.js', self.bbs)
 
     def test_homepage_cards_in_numerical_order(self):
