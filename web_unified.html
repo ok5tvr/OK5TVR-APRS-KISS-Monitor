@@ -1066,38 +1066,89 @@ $("isrf-test").onclick=async()=>{
  }catch(e){notice("isrf-test-result","ERROR: "+e.message);}
 };
 let lastHeardRows=[];
+let heardRequestNumber=0;
+let heardMapUrl="";
 async function loadHeardReceivers(){
- try{
-  const t=await get("/api/tnc"),select=$("heard-device"),value=select.value;
-  select.replaceChildren(new Option("Všechny TNC",""),new Option("Primární TNC","primary"));
+ try {
+  const t=await get("/api/tnc"), select=$("heard-device"), previous=select.value;
+  const list=[
+   new Option(tr("Všechna TNC","All TNCs"),""),
+   new Option(tr("Primární TNC","Primary TNC"),"primary")
+  ];
   for(const item of (t.secondary_receivers||[]))
-   select.add(new Option(item.id+" · "+item.endpoint,item.id));
-  select.value=Array.from(select.options).some(o=>o.value===value)?value:"";
- }catch(e){$("heard-summary").textContent="Přijímače: "+e.message;}
+   list.push(new Option(item.id+" · "+item.endpoint,item.id));
+  select.replaceChildren(...list);
+  select.value=Array.from(select.options).some(x=>x.value===previous)?previous:"";
+ } catch(e) {
+  $("heard-summary").textContent=tr("Přijímače: ","Receivers: ")+e.message;
+ }
 }
-async function loadHeard(){
+async function loadHeard(forceMapRefresh=false){
+ const requestId=++heardRequestNumber;
  try{
-  const params="?minutes="+encodeURIComponent($("heard-period").value)+
-   "&receiver="+encodeURIComponent($("heard-device").value);
+  const period=$("heard-period").value, receiver=$("heard-device").value;
+  const params="?minutes="+encodeURIComponent(period)+
+               "&receiver="+encodeURIComponent(receiver);
   const data=await get("/api/heard"+params);
+  // A slow response for the previous period/device must not overwrite the
+  // latest selection or move the map back to another receiver.
+  if(requestId!==heardRequestNumber)return;
   lastHeardRows=data.stations||[];
-  const root=$("heard-rows");root.replaceChildren();
-  $("heard-summary").textContent=data.stations.length+" zdrojů s GPS, "+
-    data.direct_stations+" přímo slyšených; interval "+data.minutes+" min";
+  const root=$("heard-rows");
+  root.replaceChildren();
+  const callCount=new Set(lastHeardRows.map(x=>x.source)).size;
+  const directlyHeard=new Set(lastHeardRows
+     .filter(x=>Number(x.direct_packets)>0).map(x=>x.source)).size;
+  const directPackets=lastHeardRows.reduce((n,x)=>n+Number(x.direct_packets||0),0);
+  const viaPackets=lastHeardRows.reduce((n,x)=>n+Number(x.via_packets||0),0);
+  const km=lastHeardRows.map(x=>Number(x.distance_km))
+    .filter(x=>Number.isFinite(x)&&x>=0);
+  const maxDistance=km.length?Math.max(...km):null;
+  const numeric=n=>Number(n||0).toLocaleString(language==="en"?"en-GB":"cs-CZ");
+  $("heard-stations-count").textContent=numeric(callCount);
+  $("heard-direct-count").textContent=numeric(directlyHeard);
+  $("heard-direct-packets").textContent=numeric(directPackets);
+  $("heard-via-packets").textContent=numeric(viaPackets);
+  $("heard-dx-km").textContent=maxDistance===null?"—":maxDistance.toFixed(1)+" km";
+  $("heard-map-count").textContent=numeric(lastHeardRows.length)+
+        tr(" příjmů stanic po TNC"," receiver/station records");
+  $("heard-updated").textContent=new Date().toLocaleTimeString(
+     language==="en"?"en-GB":"cs-CZ");
+  $("heard-summary").textContent=tr(
+    "Zobrazená data: "+period+" minut; přímo slyšených značek: "+directlyHeard+
+    ". Kliknutím na bod v mapě zobrazíš údaje o stanici.",
+    "Data window: "+period+" minutes; directly heard callsigns: "+directlyHeard+
+    ". Select a map pin for station details.");
   for(const item of lastHeardRows){
    const row=document.createElement("tr");
-   for(const field of [item.source,item.receiver,item.direct_packets,item.via_packets,
+   for(const value of [item.source,item.receiver,item.direct_packets,item.via_packets,
                        item.distance_km==null?"—":Number(item.distance_km).toFixed(1),
                        item.last_seen,item.path]){
-    const td=document.createElement("td");td.textContent=String(field??"");row.appendChild(td);
+    const td=document.createElement("td");
+    td.textContent=String(value??"");
+    row.appendChild(td);
    }
    root.appendChild(row);
   }
- }catch(e){$("heard-summary").textContent="RF doslech: "+e.message;}
+  // Reuse the existing OSM/offline APRS map engine. The embedded map reads
+  // the SAME historical /api/heard window, not the unrelated live APRS map.
+  const frame=$("heard-map-frame");
+  const target=auth("/map?heard=1&embedded=1&minutes="+encodeURIComponent(period)+
+                    "&receiver="+encodeURIComponent(receiver));
+  if(target!==heardMapUrl){
+   heardMapUrl=target;
+   frame.src=target;
+  } else if(forceMapRefresh){
+   try{frame.contentWindow?.refresh?.();}catch(_){}
+  }
+ } catch(e) {
+  if(requestId===heardRequestNumber)
+   $("heard-summary").textContent=tr("Chyba mapy doslechu: ","Heard map error: ")+e.message;
+ }
 }
-$("heard-refresh").onclick=loadHeard;
-$("heard-period").onchange=loadHeard;
-$("heard-device").onchange=loadHeard;
+$("heard-refresh").onclick=()=>loadHeard(true);
+$("heard-period").onchange=()=>loadHeard();
+$("heard-device").onchange=()=>loadHeard();
 $("heard-csv").onclick=()=>downloadCSV("ok5tvr-heard.csv",
  ["call","receiver","direct","via","distance_km","last_seen","path"],
  lastHeardRows.map(x=>[x.source,x.receiver,x.direct_packets,x.via_packets,
