@@ -16,6 +16,7 @@ import tempfile
 
 from aprs_features import CALL_RE
 from aprs_is_to_rf import validate_filter_config
+from aprs_bbs import validate_bbs_config
 from aprs_messages import normalize_call, normalize_path
 from aprs_digi import DigiConfig
 from aprs_station import decimal_coordinate, aprsis_position
@@ -51,6 +52,8 @@ DEFAULT_CONFIG = {
              'beacon_comment': 'OK5TVR APRS DIGI',
              'beacon_transport': 'is', 'beacon_rf_path': '', 'telemetry_enabled': False,
              'telemetry_transport': 'is', 'telemetry_rf_path': ''},
+    'bbs': {'call':'', 'welcome':'OK5TVR Packet Radio PBBS', 'max_messages':500,
+            'idle_seconds':180, 'max_tx_per_minute':10, 'allow_posts':True},
     'messages': {'target': '', 'path': 'WIDE1-1', 'receive_aliases': [], 'auto_ack': False,
                  'retry_seconds': 45, 'max_attempts': 3,
                  'blocked_senders':[]},
@@ -246,6 +249,7 @@ def validate_config(candidate):
         raise ValueError('DIGI APRS-IS beacon/telemetry requires same base callsign as the APRS-IS login.')
     if d['telemetry_enabled'] and d['telemetry_transport'] == 'is' and i['telemetry_enabled'] and d['call'] == i['call']:
         raise ValueError('iGate and DIGI telemetry cannot share the same source callsign.')
+    v['bbs'] = validate_bbs_config(v['bbs'], i['call'], d['call'])
     v['telemetry']['interval_minutes'] = _int(v['telemetry']['interval_minutes'], 'Telemetry interval', 15, 60)
     if v['telemetry']['interval_minutes'] not in (15, 30, 60):
         raise ValueError('Telemetry interval must be 15, 30 or 60 minutes.')
