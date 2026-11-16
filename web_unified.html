@@ -20,7 +20,7 @@ nav.tabs {display:flex;gap:6px;padding:10px 16px;flex-wrap:wrap;border-bottom:1p
 .tabs button {margin:0;background:transparent;border:1px solid transparent;border-radius:9px;color:var(--muted);padding:10px 13px;font-size:14px;cursor:pointer}
 .tabs button[aria-selected=true] {color:var(--accent);background:var(--panel2);border-color:#4b7186;font-weight:700}
 .tabs button:hover,.tabs button:focus-visible {border-color:#75bfb3;color:var(--ink)}
-main {max-width:1550px;margin:auto;padding:16px}
+main {max-width:1720px;margin:auto;padding:18px clamp(12px,2.4vw,30px)}
 section.view[hidden] {display:none}
 h1 {font-size:23px;margin:3px 0 12px}
 h2 {font-size:16px;color:var(--accent);margin:0 0 12px}
@@ -79,7 +79,16 @@ tbody tr.clickable:hover,tbody tr.chosen {background:#27516b}
 .home-link span{display:block;font-size:12px;line-height:1.5;color:var(--muted)}
 .section-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 #logout{background:#3d384b;color:#ffe7df}
-nav.tabs{position:sticky;top:0;z-index:9;overflow-x:auto}
+nav.tabs{position:sticky;top:0;z-index:9;overflow-x:auto;flex-wrap:nowrap;
+  scrollbar-width:thin;gap:4px;overscroll-behavior-inline:contain}
+nav.tabs button{white-space:nowrap;flex-shrink:0}
+header{padding:13px clamp(14px,2vw,26px)}
+.home-links{grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:12px}
+.home-link{min-height:118px;padding:17px 18px}
+.home-link strong{font-size:15px;line-height:1.35}
+.home-link span{font-size:12px;line-height:1.5}
+.panel{box-shadow:0 1px 0 #ffffff05}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
 @media(max-width:750px){main{padding:9px}.two{grid-template-columns:1fr}header{padding:13px}nav.tabs{padding:7px}.tabs button{padding:9px}.panel{padding:12px}.metric-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -121,22 +130,18 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
          data-en="Live USB KISS, APRS-IS and DIGI status. Open one of the pages below to manage your station.">Aktuální provoz USB KISS, APRS-IS a DIGI. Pro práci přejdi na jednu z následujících stránek.</p>
     </div><span class="pill" id="home-clock">—</span></div>
     <div class="metric-list">
-      <div class="metric"><span>RX rámce</span><strong id="home-rx">0</strong></div>
+      <div class="metric"><span data-cs="RX rámce" data-en="RX frames">RX rámce</span><strong id="home-rx">0</strong></div>
       <div class="metric"><span>TX USB</span><strong id="home-tx">0</strong></div>
       <div class="metric"><span>RF → APRS-IS</span><strong id="home-gate">0</strong></div>
       <div class="metric"><span>DIGI TX</span><strong id="home-digi">0</strong></div>
-      <div class="metric"><span>Stanice</span><strong id="home-stations">0</strong></div>
+      <div class="metric"><span data-cs="Stanice" data-en="Stations">Stanice</span><strong id="home-stations">0</strong></div>
     </div>
     <div id="home-status" class="muted">Načítám stav stanice…</div>
   </div>
   <div class="home-links">
     <button class="home-link" data-open="rx"><strong>01 · Příjem / TX</strong><span>USB KISS, poslední rámce, dekódování AX.25 a volba místního HDMI panelu.</span></button>
     <button class="home-link" data-open="map"><strong>02 · APRS mapa</strong><span>Online a offline mapy, APRS symboly, polohy, GPX / KML / GeoJSON.</span></button>
-    <button class="home-link" data-open="heard"><strong>11 · Mapa RF doslechu</strong><span>Doslech po přijímačích, přímý a opakovaný provoz, DX a historie.</span></button>
-    <button class="home-link" data-open="chat2"><strong>12 · Konverzace a bulletiny</strong><span>Nepřečtené zprávy, historie konverzací, blokované stanice a APRS bulletiny.</span></button>
-    <button class="home-link" data-open="alerts"><strong>13 · Automatická upozornění</strong><span>Výpadky TNC/iGate, sledované stanice, počasí a volitelné MQTT.</span></button>
     <button class="home-link" data-open="igate"><strong>03 · Nastavení</strong><span>iGate, DIGI, USB, GPS, symboly, majáky a připojení k APRS-IS.</span></button>
-    <button class="home-link" data-open="bbs"><strong>14 · Packet Radio BBS</strong><span>AX.25 spojovaná BBS přes primární KISS, SQLite pošta, sysop správa a bezpečné zapínání RF TX.</span></button>
     <button class="home-link" data-open="messages"><strong>04 · Zprávy</strong><span>Inbox, Outbox, potvrzení ACK/REJ a odeslání RF zpráv.</span></button>
     <button class="home-link" data-open="objects"><strong>05 · APRS objekty</strong><span>Správa objektů a ruční vysílání polohových rámců.</span></button>
     <button class="home-link" data-open="telemetry"><strong>06 · Telemetrie</strong><span>Statistiky za posledních 15 minut a nastavení T#.</span></button>
@@ -144,6 +149,10 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <button class="home-link" data-open="tnc"><strong>08 · TNC / Síť / Historie</strong><span>USB nebo TCP KISS, sdílení TNC, reconnect a SQLite archiv poloh a rámců.</span></button>
     <button class="home-link" data-open="weather"><strong>09 · APRS Počasí</strong><span>Přijaté meteorologické stanice, teplota, vítr, tlak a historie měření.</span></button>
     <button class="home-link" data-open="isrf"><strong>10 · IS → RF Gateway</strong><span>Výběr stanic a objektů z internetu, kontrolní filtry, náhled a řízené vysílání přes KISS TNC.</span></button>
+    <button class="home-link" data-open="heard"><strong>11 · Mapa RF doslechu</strong><span>Doslech po přijímačích, přímý a opakovaný provoz, DX a historie.</span></button>
+    <button class="home-link" data-open="chat2"><strong>12 · Konverzace a bulletiny</strong><span>Nepřečtené zprávy, historie konverzací, blokované stanice a APRS bulletiny.</span></button>
+    <button class="home-link" data-open="alerts"><strong>13 · Automatická upozornění</strong><span>Výpadky TNC/iGate, sledované stanice, počasí a volitelné MQTT.</span></button>
+    <button class="home-link" data-open="bbs"><strong>14 · Packet Radio BBS</strong><span>AX.25 spojovaná BBS přes primární KISS, SQLite pošta, sysop správa a bezpečné zapínání RF TX.</span></button>
   </div>
 </section>
 <section class="view" id="tab-rx" hidden>
