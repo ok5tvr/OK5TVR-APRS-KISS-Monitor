@@ -73,7 +73,10 @@ class DesktopBackendTests(unittest.TestCase):
                 app=DesktopApp(root,service=svc,start_service=False)
                 root.update()
                 tabs=[app.notebook.tab(tab,'text') for tab in app.notebook.tabs()]
-                self.assertEqual(len(tabs),7)
+                self.assertEqual(len(tabs),9)
+                self.assertIn('BBS',tabs)
+                self.assertTrue(app.bbs_sessions.winfo_exists())
+                self.assertTrue(app.object_list.winfo_exists())
                 self.assertTrue(any(t in tabs for t in ('Zprávy','Messages')))
                 self.assertTrue(any(t in tabs for t in ('Objekty','Objects')))
                 self.assertIsNone(svc.web.httpd)
@@ -83,9 +86,54 @@ class DesktopBackendTests(unittest.TestCase):
                 translated=[app.notebook.tab(tab,'text') for tab in app.notebook.tabs()]
                 self.assertIn('Messages',translated)
                 self.assertIn('Objects',translated)
+                calls=[]
+                def action(name,payload=None,callback=None,**kwargs):
+                    calls.append((name,payload or {}))
+                    result=svc._execute(name,payload or {})
+                    if callback:callback(result)
+                app._act=action;app._confirm=lambda *args:True
+                app.desktop_mode('bbs');self.assertEqual(svc.operating_mode,'bbs')
+                self.assertEqual(calls[-1][0],'mode_set')
+                app.notebook.select(app.objects_tab);root.update()
+                for i in range(6):app.desktop_object_add()
+                self.assertEqual(len(app.object_entries),5)
+                app.object_fields['name'].set('FIFTH')
+                app.object_fields['transport'].set('inet')
+                app.object_fields['schedule'].set('times')
+                app.object_fields['times'].set('08:00, 18:30')
+                app.desktop_objects_save()
+                self.assertEqual(calls[-1][0],'objects_save')
+                self.assertEqual(svc.config.data['object_slots']['entries'][4]['times'],['08:00','18:30'])
+                self.assertEqual(svc.config.data['object_slots']['entries'][4]['transport'],'inet')
+                self.assertFalse(svc.objects.active)
+                previous=len(calls)
+                app.object_entries[0]['name']='FIFTH'
+                with patch('desktop_station.messagebox.showerror') as error:
+                    app.desktop_objects_save();error.assert_called_once()
+                self.assertEqual(len(calls),previous)
+                app.object_entries[0]['name']=svc.config.data['object_slots']['entries'][0]['name']
+                app._confirm=lambda *args:False
+                app.desktop_mode('aprs');self.assertEqual(len(calls),previous)
+                app._confirm=lambda *args:True
+                app.desktop_mode('aprs');app.desktop_objects_start()
+                self.assertTrue(svc.objects.active)
+                app.desktop_mode('bbs');self.assertFalse(svc.objects.active)
+                app.bbs_config['max_clients'].set('3');app.desktop_bbs_save()
+                self.assertEqual(svc.config.data['bbs']['max_clients'],3)
+                app._refresh(force=True);root.update()
+                self.assertIn('BBS',root.title())
+                app.bbs_to.set('ALL');app.bbs_subject.set('Native BBS test')
+                app.bbs_message.insert('1.0','Stored from the native window')
+                app.desktop_bbs_post();app._refresh_bbs();root.update()
+                ident=app.bbs_mail.get_children()[0];app.bbs_mail.selection_set(ident)
+                app.desktop_bbs_read();self.assertIn('Stored from',app.bbs_body.get('1.0','end'))
+                app.desktop_bbs_reply();self.assertEqual(app.bbs_to.get(),'ALL')
+                app.desktop_bbs_delete();self.assertEqual(svc.bbs_snapshot()['mail_count'],0)
+
+
             finally:
                 root.destroy()
-                svc.messages.close();svc.journal.close()
+                for name in ('bbs','secondary','alerts','archive','messages','journal'):getattr(svc,name).close()
 
 
 if __name__=='__main__':unittest.main()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Compatibility entrypoint for OK5TVR APRS v1.8 native tabbed desktop.
+"""Compatibility entrypoint for OK5TVR APRS v2.6 native APRS/BBS desktop.
 
 All desktop modules now run inside a single Tkinter window; the legacy GUI
 and its separate read-only web map are not started by this entrypoint.

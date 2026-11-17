@@ -1,3 +1,15 @@
+## Nativní aplikace Windows v2.6
+
+**`spustit.bat`** nyní otevírá aktualizovanou aplikaci přímo v jednom nativním okně, bez prohlížeče. Nová karta **Stanice / nastavení** obsahuje společný CALL, SSID jednotlivých rolí, sériové/TCP KISS TNC, explicitní přepínání APRS / BBS / OFF a konfiguraci BBS. CALL se zobrazuje v záhlaví a názvu okna; iGate a DIGI značky se odvozují ze společné identity.
+
+Karta **BBS** obsahuje přehled připojených klientů s výběrovým odpojením, klienta vzdálené BBS s terminálem a místní poštovní schránku s čtením, stránkováním, odpovědí, uložením a smazáním zpráv. Server má stejné nastavení 1–10 klientů jako web. Karta **Objekty** spravuje až pět uložených definic s RF/INET, LIVE/KILL, ručním odesláním, intervaly a denními časy. Uložení a zapnutí plánování jsou samostatné akce. Rozpracované definice se při obnovování stavu nepřepisují.
+
+Aplikace stále používá jednu instanci APRSService, jedno primární TNC a společné protokolové moduly. Desktopový režim nespouští HTTP server; současné spuštění samostatné služby na stejném TNC není určeno. Existující APRS monitor, offline mapa, zprávy, iGate/DIGI, telemetrie a diagnostika zůstávají dostupné v nativních kartách.
+
+Pro vlastní sestavení EXE na Windows spusť **`sestavit_EXE_windows.bat`**. Výstup: `dist/OK5TVR_APRS_BBS_v2_6_0.exe`. ZIP se zdrojovými soubory spusť přes `spustit.bat` s nainstalovaným Pythonem 3.
+
+The native single-window desktop now includes station identity/mode/TNC settings, BBS server and client, multi-client status, mailbox management, and five persistent RF/INET objects with schedules. The same backend runs without starting an HTTP server. Build the Windows executable with `sestavit_EXE_windows.bat`.
+
 ## BBS server: více současných klientů
 
 V **Nastavení → BBS server → Maximum současných klientů** lze nastavit **1–10 spojení**, výchozí hodnota je **5**. Každá stanice (CALL + SSID) má vlastní AX.25 sekvenci, potvrzování, opakování, čas nečinnosti, textovou frontu a rozepsanou zprávu. Schránka je společná; oprávnění ke čtení osobních zpráv se nadále posuzují podle značky uživatele.

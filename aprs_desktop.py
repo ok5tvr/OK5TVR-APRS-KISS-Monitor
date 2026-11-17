@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Single-window desktop frontend for OK5TVR APRS.
+"""Single-window desktop frontend for OK5TVR APRS / AX.25 BBS.
 
 The very same APRSService handles KISS RX/TX, iGate, DIGI, messages, telemetry,
-objects and journal. In desktop mode it does NOT start an HTTP server and it
+objects, BBS server/client and journal. In desktop mode it does NOT start an HTTP server and it
 owns exactly one serial reader. All RF actions still require explicit consent.
 """
 from __future__ import annotations
@@ -18,11 +18,12 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from desktop_station import StationDesktop, FONT, FONT_BOLD, MONO
 from aprs_service import APRSService
 from aprs_station import load_settings, save_settings
 from service_config import ServiceConfig
 
-VERSION = '1.8.2-rc1'
+VERSION = '2.6.0'
 BG = '#101925'
 PANEL = '#1a293a'
 INSET = '#203247'
@@ -184,13 +185,13 @@ class NativeMap(tk.Frame):
                 c.create_line(ax,ay,bx,by,fill='#b8e9ff',width=2,dash=(6,4),arrow='last')
                 c.create_text((ax+bx)/2,(ay+by)/2-12,
                               text=f"{s['distance_km']:.1f} km · {s['bearing_deg'] if s['bearing_deg'] is not None else '—'}°",
-                              fill='#c9f1ff',font=('Segoe UI Semibold',9))
+                              fill='#c9f1ff',font=(FONT_BOLD,9))
         if self.own:
             self._pin({**self.own,'call':self.own.get('call','iGate')}, GREEN, 8)
         if self.digi and self.digi.get('active'):
             self._pin({**self.digi,'call':self.digi.get('call','DIGI')}, '#87afff', 7)
         c.create_rectangle(8,h-31,250,h-7,fill='#152a40',outline='#446179')
-        c.create_text(15,h-19,anchor='w',text=f'{self.center_lat:.3f}° N / {self.center_lon:.3f}° E  ·  ±{self.lon_span/2:.2f}°',fill=FG,font=('Segoe UI',9))
+        c.create_text(15,h-19,anchor='w',text=f'{self.center_lat:.3f}° N / {self.center_lon:.3f}° E  ·  ±{self.lon_span/2:.2f}°',fill=FG,font=(FONT,9))
 
     def _pin(self, s, color, size):
         try:
@@ -203,12 +204,12 @@ class NativeMap(tk.Frame):
         if not 0<=x<=w or not 0<=y<=h:
             return
         self.canvas.create_oval(x-size,y-size,x+size,y+size,fill=color,outline='#071828',width=2)
-        self.canvas.create_text(x+size+3,y,anchor='w',text=str(s.get('call','?')),fill=FG,font=('Segoe UI Semibold',9))
+        self.canvas.create_text(x+size+3,y,anchor='w',text=str(s.get('call','?')),fill=FG,font=(FONT_BOLD,9))
         self._pin_data.append((x,y,s))
 
 
-class DesktopApp:
-    """All APRS modules in one Tk notebook. No embedded or external browser."""
+class DesktopApp(StationDesktop):
+    """All APRS/BBS modules in one Tk notebook. No embedded or external browser."""
     def __init__(self, root, service=None, start_service=True):
         self.root = root
         self.root.title(f'OK5TVR APRS KISS Monitor · v{VERSION}')
@@ -248,13 +249,13 @@ class DesktopApp:
 
     def label(self,parent,cs,en=None,**kwargs):
         label=tk.Label(parent,text=self.t(cs,en or cs),bg=kwargs.pop('bg',BG),fg=kwargs.pop('fg',FG),
-                       font=kwargs.pop('font',('Segoe UI',10)),**kwargs)
+                       font=kwargs.pop('font',(FONT,10)),**kwargs)
         self.labels.append((label,cs,en or cs))
         return label
 
     def button(self,parent,cs,en,callback,kind='normal',**kwargs):
         button=tk.Button(parent,text=self.t(cs,en),command=callback,bd=0,relief='flat',cursor='hand2',
-                          font=('Segoe UI Semibold',10),padx=12,pady=8,
+                          font=(FONT_BOLD,10),padx=12,pady=8,
                           bg=GREEN if kind=='primary' else ('#5d3345' if kind=='warn' else INSET),
                           fg=BG if kind=='primary' else FG,activeforeground=FG,
                           activebackground='#357b80',**kwargs)
@@ -272,23 +273,24 @@ class DesktopApp:
         style.theme_use('clam')
         style.configure('APRS.TNotebook',background=BG,borderwidth=0,tabmargins=(0,7,0,0))
         style.configure('APRS.TNotebook.Tab',background=INSET,foreground=FG,
-                        font=('Segoe UI Semibold',10),padding=(16,11))
+                        font=(FONT_BOLD,10),padding=(16,11))
         style.map('APRS.TNotebook.Tab',background=[('selected','#1e7f78')],foreground=[('selected','white')])
         style.configure('APRS.Treeview',background=PANEL,fieldbackground=PANEL,foreground=FG,
-                        rowheight=27,font=('Segoe UI',9),borderwidth=0)
+                        rowheight=27,font=(FONT,9),borderwidth=0)
         style.configure('APRS.Treeview.Heading',background=INSET,foreground=FG,
-                        font=('Segoe UI Semibold',9),padding=7)
+                        font=(FONT_BOLD,9),padding=7)
         style.map('APRS.Treeview',background=[('selected','#216e80')],foreground=[('selected','white')])
         style.configure('APRS.TCombobox',fieldbackground=INSET,background=INSET,foreground=FG)
         style.map('APRS.TCombobox',fieldbackground=[('readonly',INSET)],foreground=[('readonly',FG)])
 
-    def field(self,parent,cs,en,initial='',width=20,secret=False):
+    def field(self,parent,cs,en,initial='',width=20,secret=False,readonly=False):
         wrapper=tk.Frame(parent,bg=PANEL)
         wrapper.pack(fill='x',pady=3)
         self.label(wrapper,cs,en,bg=PANEL,fg=MUTED,width=20,anchor='w').pack(side='left')
         var=tk.StringVar(value=str(initial))
         inp=tk.Entry(wrapper,textvariable=var,bg=INSET,fg=FG,insertbackground=FG,
-                     font=('Consolas',10),show='*' if secret else '',relief='flat',width=width)
+                     font=(MONO,10),show='*' if secret else '',relief='flat',width=width)
+        if readonly:inp.configure(state='readonly',readonlybackground=INSET)
         inp.pack(side='left',fill='x',expand=True,ipady=6)
         return var
 
@@ -296,7 +298,7 @@ class DesktopApp:
         var=tk.BooleanVar(value=initial)
         cb=tk.Checkbutton(parent,text=self.t(cs,en),variable=var,bg=PANEL,fg=FG,
                           selectcolor=INSET,activebackground=PANEL,activeforeground=FG,
-                          font=('Segoe UI',10),anchor='w')
+                          font=(FONT,10),anchor='w')
         cb.pack(fill='x',pady=2)
         self.labels.append((cb,cs,en))
         return var
@@ -312,7 +314,7 @@ class DesktopApp:
 
     def pane(self,parent,title_cs,title_en):
         p=tk.LabelFrame(parent,text=self.t(title_cs,title_en),bg=PANEL,fg=GREEN,padx=12,pady=10,
-                        font=('Segoe UI Semibold',11),relief='groove',bd=1)
+                        font=(FONT_BOLD,11),relief='groove',bd=1)
         self.labels.append((p,title_cs,title_en))
         return p
 
@@ -331,9 +333,9 @@ class DesktopApp:
     def _build(self):
         header=tk.Frame(self.root,bg=BG)
         header.pack(fill='x',padx=17,pady=(11,3))
-        self.label(header,'OK5TVR','OK5TVR',fg=GREEN,font=('Segoe UI Semibold',14)).pack(side='left')
-        self.label(header,'  APRS KISS Monitor  ·  USB TNC  ·  v1.8.2 RC1',
-                   '  APRS KISS Monitor  ·  USB TNC  ·  v1.8.2 RC1',font=('Segoe UI',14)).pack(side='left')
+        self.brand=self.label(header,'Radio Station','Radio Station',fg=GREEN,font=(FONT_BOLD,14));self.brand.pack(side='left')
+        self.label(header,'  APRS / BBS  ·  KISS TNC  ·  v2.6.0',
+                   '  APRS / BBS  ·  KISS TNC  ·  v2.6.0',font=(FONT,14)).pack(side='left')
         self.language=tk.StringVar(value='EN' if self.lang=='en' else 'CZ')
         pick=ttk.Combobox(header,textvariable=self.language,values=('CZ','EN'),width=4,
                           state='readonly',style='APRS.TCombobox')
@@ -344,6 +346,8 @@ class DesktopApp:
         self.label(self.root,'', '',fg=MUTED,textvariable=self.status,anchor='w').pack(fill='x',padx=18)
         self.notebook=ttk.Notebook(self.root,style='APRS.TNotebook')
         self.notebook.pack(fill='both',expand=True,padx=13,pady=(3,7))
+        self.station_tab=self.tab('Stanice / nastavení','Station / settings')
+        self.bbs_tab=self.tab('BBS','BBS')
         self.monitor=self.tab('Příjem / TX','Monitor / TX')
         self.map_tab=self.tab('Mapa','Map')
         self.messages_tab=self.tab('Zprávy','Messages')
@@ -351,6 +355,8 @@ class DesktopApp:
         self.config_tab=self.tab('iGate / DIGI','iGate / DIGI')
         self.telemetry_tab=self.tab('Telemetrie','Telemetry')
         self.diagnostics_tab=self.tab('Diagnostika / deník','Diagnostics / log')
+        self._build_station()
+        self._build_bbs()
         self._build_monitor()
         self._build_map()
         self._build_messages()
@@ -361,7 +367,7 @@ class DesktopApp:
         self.notebook.bind('<<NotebookTabChanged>>',lambda _: self._refresh(force=True))
         self.label(self.root,'Jedno okno · jedna USB KISS služba · RF vysílání jen po potvrzení',
                    'One window · one USB KISS backend · RF transmissions require confirmation',
-                   fg=MUTED,font=('Segoe UI',9)).pack(anchor='w',padx=18,pady=(0,9))
+                   fg=MUTED,font=(FONT,9)).pack(anchor='w',padx=18,pady=(0,9))
 
     def switch_language(self,event=None):
         self.lang='en' if self.language.get()=='EN' else 'cs'
@@ -395,14 +401,14 @@ class DesktopApp:
         self.refresh_ports()
         self.monitor_counters=tk.StringVar(value='RX 0  ·  TX 0  ·  DIGI 0  ·  APRS-IS 0')
         self.label(self.monitor,'','',textvariable=self.monitor_counters,fg=GREEN,
-                   font=('Segoe UI Semibold',11)).pack(anchor='w',padx=18,pady=(7,2))
+                   font=(FONT_BOLD,11)).pack(anchor='w',padx=18,pady=(7,2))
         grid, self.rx_tree=self._tree(self.monitor,
                      ('Čas','Značka','Cíl','Cesta','Typ','Obsah'),(165,112,100,165,95,550),height=16)
         self.rx_tree.tag_configure('direct',background='#bdeafb',foreground='#183247')
         grid.pack(fill='both',expand=True,padx=8,pady=8)
         self.rx_tree.bind('<<TreeviewSelect>>',self.select_rx)
         self.rx_details=tk.Text(self.monitor,height=5,bg=PANEL,fg=FG,wrap='word',
-                                 insertbackground=FG,font=('Consolas',10),relief='flat',padx=9,pady=7)
+                                 insertbackground=FG,font=(MONO,10),relief='flat',padx=9,pady=7)
         self.rx_details.pack(fill='x',padx=8,pady=(0,8))
         self.rx_details.configure(state='disabled')
 
@@ -421,7 +427,7 @@ class DesktopApp:
         side=tk.Frame(body,bg=PANEL)
         body.add(side,minsize=350,width=390)
         self.label(side,'Slyšené stanice','Heard stations',bg=PANEL,
-                   font=('Segoe UI Semibold',12),fg=GREEN).pack(anchor='w',padx=10,pady=12)
+                   font=(FONT_BOLD,12),fg=GREEN).pack(anchor='w',padx=10,pady=12)
         grid,self.station_tree=self._tree(side,('Značka','Cesta','km','Azimut'),
                                           (108,75,65,90),height=18)
         self.station_tree.tag_configure('direct',background='#bdeafb',foreground='#183247')
@@ -467,7 +473,7 @@ class DesktopApp:
         boxin=tk.Frame(panels,bg=PANEL)
         panels.add(boxin,minsize=145,stretch='always')
         self.label(boxin,'Inbox – přijaté RF zprávy','Inbox – received RF messages',
-                   fg=GREEN,bg=PANEL,font=('Segoe UI Semibold',11)).pack(anchor='w',padx=7,pady=5)
+                   fg=GREEN,bg=PANEL,font=(FONT_BOLD,11)).pack(anchor='w',padx=7,pady=5)
         grid,self.in_tree=self._tree(boxin,('UTC','Od','Komu','Text','ID'),(175,110,110,620,60),height=8)
         grid.pack(fill='both',expand=True,padx=5)
         buttons=tk.Frame(boxin,bg=PANEL)
@@ -478,7 +484,7 @@ class DesktopApp:
         boxout=tk.Frame(panels,bg=PANEL)
         panels.add(boxout,minsize=145,stretch='always')
         self.label(boxout,'Outbox – odeslané zprávy','Outbox – sent messages',
-                   fg=GREEN,bg=PANEL,font=('Segoe UI Semibold',11)).pack(anchor='w',padx=7,pady=5)
+                   fg=GREEN,bg=PANEL,font=(FONT_BOLD,11)).pack(anchor='w',padx=7,pady=5)
         grid,self.out_tree=self._tree(boxout,('UTC','Komu','Text','Stav','Pokusy','ID'),(160,110,560,115,70,60),height=7)
         grid.pack(fill='both',expand=True,padx=5)
         btm=tk.Frame(boxout,bg=PANEL)
@@ -488,41 +494,6 @@ class DesktopApp:
         self.msg_diagnostics=tk.StringVar(value='')
         self.label(self.messages_tab,'','',textvariable=self.msg_diagnostics,fg=MUTED,
                    anchor='w',wraplength=1150).pack(fill='x',padx=12,pady=3)
-
-    def _build_objects(self):
-        content=tk.Frame(self.objects_tab,bg=BG)
-        content.pack(fill='both',expand=True,padx=8,pady=8)
-        left=self.pane(content,'APRS objekty – ruční vysílání','APRS objects – manual transmission')
-        left.pack(side='left',fill='both',expand=True,padx=(0,7))
-        right=self.pane(content,'Vlastní poziční a statusové zprávy','Own position and status packets')
-        right.pack(side='left',fill='both',expand=True,padx=(7,0))
-        self.o_name=self.field(left,'Název objektu','Object name','APRS-TEST')
-        self.o_lat=self.field(left,'GPS šířka','Latitude','49.7384')
-        self.o_lon=self.field(left,'GPS délka','Longitude','13.3736')
-        self.o_comment=self.field(left,'Komentář ASCII','ASCII comment','OK5TVR APRS')
-        self.o_path=self.combo(left,'RF cesta','RF path',('DIRECT','WIDE1-1','WIDE1-1,WIDE2-1'),'DIRECT')
-        self.o_table=self.combo(left,'Tabulka symbolu','Symbol table',('/','\\'),'/')
-        self.o_symbol=self.field(left,'APRS symbol','APRS symbol','r',width=4)
-        tools=tk.Frame(left,bg=PANEL)
-        tools.pack(fill='x',pady=12)
-        self.button(tools,'Vyslat LIVE','Transmit LIVE',lambda:self.send_object(True),kind='primary').pack(side='left',padx=2)
-        self.button(tools,'Ukončit KILL','Kill object',lambda:self.send_object(False),kind='warn').pack(side='left',padx=7)
-        self.label(left,'Objektový rámec jde do USB KISS TX fronty po potvrzení. '
-                   'KILL vyžaduje stejný název. Vysílání kontroluj druhým rádiem.',
-                   'Object frame is queued to USB KISS after confirmation. '
-                   'KILL requires the same object name. Verify over the air with another radio.',
-                   bg=PANEL,fg=ORANGE,wraplength=460,justify='left').pack(anchor='w',pady=12)
-        self.o_status=self.field(right,'Stavový text','Status text','OK5TVR APRS online')
-        self.o_status_path=self.combo(right,'RF cesta','RF path',('DIRECT','WIDE1-1','WIDE1-1,WIDE2-1'),'DIRECT')
-        self.button(right,'Vyslat status','Send status',self.send_status,kind='primary').pack(anchor='w',pady=10)
-        self.button(right,'Vyslat GPS pozici','Send position',self.send_position).pack(anchor='w',pady=7)
-        self.label(right,'GPS pozice a symbol se nastavují v záložce iGate / DIGI.',
-                   'GPS coordinates and symbol are configured in the iGate / DIGI tab.',
-                   bg=PANEL,fg=MUTED,wraplength=390,justify='left').pack(anchor='w',pady=7)
-        self.label(right,'Poslední objekty','Recent objects',fg=GREEN,bg=PANEL,
-                   font=('Segoe UI Semibold',11)).pack(anchor='w',pady=(20,6))
-        grid,self.obj_tree=self._tree(right,('UTC','Objekt','Stav','Cesta'),(175,112,70,95),height=9)
-        grid.pack(fill='both',expand=True)
 
     def _build_config(self):
         ribbon=tk.Frame(self.config_tab,bg=BG,pady=7)
@@ -542,7 +513,7 @@ class DesktopApp:
         dg.pack(side='left',fill='both',expand=True,padx=4)
         ps=self.pane(columns,'Vlastní GPS / majáky','Own GPS / beacons')
         ps.pack(side='left',fill='both',expand=True,padx=4)
-        self.i_call=self.field(ig,'Značka iGate','iGate callsign')
+        self.i_call=self.field(ig,'Značka iGate','iGate callsign',readonly=True)
         self.i_host=self.field(ig,'APRS-IS server','APRS-IS server')
         self.i_port=self.field(ig,'TCP port','TCP port')
         self.i_pass=self.field(ig,'Passcode (změna)','Passcode (change)',secret=True)
@@ -552,7 +523,7 @@ class DesktopApp:
         self.i_autostart=self.check(ig,'Automaticky zapnout iGate','Autostart iGate')
         self.i_state=tk.StringVar(value='iGate: off')
         self.label(ig,'','',textvariable=self.i_state,bg=PANEL,fg=GREEN,wraplength=320).pack(anchor='w',pady=11)
-        self.d_call=self.field(dg,'Značka DIGI','DIGI callsign')
+        self.d_call=self.field(dg,'Značka DIGI','DIGI callsign',readonly=True)
         self.d_mode=self.combo(dg,'Režim DIGI','DIGI mode',('fill','regional'),'fill')
         self.d_trace=self.check(dg,'Povolit TRACE','Enable TRACE')
         self.d_delay=self.field(dg,'Odklad (s)','Delay (s)')
@@ -596,7 +567,7 @@ class DesktopApp:
         meters=self.pane(self.telemetry_tab,'Statistiky za posledních 15 minut','Statistics for the last 15 minutes')
         meters.pack(fill='both',expand=True,padx=12,pady=8)
         self.telemetry_text=tk.Text(meters,bg=PANEL,fg=FG,insertbackground=FG,
-                                    relief='flat',font=('Consolas',12),state='disabled',height=15)
+                                    relief='flat',font=(MONO,12),state='disabled',height=15)
         self.telemetry_text.pack(fill='both',expand=True)
 
     def _build_diagnostics(self):
@@ -654,6 +625,7 @@ class DesktopApp:
             (self.t_igate,i['telemetry_enabled']),(self.t_digi,d['telemetry_enabled'])):
             var.set(value)
         self.i_pass.set('')  # credentials never echoed back into the GUI
+        self._load_station_config()
         if p['latitude'] is not None and p['longitude'] is not None:
             self.native_map.reset(p['latitude'],p['longitude'])
 
@@ -706,7 +678,7 @@ class DesktopApp:
         radio=state['rf_status']
         gate=state['igate_status']
         dig=diag['digi']
-        self.status.set(f'USB: {radio}   │   APRS-IS: {gate}   │   DIGI: '
+        self.status.set(f'TNC: {radio}   │   APRS-IS: {gate}   │   DIGI: '
                         + (self.t('Zapnuto','On') if dig.get('enabled') else self.t('Vypnuto','Off')))
         self.monitor_counters.set(f"RX: {state['rx']}   TX: {state['tx_requests']}   "
                                   f"DIGI: {dig.get('tx_written',0)}   APRS-IS: {state['igate_sent']}   "
@@ -714,7 +686,16 @@ class DesktopApp:
         self.i_state.set(f"iGate: {gate}")
         self.d_state.set(f"DIGI: {self.t('Zapnuto','On') if dig.get('enabled') else self.t('Vypnuto','Off')}"
                          f" · TX {dig.get('tx_written',0)} · pending {dig.get('pending',0)}")
+        identity=self.config.data['station'];mode=self.service.operating_mode
+        call=identity['call'] or 'Radio Station'
+        self.brand.configure(text=call);self.root.title(f'{call} · APRS / BBS · v{VERSION}')
+        self.station_mode.set(self.t('Aktivní režim: ','Active mode: ')+mode.upper())
+        for name,button in self.mode_buttons.items():button.configure(bg=GREEN if name==mode else '#5d3345',fg=BG if name==mode else FG)
+        if mode=='bbs':
+            bbs=diag['bbs'];self.status.set(f"{call} · BBS · TNC: {radio} · {bbs['role'].upper()} {'ON' if bbs['active'] else 'OFF'} · {bbs['client_count']}/{bbs['max_clients']}")
+        else:self.status.set(call+' · '+mode.upper()+' · '+self.status.get())
         selected=self.notebook.select()
+        if selected==str(self.bbs_tab) or force:self._refresh_bbs()
         if selected==str(self.monitor) or force:
             self._refresh_rx(state,force)
         if selected==str(self.map_tab):
@@ -842,12 +823,6 @@ class DesktopApp:
         else:
             self.msg_diagnostics.set(self.t('Žádná zpráva zachycená přes RF KISS.',
                                             'No message frames heard via RF KISS.'))
-
-    def _refresh_objects(self,diag):
-        self.obj_tree.delete(*self.obj_tree.get_children())
-        for row in diag.get('recent_objects',[])[:32]:
-            self.obj_tree.insert('','end',values=(row.get('queued_utc',''),
-                row['name'],'LIVE' if row['alive'] else 'KILL',row['path']))
 
     def _refresh_telemetry(self,diag):
         t=diag['telemetry']
@@ -1006,19 +981,6 @@ class DesktopApp:
                          'path':self.m_path.get(),
                          'receive_aliases':aliases,'auto_ack':ack}}
         self._act('save',{'config':cfg,'confirm_auto_ack':ack})
-
-    def send_object(self,alive):
-        action='LIVE' if alive else 'KILL'
-        if not self._confirm(f'Odeslat JEDEN objekt {action} přes RF? '
-                             'Při KILL musí být stejný název jako u objektu LIVE.',
-                             f'Transmit ONE {action} object over RF? '
-                             'KILL must use the original LIVE object name.'):
-            return
-        req={'confirm':True,'name':self.o_name.get(),'lat':self.o_lat.get(),
-             'lon':self.o_lon.get(),'comment':self.o_comment.get(),
-             'path':self.o_path.get(),'symbol_table':self.o_table.get(),
-             'symbol':self.o_symbol.get(),'alive':alive}
-        self._act('object_send',req)
 
     def send_status(self):
         if self._confirm('Odeslat jeden APRS status přes RF?',

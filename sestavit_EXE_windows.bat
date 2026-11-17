@@ -10,8 +10,9 @@ if errorlevel 1 (
 py -3 -m pip install pyinstaller "pyserial>=3.5"
 if errorlevel 1 exit /b 1
 py -3 -m PyInstaller --clean --noconfirm --onefile --windowed ^
- --name OK5TVR_APRS_KISS_Monitor_v1_8_1 ^
+ --name OK5TVR_APRS_BBS_v2_6_0 ^
  --add-data "offline_geography.json;." ^
+ --add-data "assets;assets" ^
  --add-data "web_dashboard.html;." ^
  --add-data "web_control.html;." ^
  --add-data "web_messages.html;." ^
@@ -28,6 +29,6 @@ py -3 -m PyInstaller --clean --noconfirm --onefile --windowed ^
 if errorlevel 1 (
  echo Sestaveni EXE selhalo.
 ) else (
- echo Hotovo: dist\OK5TVR_APRS_KISS_Monitor_v1_8_1.exe
+ echo Hotovo: dist\OK5TVR_APRS_BBS_v2_6_0.exe
 )
 pause
