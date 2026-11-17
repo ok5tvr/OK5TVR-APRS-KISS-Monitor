@@ -48,37 +48,74 @@ body.console-shell.embedded-console>header,body.console-shell.embedded-console>f
 body.console-shell.embedded-console nav.tabs{top:0;min-height:100vh}
 body.console-shell.embedded-console>main{padding-top:16px}
 .console-shell nav.tabs button[hidden],.console-shell .home-link[hidden]{display:none}
-/* Full-page workspaces and a single settings area. */
-#global-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:14px 24px;background:#0f192b;border-bottom:1px solid var(--border);position:relative;z-index:20}
-.global-brand{font-size:18px;font-weight:700}.global-brand b{color:var(--accent)}.global-status{display:flex;flex-wrap:wrap;gap:14px;color:var(--muted);font-size:12px;margin-left:auto}.global-links{display:flex;gap:7px;flex-wrap:wrap}.global-links a,#settings-navigation a{display:inline-block;padding:7px 12px;color:var(--ink);border:1px solid var(--border);border-radius:8px;text-decoration:none;background:#192a40;font-size:12px}
-#settings-navigation{padding:16px 24px;border-bottom:1px solid var(--border);background:#111e30}#settings-navigation nav{display:flex;gap:7px;flex-wrap:wrap}.settings-mode{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.settings-mode button.on{background:#17634c;border-color:#42af89}.good{color:#8febc3}.bad{color:#ffa9b6}
-body[data-shell]{padding:0;max-width:none}body[data-shell]>main{padding:22px;max-width:1600px}body.console-shell[data-shell]>header,body.console-shell[data-shell]>footer{display:none}body.console-shell[data-shell] nav.tabs{top:var(--shell-height,72px);min-height:calc(100vh - var(--shell-height,72px))}body.console-shell[data-shell]>main{max-width:none}
 body[data-page-kind="operation"] .settings-only{display:none!important}
 body[data-page-kind="settings"] .operation-only{display:none!important}
-body[data-page-kind="settings"].console-shell nav.tabs,body[data-page-kind="settings"].console-shell .page-heading,body[data-page-kind="settings"] #language-preferences{display:none!important}
-body[data-page-kind="settings"].console-shell>main{margin-left:0;max-width:1600px;margin-right:auto;margin-left:auto}
+body[data-page-kind="settings"].console-shell nav.tabs,body[data-page-kind="settings"] #language-preferences{display:none!important}
 body[data-view-role="settings-messages"] section:not(#message-settings),body[data-view-role="settings-messages"] .statrow{display:none!important}body[data-view-role="settings-messages"] .grid{grid-template-columns:1fr}
 body[data-view-role="settings-bbs"] #bbs-client,body[data-view-role="settings-bbs"] #bbs-help,body[data-view-role="settings-bbs"] #compose-section,body[data-view-role="settings-bbs"] #bbs-mail{display:none!important}
 body[data-view-role="settings-operations"] #objects{display:none!important}
 body[data-page-kind="operation"] nav.tabs [data-tab="igate"],body[data-page-kind="operation"] nav.tabs [data-tab="tnc"],body[data-page-kind="operation"] .home-link[data-open="igate"],body[data-page-kind="operation"] .home-link[data-open="tnc"],body[data-page-kind="operation"] nav.tabs [data-tab="bbs"],body[data-page-kind="operation"] .home-link[data-open="bbs"]{display:none!important}
 body[data-page-kind="settings"] #tab-chat2>.panel>:not(.settings-only){display:none!important}
-body[data-view-role="settings-bbs"]>h1,body[data-view-role="bbs"]>h1{margin:20px 24px}body[data-view-role="bbs"]>section,body[data-view-role="settings-bbs"]>section{margin:18px 24px;padding:20px}
 body[data-shell] main>nav:not(.global-links){display:none}
-@media(max-width:760px){#global-navigation,#settings-navigation{padding:12px}.global-status{margin-left:0;width:100%;gap:10px}.global-links{width:100%}body[data-shell]>main{padding:14px}body.console-shell[data-shell] nav.tabs{position:static;width:100%;min-height:0;border-right:0;display:flex;flex-direction:row;overflow:auto;padding:8px}body.console-shell[data-shell]>main{margin:0}body[data-view-role="bbs"]>section,body[data-view-role="settings-bbs"]>section{margin:12px;padding:14px}}
 
 /* Dedicated full-page operating views. */
 body[data-view-role="aprs-operations"] #objects{display:none!important}
 body[data-shell] .grid>*,body[data-shell] .two>*,body[data-shell] .panel{min-width:0}
 body[data-shell] .grid{max-width:100%}
-body[data-shell] header+.app-nav{display:none}
-body[data-view-role="aprs-map"]>header{display:none}
 .object-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px}
 .object-card{padding:20px;border:1px solid var(--border);border-radius:14px;background:var(--panel);min-width:0}
 .object-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.object-fields label{display:grid;gap:5px;font-size:13px}
 .object-fields input,.object-fields select{width:100%;min-width:0}.object-card p{overflow-wrap:anywhere}
 @media(max-width:600px){.object-fields{grid-template-columns:1fr}}
 
-#aprs-navigation{display:flex;flex-wrap:wrap;gap:8px;padding:10px 24px;border-bottom:1px solid var(--border);margin:0;background:var(--panel)}
-#aprs-navigation a{color:var(--ink);text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:8px}
 body[data-view-role="aprs-objects"] *,body[data-view-role="settings-objects"] *{box-sizing:border-box}
 body[data-view-role="aprs-messages"] .message,body[data-view-role="aprs-messages"] .entry{overflow-wrap:anywhere;max-width:100%}
+
+/* Shared authenticated shell: one header, one sidebar, one content column. */
+body[data-shell]{--sidebar:246px;--shell-height:76px;display:grid;grid-template-columns:var(--sidebar) minmax(0,1fr);grid-template-rows:auto 1fr;margin:0;padding:0;max-width:none;min-height:100vh;font:14px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+body[data-shell] *,body[data-shell] *::before,body[data-shell] *::after{box-sizing:border-box}
+#global-navigation{grid-column:1/-1;grid-row:1;position:sticky;top:0;z-index:30;display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:0;padding:14px 24px;min-height:76px;background:#0f192b;border:0;border-bottom:1px solid var(--border)}
+.global-brand{font-size:18px;font-weight:750;white-space:nowrap}.global-brand b{color:var(--accent)}
+.global-status{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.global-links{display:flex;flex-wrap:wrap;gap:6px;margin:0}body[data-shell] .global-links a{padding:6px 10px;border:1px solid transparent;border-radius:8px;color:var(--muted);font-size:12px;text-decoration:none}
+body[data-shell] .global-links a[aria-current]{background:#1d3447;border-color:#36526a;color:var(--ink)}
+#global-logout{padding:6px 10px;margin:0;min-height:34px;font-size:12px}
+#station-sidebar{grid-column:1;grid-row:2;position:sticky;top:var(--shell-height);align-self:start;height:calc(100dvh - var(--shell-height));overflow-y:auto;overscroll-behavior:contain;padding:18px 12px;border-right:1px solid var(--border);background:#0f192b}
+#station-sidebar nav{display:flex;flex-direction:column;gap:8px;margin:0;align-items:stretch}
+#station-sidebar a{display:block;padding:10px 13px;min-height:42px;border:1px solid transparent;border-radius:9px;color:var(--muted);text-decoration:none;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+#station-sidebar a:hover{background:#182c3e;color:var(--ink)}
+#station-sidebar a[aria-current]{background:#193b3b;color:#9af0d5;border-color:#2b625b;box-shadow:inset 3px 0 var(--accent);font-weight:650}
+.navigation-group{border-top:1px solid var(--border);padding-top:8px}.navigation-group summary{cursor:pointer;min-height:40px;padding:9px 12px;color:var(--ink);font-size:12px;font-weight:750;letter-spacing:.04em}
+.navigation-group summary::marker{color:var(--accent)}
+#station-content{grid-column:2;grid-row:2;min-width:0;max-width:100%;padding:0;outline:none}
+body[data-shell] #station-content>main{width:100%;min-width:0;max-width:none;min-height:0;margin:0;padding:26px clamp(16px,2.5vw,36px)}
+body[data-shell] #station-content>header,body[data-shell] #station-content>footer,body[data-shell] #station-content>nav.tabs,body[data-shell] #station-content>.app-nav,body[data-shell] #station-content .mobile-navigation{display:none!important}
+body[data-shell] #station-content main>nav{display:none}
+body[data-shell] h1{font-size:28px;line-height:1.25;color:var(--ink);margin:0 0 10px;font-weight:750}
+body[data-shell] h2{font-size:18px;line-height:1.4;color:var(--ink);font-weight:650}
+body[data-shell] section:not(.view),body[data-shell] .panel,body[data-shell] .object-card{border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:20px}
+body[data-shell] section.view{padding:0;border:0;background:transparent;box-shadow:none}
+body[data-shell] input:not([type=checkbox]):not([type=radio]),body[data-shell] select,body[data-shell] textarea{background:#0c1626;color:var(--ink);border:1px solid #435873;padding:10px 12px;border-radius:9px;font:inherit;max-width:100%;min-width:0}
+body[data-shell] button{font:inherit;font-weight:600;padding:9px 13px;border-radius:9px;cursor:pointer;max-width:100%}
+body[data-shell] button:not(.launch):not(.primary):not(.danger):not(.stop):not(.warn):not(.on){background:#243953;border-color:#3b5472;color:var(--ink)}
+body[data-shell] button.primary{background:#177762;border-color:#42b69b;color:#fff}body[data-shell] button.danger,body[data-shell] button.stop{background:#642f40;border-color:#ad596c;color:#ffe9ed}
+body[data-shell] input[type=checkbox],body[data-shell] input[type=radio]{width:auto;min-height:0}
+body[data-shell] table{border-collapse:collapse;font-size:13px}body[data-shell] th{background:var(--panel2);color:var(--ink);font-weight:650}body[data-shell] td,body[data-shell] th{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}
+body[data-shell] .scroll{max-width:100%;overflow:auto}body[data-shell] .grid>*,body[data-shell] .two>*,body[data-shell] .flex>*{min-width:0}
+#settings-navigation{padding:18px clamp(16px,2.5vw,36px);background:#111e30;border-bottom:1px solid var(--border)}
+.settings-mode{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0}.settings-mode button.on{background:#17634c;border-color:#42af89}.good{color:#8febc3}.bad{color:#ffa9b6}
+body[data-view-role="settings-operations"] #diagnostics{display:none}
+body[data-shell] #map{height:clamp(440px,68vh,900px)}
+body[data-shell] .map-header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}body[data-shell] .map-header>span{min-width:0;display:flex;flex-wrap:wrap;gap:6px}
+#navigation-toggle{display:none}
+@media(max-width:1150px){body[data-shell]{--sidebar:222px}#global-navigation{gap:10px;padding:12px 18px}.global-status{order:3;width:100%;margin-left:0}.global-links{margin-left:auto}#station-content .grid,#station-content .two{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){body[data-shell]{display:block}#global-navigation{padding:12px;gap:9px;min-height:64px}.global-brand{font-size:16px}.global-status{gap:8px;font-size:11px}body[data-shell] .global-links{display:none}#global-logout{margin-left:auto}#navigation-toggle{display:block}#station-sidebar{display:none;position:static;height:auto;max-height:65vh;width:100%;padding:10px 12px;border-right:0;border-bottom:1px solid var(--border)}body.navigation-open #station-sidebar{display:block}body[data-shell] #station-content>main{padding:20px 14px}body[data-shell] h1{font-size:24px}body[data-shell] section:not(.view),body[data-shell] .panel,body[data-shell] .object-card{padding:16px}body[data-shell] #map{height:60vh;min-height:360px}#station-content .statrow{max-width:100%;flex-wrap:wrap}}
+
+body[data-shell] #global-navigation{height:auto;flex-direction:row}body[data-shell] .global-links{align-items:center}body[data-shell] .global-links a{display:inline-block}
+body[data-shell] #station-content .statrow{gap:12px}body[data-shell] .statrow>.stat,body[data-shell] .statrow>.statbox{padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+
+body[data-shell] #global-navigation{justify-content:flex-start}body[data-shell] #global-navigation .global-status{line-height:1.5}
+
+body[data-shell] #station-content [id]{scroll-margin-top:calc(var(--shell-height) + 16px)}
+
+body[data-shell][data-active-tab="home"] .page-heading{display:none}

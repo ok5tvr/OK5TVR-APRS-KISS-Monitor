@@ -93,7 +93,7 @@ header{padding:13px clamp(14px,2vw,26px)}
 footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
 @media(max-width:750px){main{padding:9px}.two{grid-template-columns:1fr}header{padding:13px}nav.tabs{padding:7px}.tabs button{padding:9px}.panel{padding:12px}.metric-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
-<link rel="stylesheet" href="/assets/web_theme.css?v=28">
+<link rel="stylesheet" href="/assets/web_theme.css?v=29">
 </head>
 <body class="console-shell">
 <a class="skip-link" href="#main-content" data-cs="Přejít k obsahu" data-en="Skip to content">Přejít k obsahu</a>
@@ -125,7 +125,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
 </nav>
 <main id="main-content" tabindex="-1">
 <div class="page-heading">
-  <div><div class="eyebrow">APRS · COMMAND CENTER</div><h1 id="page-title">Přehled</h1></div>
+  <div><div class="eyebrow">APRS</div><h1 id="page-title">Přehled</h1></div>
   <div class="mobile-navigation"><label for="page-select" data-cs="Přejít na stránku" data-en="Go to page">Přejít na stránku</label><select id="page-select"></select></div>
 </div>
 <div id="service-notice" class="service-notice" role="status" aria-live="polite" hidden></div>
@@ -582,6 +582,7 @@ function showTab(name) {
   syncNavigation();
   if(params.get("scope")==="aprs")document.querySelectorAll('[data-tab="bbs"], [data-open="bbs"]').forEach(el=>el.hidden=true);
   if (location.hash !== "#" + name) history.pushState(null,"","#" + name);
+  window.dispatchEvent(new Event("station:navigation"));
 }
 function trimEmbedded(frame,name) {
   try {
@@ -647,7 +648,7 @@ document.querySelectorAll("nav.tabs button").forEach((btn,index) => {
 });
 $("page-select").addEventListener("change", event => showTab(event.target.value));
 window.addEventListener("hashchange", () => {
-  if (location.hash === "#main-content") return;
+  if (["#main-content","#station-content"].includes(location.hash)) return;
   showTab(location.hash.slice(1));
 });
 document.querySelectorAll("[data-open]").forEach(btn=>btn.addEventListener("click",()=>showTab(btn.dataset.open)));

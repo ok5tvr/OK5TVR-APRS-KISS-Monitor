@@ -194,7 +194,7 @@ class WebPanel:
                     elif parsed.path == '/api/station':
                         self._respond(200, json.dumps(operator.station_snapshot(),ensure_ascii=False))
                     elif parsed.path=='/app':
-                        self._respond(200,STATION_HTML,'text/html; charset=utf-8')
+                        self._respond(200,full_page(STATION_HTML,'home'),'text/html; charset=utf-8')
                     elif parsed.path in ('/aprs','/unified'):
                         self._respond(200,full_page(UNIFIED_HTML,'aprs'),'text/html; charset=utf-8')
                     elif parsed.path.startswith('/settings'):

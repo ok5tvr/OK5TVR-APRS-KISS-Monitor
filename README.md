@@ -1,3 +1,9 @@
+## Jednotné webové prostředí
+
+Všechny přihlášené stránky mají společnou horní lištu (CALL, TNC, provozní režim, čas a IP), stejné levé menu a stejné formulářové prvky. Menu je dostupné v přehledu, živé mapě, zprávách, objektech, diagnostice, BBS i ve všech Nastaveních. Aktivní stránka je zvýrazněná; skupiny APRS / BBS / Nastavení lze rozbalovat. Na telefonu menu otevře tlačítko **Menu**; zavře se po výběru stránky nebo klávesou Escape. Navigace nemění provozní režim ani nic nevysílá.
+
+Authenticated pages share one header, sidebar, active-page indicator and common controls. On mobile, use **Menu**; selecting a page or pressing Escape closes it. Read-only and embedded map components keep their restricted viewer interface.
+
 ## APRS objekty a přehledné provozní stránky
 
 Živá mapa nyní zobrazuje mapu a stanice bez statistických bloků. Statistiky zůstávají v části Telemetrie. Objekty mají vlastní celostránkový přehled `/objects`; Diagnostika je samostatná.

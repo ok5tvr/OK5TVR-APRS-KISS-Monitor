@@ -10,7 +10,7 @@ from urllib.request import urlopen
 from aprs_service import APRSService
 from service_config import ServiceConfig
 from web_panel import WebPanel
-from web_views import SETTINGS_ROUTES
+from web_views import SETTINGS_ROUTES, APRS_ROUTES, BBS_ROUTES
 
 
 class Elements(HTMLParser):
@@ -79,6 +79,30 @@ class FullPageTests(unittest.TestCase):
         parsed.by_id('map')
         self.assertFalse(any(attrs.get('id') in ('rx15','avg15','rx','digi_tx') for _,attrs in parsed.tags))
         self.assertIn('data-admin-target="objects"',html)
+
+    def test_every_authenticated_workspace_uses_identical_sidebar_and_one_content_column(self):
+        import re
+        reference=None
+        routes=['/app','/aprs','/map','/messages','/objects','/operations','/bbs']+[r for r,_,_ in SETTINGS_ROUTES]
+        for route in routes:
+            with self.subTest(route=route):
+                html=self.fetch(route);parsed=Elements(html)
+                parsed.by_id('station-sidebar');parsed.by_id('station-content')
+                toggle=parsed.by_id('navigation-toggle')
+                self.assertEqual(toggle['aria-controls'],'station-sidebar')
+                self.assertEqual(toggle['aria-expanded'],'false')
+                self.assertEqual(sum(tag=='header' and a.get('id')=='global-navigation' for tag,a in parsed.tags),1)
+                menu=re.search(r'<aside id="station-sidebar">(.*?)</aside>',html,re.S)[1]
+                links=[a['data-route'] for _,a in Elements(menu).tags if 'data-route' in a]
+                if reference is None:reference=links
+                self.assertEqual(links,reference)
+                self.assertEqual(links,['/app']+[r for r,_,_ in APRS_ROUTES+BBS_ROUTES+SETTINGS_ROUTES])
+                self.assertTrue(any(tag=='main' for tag,_ in parsed.tags))
+                self.assertEqual(html.count('/assets/web_theme.css?v=29'),1)
+                self.assertLess(html.rindex('</style>'),html.index('/assets/web_theme.css?v=29'))
+        # The heard-map component must not recursively acquire the station shell.
+        embedded=self.fetch('/map?embedded=1')
+        self.assertNotIn('id="station-sidebar"',embedded)
 
     def test_get_navigation_does_not_change_mode_or_rf_state(self):
         before=self.service.config.public_view()
