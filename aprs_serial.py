@@ -22,10 +22,19 @@ class SerialReader(threading.Thread):
         self.outgoing = RFOutputScheduler()  # single bounded queue for every TX category  # Never build a TX queue in the background.
         self.digi_allowed = threading.Event()
         self.isrf_allowed = threading.Event()  # OFF unless explicitly enabled by admin  # OFF until operator starts DIGI
+        self.bbs_allowed = threading.Event()  # explicit runtime-only AX.25 PBBS TX
+        self.objects_epoch = 0
+        self.bbs_epoch = -1  # discard queued BBS frames from old RF sessions
 
     def send(self, encoded_kiss: bytes, category: str = "manual") -> bool:
         if self.stop.is_set() or (
                 category == 'igate_is_to_rf' and not self.isrf_allowed.is_set()):
+            return False
+        if category.startswith('object_slot:') and category.rsplit(':',1)[-1]!=str(self.objects_epoch):
+            return False
+        if category.startswith('bbs_') and (
+                not self.bbs_allowed.is_set() or
+                category.rsplit(':',1)[-1] != str(self.bbs_epoch)):
             return False
         try:
             self.outgoing.put_nowait((encoded_kiss, category))
@@ -61,6 +70,14 @@ class SerialReader(threading.Thread):
                             continue
                         if category == 'igate_is_to_rf' and not self.isrf_allowed.is_set():
                             self.emit('tx_cancelled', 'IS->RF disabled: queued packet cancelled')
+                            continue
+                        if category.startswith('object_slot:') and category.rsplit(':',1)[-1]!=str(self.objects_epoch):
+                            self.emit('tx_cancelled','Object definitions/schedule changed')
+                            continue
+                        if category.startswith('bbs_') and (
+                                not self.bbs_allowed.is_set() or
+                                category.rsplit(':',1)[-1] != str(self.bbs_epoch)):
+                            self.emit('tx_cancelled', 'BBS stopped/session changed: old KISS frame cancelled')
                             continue
                         try:
                             written = conn.write(payload)

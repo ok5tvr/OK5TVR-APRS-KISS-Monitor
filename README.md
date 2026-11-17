@@ -1,10 +1,121 @@
+## Jednotné webové prostředí
+
+Všechny přihlášené stránky mají společnou horní lištu (CALL, TNC, provozní režim, čas a IP), stejné levé menu a stejné formulářové prvky. Menu je dostupné v přehledu, živé mapě, zprávách, objektech, diagnostice, BBS i ve všech Nastaveních. Aktivní stránka je zvýrazněná; skupiny APRS / BBS / Nastavení lze rozbalovat. Na telefonu menu otevře tlačítko **Menu**; zavře se po výběru stránky nebo klávesou Escape. Navigace nemění provozní režim ani nic nevysílá.
+
+Authenticated pages share one header, sidebar, active-page indicator and common controls. On mobile, use **Menu**; selecting a page or pressing Escape closes it. Read-only and embedded map components keep their restricted viewer interface.
+
+## APRS objekty a přehledné provozní stránky
+
+Živá mapa nyní zobrazuje mapu a stanice bez statistických bloků. Statistiky zůstávají v části Telemetrie. Objekty mají vlastní celostránkový přehled `/objects`; Diagnostika je samostatná.
+
+V **Nastavení → APRS objekty** (`/settings/objects`) lze uložit až **5 objektů**. Každý obsahuje název, polohu, symbol, komentář, LIVE/KILL, RF cestu a samostatnou volbu **RF / INET**. RF používá společnou frontu KISS TNC; INET připojený iGate / APRS-IS a neposílá objekt přes RF. Přehled umožňuje ruční odeslání uloženého objektu.
+
+Plán: pouze ručně, interval 1–1440 minut nebo nejvýše 24 denních časů `HH:MM`. Denní časy používají místní hodiny zařízení, zobrazené na stránce. Po uložení je nutné v Nastavení zapnout plánování. Interval počítá od zapnutí; více splatných objektů se zařazuje s odstupem nejméně 5 sekund. Zmeškané časy se nedohánějí. Uložení konfigurace, restart, obnova, přepnutí režimu a odpojení TNC plánování zastaví. Definice zůstávají uložené; samotné otevření stránky nic nevysílá. Smazání definice nevysílá KILL automaticky.
+
+The live map no longer contains statistics. Up to five persistent APRS objects are configured in Settings, with independent RF or INET transport, manual transmission, intervals or daily times using the displayed device local clock. Scheduling requires explicit runtime activation and stops on configuration save, restart, restore, mode change or TNC disconnect. Missed deadlines are skipped. Queue acceptance is not confirmation of RF reception.
+
 # OK5TVR APRS KISS Monitor
 
-**Windows / Raspberry Pi APRS TNC Command Center · v2.3 dev · bidirectional selective iGate, multi-KISS RX, DIGI and messaging**
+**Windows / Raspberry Pi APRS TNC Command Center · v2.5 dev · bidirectional selective iGate, multi-KISS RX, DIGI and messaging**
 
-Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální verze zdrojových kódů: **v1.8.2-rc1**.
+Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální vývojová verze zdrojových kódů: **v2.5 dev**.
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
+
+## v2.5 dev – rozcestník APRS / BBS / Nastavení
+
+Po přihlášení se otevře rozcestník se třemi velkými navigačními tlačítky. **Kliknutí na APRS, BBS ani Nastavení nic nezapíná ani nevypíná.** Zelená označuje skutečně aktivní provozní režim, červená vypnutý. Lišta ukazuje CALL, připojení TNC, místní čas prohlížeče, IP zařízení a verzi.
+
+Pod tlačítky je živý terminál posledních 150 dekódovaných rámců v časovém pořadí. Zobrazuje čas, zdroj, cíl, cestu, typ, obsah a dekódovaný popis. Pozastavení, automatické posouvání a vyčištění výpisu ovlivňují pouze pohled v prohlížeči; nezastavují příjem ani nemažou archiv.
+
+APRS (`/aprs`), BBS (`/bbs`) a Nastavení (`/settings`) jsou samostatné stránky přes celé okno. Nevkládají se pod úvodní tlačítka ani do pracovního iframe. Jednotná horní navigace umožňuje návrat na Úvod. Mapový graf historie může nadále používat izolovanou mapovou komponentu.
+
+**Veškerá konfigurace a zapínání režimů jsou v Nastavení.** Společná nabídka obsahuje CALL/SSID/TNC, iGate/DIGI/GPS, APRS zprávy, USB/displej, TNC/síť/archiv, telemetrii, IS→RF, upozornění/MQTT, blokované stanice, BBS server a zálohu/obnovu. Přepínače APRS ON / BBS ON / Vypnout jsou pouze v této sekci; ovládání BBS serveru je v Nastavení → BBS server. Provozní stránky obsahují příjem, mapy, poštu a terminál klienta.
+
+- **APRS**: příjem, mapy, iGate, DIGI, zprávy, objekty a telemetrie. BBS je z vnitřní APRS navigace odstraněna.
+- **BBS**: místní PBBS server / pošta a nový AX.25 klient. Klient používá vlastní SSID, naváže DIRECT spojení se vzdálenou BBS, zobrazí terminál a odešle ASCII řádky do 100 znaků. Server a klient se střídají na jednom TNC.
+- **Nastavení**: jediný základní CALL bez SSID, samostatné číselné SSID pro iGate / DIGI / BBS server / BBS klient a společné USB/TCP TNC. SSID 0 znamená značku bez přípony. Odvozené značky jsou v jednotlivých sekcích pouze pro čtení.
+- **Přihlášení**: uživatelské jméno je základní CALL (velikost písmen se nerozlišuje); heslem zůstává dosavadní administrátorský přístupový token. Změna CALL se projeví bez restartu webu. Token se nemění. APRS-IS passcode se při změně CALL odstraní, protože patří původní značce; nastav správný pro novou značku.
+- **Přepnutí režimu** zastaví iGate, DIGI a BBS, přeruší čekající APRS zprávy, zruší RF oprávnění a zavře starou frontu TNC. Znovu se připojí stejné nakonfigurované TNC. Serverové kontroly nepovolí APRS vysílání v BBS režimu ani BBS v APRS režimu. Volba režimu sama nezapíná RF server ani DIGI/iGate; tyto funkce mají vlastní potvrzená tlačítka.
+- **Raspberry HDMI** se povolí zvolením APRS nebo BBS a automaticky mění rozložení: APRS ukazuje rámce, stanice a statistiky; BBS ukazuje server/klienta, protistanici, poštu, frontu a v režimu klienta terminál. Vypnutí režimu obrazovku skryje. Zůstává nutná běžící grafická relace a desktopový autostart panelu.
+
+Při migraci se CALL převezme ze stávající značky iGate, číselná SSID z dosavadních nastavení. Zálohuj celé `~/.config/ok5tvr-aprs` po zastavení služby. Po aktualizaci obnov web přes **Ctrl+F5**. Login vede na `/app`; APRS je na `/aprs` a starý odkaz `/unified` zůstává podporovaný.
+
+BBS klient je testován virtuálním propojením dvou KISS TNC včetně SABM/UA, textu, RR a DISC/UA. Skutečnou RF kompatibilitu UV-K1 a fyzické rozložení HDMI panelu je potřeba ověřit na zařízení. Spojovaná BBS nadále patří na vhodný packet-radio kanál, nikoli na 144,800 MHz APRS.
+
+## Modernizované webové rozhraní
+
+- Jednotný tmavý vzhled konzole, nastavení, mapy, zpráv, BBS a přihlášení. Sdílený lokální styl bez CDN nebo dalších závislostí.
+- Boční navigace na počítači; na mobilu výběr všech stránek v jednom poli. Aktuální stránka má vlastní nadpis a zvýraznění. Funguje historie prohlížeče a ovládání záložek šipkami, Home/End.
+- Čitelnější karty, formuláře, tabulky a zvýraznění klávesového fokusu. Volba CZ/EN v Nastavení překládá i novou navigaci.
+- Upozornění na přerušené spojení se službou na každé stránce; po obnovení spojení se automaticky skryje.
+- Opravené měření výšky vložených stránek, které dříve mohlo při obnovování postupně zvětšovat iframe.
+
+Aktualizace vyžaduje znovu spustit `sh install_raspberry.sh --lan` z této větve a obnovit web přes **Ctrl+F5**. Instalační i Windows EXE skript zahrnují `web_theme.css`.
+
+## v2.4 – úpravy jednotného webu / Heard Map / CZ–EN
+
+- **Jednotný přepínač jazyka:** nefunkční/duplicitní volby CZ/EN v pravé části hlavičky a v podpůrných stránkách byly odstraněny. Jazyk se nyní volí na **Nastavení / iGate / DIGI → Jazyk webového rozhraní**. Pamatuje si ho prohlížeč (localStorage) pro všechny připojené stránky, včetně mapy, APRS zpráv, operací a BBS. Samostatně otevřené stránky používají naposledy uloženou volbu.
+- **Doplněné CZ/EN:** úvodní rozcestník, Heard Map, TNC, SQLite diagnostika, filtry IS → RF, počasí, konverzace, upozornění a webová správa BBS. Přijatá APRS data (značky, zprávy, obsah paketů) se **nikdy strojově nepřekládají**.
+- **Nová Mapa doslechu:** nahoře číselné statistiky a skutečná interaktivní mapa, pod nimi detailní tabulka. Výběr **1 hodina / 24 h / 7 dní / 30 dní** a **konkrétního KISS přijímače** filtruje shodně mapu, statistiky i tabulku podle `/api/heard`. Mapu lze přibližovat, posouvat a zobrazit nad OpenStreetMap; při výpadku online dlaždic zůstává offline podklad. Modré značky měly alespoň jeden DIRECT příjem. Do statistiky se započítávají pouze rámce, z nichž lze získat GPS polohu, nikoliv veškerý RF provoz. DX je vzdálenost vypočtená z udané GPS, **nikoliv změřené RF pokrytí**.
+- **Přehlednější konzole:** navigace na úzkých obrazovkách s vodorovným posunem, karty úvodní stránky v pořadí 01–14, upravené rozložení a překlady průběžně aktualizovaných stavů.
+- **Provozní zátěž:** historická mapa obnovuje svůj archiv každých 60 s (běžná živá APRS mapa dál po 2,5 s). Nepřibyla žádná RF funkce, nezměnily se limity TX, iGate, DIGI ani BBS. Používá existující SQLite a mapové podklady.
+
+Po instalaci otevři `http://IP_RASPBERRY:8765/`, obnov stránku přes **Ctrl+F5**, pro volbu EN přejdi do Nastavení. Testy `test_web_ux_v24.py` a `test_weather_locale_regression.py` chrání před regresí jazykových formulářů a nepřesnou mapou historického doslechu.
+
+## Vylepšení poštovní schránky BBS
+
+- Celé zprávy do 800 ASCII znaků bez původního omezení na 15 řádků. Zachování prázdných řádků a odsazení; CR, LF i CRLF a oprava překlepů Backspace. Řádek nad 100 znaků se zahodí s hlášením, nikoli tiše zkrátí.
+- `L [stránka]`, `LM [stránka]`, `LN [stránka]` (nepřečtené), `N` (další stránka): 15 zpráv na RF stránku. `*` označuje nepřečtenou poštu. `R číslo` přečte celou zprávu; příznak přečtení znamená vyžádání čtení, nikoli doklad doručení celého textu přes RF.
+- `RE číslo` připraví odpověď původnímu odesílateli s předmětem `Re:`. `/ABORT` zruší koncept včetně rozepsaného předmětu. `/EX` uloží text. `K číslo YES` po potvrzení smaže zprávu, jejímž je připojená značka odesílatelem nebo adresátem; cizí veřejný bulletin mazat nemůže.
+- Web: psaní osobní pošty nebo bulletinu (`ALL`), odpovědi, stránkování po 50 zprávách, celý text a stav přečtení. Zprávy správce mají odesílatele nastavenou BBS značku. Uložení funguje i při vypnuté BBS a samo nepřidává RF rámce. Koncept přetrvá pravidelné obnovování; po potvrzeném uložení se vymaže.
+- Diagnostika: čekající znaky, opakování rámce, doba nečinnosti, RNR protistanice, chyby KISS a poslední důvod odpojení. Správce může vyžádat ukončení aktuálního spojení, BBS zůstane zapnutá.
+- SQLite přidá tabulku stavů čtení; stávající zprávy i jejich ID zachová. Značky se nadále rozlišují včetně SSID. Před aktualizací zastav službu a zálohuj celé `~/.config/ok5tvr-aprs` včetně databází.
+
+Příklad: `SP OK1ABC-7` → předmět → text → `/EX`; adresát se později připojí jako `OK1ABC-7`, použije `LN`, `R číslo` a případně `RE číslo`.
+
+Rozšíření nemění primární TNC, zákaz souběhu BBS s APRS iGate/DIGI, výchozí vypnutí RF ani požadavky na potvrzení. Druhé TX rádio, BBS forwarding a skutečný RF test s UV-K1 nejsou součástí této aktualizace. Automatické testy jsou bez rádiového hardwaru.
+
+## v2.4 dev – AX.25 connected-mode Packet BBS (PBBS) přes KISS TNC
+
+Rozšíření pro **klasické spojované packet radio**, nikoliv klasické APRS zprávy. Bez DSP/AFSK modemu: rádio/externí KISS TNC obstarává modulaci a FCS; software implementuje omezenou AX.25 modulo-8 stop-and-wait linkovou vrstvu (SABM/UA, I/PID F0, RR/RNR/REJ, DISC/DM), textovou osobní poštovní schránku a samostatnou webovou správu.
+
+**Co umí:**
+- Samostatná BBS značka (např. `OK5TVR-8`) **odlišná od** iGate/DIGI SSID.
+- Jedno AX.25 RF spojení najednou, DIRECT bez DIGI cesty, okno 1, max. 96 ASCII bytů na I-rámec, potvrzování a omezený retry.
+- Textové příkazy vzdáleného uživatele: `H`, `I`, `L`, `LM`, `R <id>`, `SP <CALL>`, `SB`, `Q`.
+- Psaní osobních zpráv a bulletinů řádky ukončenými `/EX`, až 800 ASCII znaků / zpráva, 3 nové zprávy na spojení, nejvýše 50–2000 uložených příspěvků.
+- SQLite `bbs.sqlite3` s WAL/NORMAL, oddělené od APRS Inboxu a APRS historie, s automatickou regulací kapacity; uživatel může číst své/veřejné zprávy, webový správce všechny a může je mazat.
+- Nová karta **AX.25 BBS** ve sjednoceném webu; nastavení SSID, uvítání, idle timeoutu, TX/min, povolení příspěvků, aktuální spojení a správa pošty.
+- Bezpečné RF TX: **výchozí vypnuto**; po výpadku TNC, restartu nebo změně konfigurace se oprávnění nepřenáší. Správce musí výslovně potvrdit zapnutí **a vhodný samostatný packet-radio kanál**. Nelze zapnout při současném DIGI/iGate/IS→RF na jednom primárním TNC. Primární KISS TX fronta a omezení se sdílí s ostatními funkcemi; BBS má samostatný limit.
+- Už čekající PBBS pakety se při vypnutí nebo změně AX.25 spojení zablokují pomocí epochy. Nezapíná automaticky DIGI, zprávy ani IS→RF a **nepřeposílá** BBS poštu do internetu.
+
+**Předpoklady:** skutečné rádio/TNC musí propouštět **libovolné AX.25 KISS rámce** (nikoliv jen APRS UI). Toto musí být prakticky ověřeno s UV-K1(8) F4HWN KISS firmware; úspěšný zápis do USB nezaručuje odvysílání/ACK. Pro první test použij samostatný packet-radio kmitočet vhodný pro dané pásmo a lokalitu, zkontroluj vysílací oprávnění a připoj druhé AX.25 klientské rádio. **Na standardní evropské APRS frekvenci 144,800 MHz klasickou spojovanou BBS neprovozuj.**
+
+Webovou kartu otevři v `http://IP_RASPBERRY:8765/` → `AX.25 BBS`. Nejdříve **ulož SSID**, ponech DIGI a iGate vypnuté, teprve potom výslovně povol BBS. Na druhé stanici se připoj AX.25 terminálem na `OK5TVR-8`. Vzor interakce:
+
+```
+H
+L
+SP OK1ABC-7
+Zdravim z packet radia
+Kratka zprava pro protistanici.
+/EX
+Q
+```
+
+BBS používá amatérské veřejné radiové vysílání; volací značka RF protistanice není ověřená jako přihlášení. **Žádné heslo, soubory ani citlivé informace** se přes BBS neposílají. Nejde o plnohodnotnou síťovou FBB/BPQ BBS (žádné BBS forwardování, routing, extended modulo-128 nebo přílohy), pouze lehkou lokální PBBS vhodnou pro Raspberry Pi 2.
+
+**Instalace z vývojové větve:**
+
+```bash
+git clone --depth 1 -b feature/ax25-pbbs-v24 \
+  https://github.com/ok5tvr/OK5TVR-APRS-KISS-Monitor.git ~/OK5TVR-APRS-v24
+cd ~/OK5TVR-APRS-v24
+sh install_raspberry.sh --lan
+```
+
+Před instalací zastav službu a zálohuj celé `~/.config/ok5tvr-aprs`; pokud systém hlásí **Input/output error** z microSD, instalaci **nespouštěj**, nejdříve řeš poškozené úložiště. Automatické testy kontrolují typické řídicí rámce a administrátorskou autentizaci; provozní kompatibilitu konkrétního TNC s AX.25 spojením je nutné ověřit na RF.
 
 ## v2.3 – APRS TNC Command Center: šest rozšíření (vývojová větev)
 
@@ -15,7 +126,7 @@ Tato větev zahrnuje v2.2 (selektivní APRS-IS → RF) a přidává **šest nov�
 3. **APRS Messaging 2.0:** seznam konverzací, nepřečtené zprávy a jejich označení přečtení, samostatné ukládání APRS `BLN` bulletinů, ignorování vybraných odesílatelů, zachované stávající RF zprávy a jejich ACK/REJ. Migrace `messages.sqlite3` doplňuje sloupec `read` a tabulku `bulletins`. Blokované zprávy **nevysílají automatická potvrzení**.
 4. **Více KISS TNC:** vedle primárního RX/TX až **dvě nezávislá RX-only** zařízení přes TCP KISS nebo přes explicitní USB/COM port. Každé má vlastní připojení/reconnect/počítadla, jeho pakety se přiřazují ke správnému zdroji ve SQLite a Heard Map. **Bez DIGI, iGate a RF TX na sekundárních TNC** – to je bezpečnostní hranice této verze. Žádné automatické propojení LoRa ↔ VHF ani duplicitní otevření jednoho primárního portu.
 5. **Upozornění a MQTT:** detekce odpojeného primárního TNC, nedostupné APRS-IS, dlouhé prodlevy bez RF, příjmu vybraných volacích značek a teplotního/tlakového limitu z APRS WX; omezená historie RAM, potlačení opakovaných upozornění, webová stránka a volitelné desktopové notifikace. Volitelný **MQTT QoS0** publish do LAN brokeru přes `paho-mqtt` (musí být nainstalován zvlášť); výchozí vypnuto, bez autentizace/TLS, používat jen důvěryhodnou lokální síť. Upozornění nikdy nevysílají APRS rámce.
-6. **Pokročilé mapy a objekty:** lokální import GPX/KML/GeoJSON (do 2 MB a 5000 GPS bodů) jako nepersistentní grafická vrstva APRS mapy; tlačítko Smazat import. Importované mapové podklady zůstávají v prohlížeči, nikoli v SQLite/RF. Formulář APRS objektů má předvolby převaděč/akce/počasí a volitelnou frekvenci MHz + CTCSS v textu objektu. Každé odeslání objektu stále vyžaduje samostatné potvrzení.
+6. **Pokročilé mapy a objekty:** lokální import GPX/KML/GeoJSON (do 2 MB a 5000 GPS bodů) jako nepersistentní grafická vrstva APRS mapy; tlačítko Smazat import. Importované mapové podklady zůstávají v prohlížeči, nikoli v SQLite/RF. Objekty se spravují jako až pět uložených definic v Nastavení → APRS objekty; ruční odeslání vyžaduje potvrzení, automatické plánování samostatné zapnutí.
 
 ### Aktualizace Raspberry Pi (vývojový build)
 

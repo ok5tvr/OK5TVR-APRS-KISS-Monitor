@@ -158,7 +158,9 @@ def decode_ax25(raw: bytes, simulated: bool = False) -> Packet:
     timestamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
     hexdump = raw.hex(" ").upper()
     try:
-        if len(raw) < 16:
+        # Two 7-byte addresses plus the 1-byte control field is a valid
+        # 15-byte AX.25 SABM/DISC/RR/UA frame with no PID or information.
+        if len(raw) < 15:
             raise ValueError("Příliš krátký AX.25 rámec")
         offset = 0
         addresses = []

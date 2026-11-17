@@ -29,12 +29,25 @@ class WebV23Tests(unittest.TestCase):
         self.assertIn("last.digi_call",html)
         self.assertIn("last.receive_calls",html)
 
+    def test_bbs_html_and_access_controls(self):
+        root=Path(__file__).parent
+        html=(root/'web_bbs.html').read_text(encoding='utf-8')
+        web=(root/'web_unified.html').read_text(encoding='utf-8')
+        self.assertIn('id="activate"',html)
+        self.assertIn('id="deactivate"',html)
+        self.assertIn('id="bbs-call"',html)
+        self.assertIn('id="messages"',html)
+        self.assertIn('"X-APRS-CSRF":"1"',html)
+        self.assertIn('data-tab="bbs"',web)
+        self.assertIn('bbs:"/bbs"',web)
+
     @unittest.skipUnless(shutil.which('node'),'Node.js is optional for JS syntax checks')
     def test_inline_scripts_parse_as_javascript(self):
         for path in (Path(__file__).parent/'web_unified.html',
                      Path(__file__).parent/'web_dashboard.html',
                      Path(__file__).parent/'web_operations.html',
-                     Path(__file__).parent/'web_messages.html'):
+                     Path(__file__).parent/'web_messages.html',
+                     Path(__file__).parent/'web_bbs.html'):
             source=path.read_text(encoding='utf-8')
             scripts=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>',source)
             scripts=[script for script in scripts if script.strip()]

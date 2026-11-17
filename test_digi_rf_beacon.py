@@ -118,8 +118,10 @@ class DIGIRFBeaconTests(unittest.TestCase):
         self.svc._telemetry_tick()
         self.assertEqual(self.reader.sent[0][1],'digi_beacon_rf')
 
-    def test_rf_beacon_does_not_require_aprsis_login_same_base_callsign(self):
-        self.conf.update({'digi':{'call':'OK1XYZ-3', 'beacon_enabled':True,
+    def test_rf_beacon_uses_shared_call_without_aprsis_login(self):
+        with self.assertRaises(ValueError):
+            self.conf.update({'digi':{'call':'OK1XYZ-3'}})
+        self.conf.update({'station':{'call':'OK1XYZ'},'digi':{'beacon_enabled':True,
                                   'beacon_transport':'rf'}})
         self.svc._enable_digi()
         self.svc._telemetry_tick()

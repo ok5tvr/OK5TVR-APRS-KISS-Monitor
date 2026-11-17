@@ -32,10 +32,11 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
 #toast{position:sticky;bottom:9px;padding:11px 14px;margin-top:15px;background:#214156;border:1px solid #557b8b;border-radius:9px;color:#fff;white-space:pre-wrap;min-height:41px}
 #custom_path_wrap{display:none}#counter{text-align:right}.empty{color:var(--muted);text-align:center;padding:27px}
 </style>
+<link rel="stylesheet" href="/assets/web_theme.css?v=29">
 </head>
 <body>
 <main>
-<nav><span class="mark">OK5TVR · APRS KISS</span><a id="admin" href="#">Nastavení</a><a id="map" href="#">Mapa a statistiky</a><a id="objects_nav" href="#">APRS objekty</a><a id="diagnostics_nav" href="#">Diagnostika</a></nav>
+<nav><span class="mark">OK5TVR · APRS KISS</span><a id="admin" href="#">Nastavení</a><a id="map" href="#">Mapa</a><a id="objects_nav" href="#">APRS objekty</a><a id="diagnostics_nav" href="#">Diagnostika</a></nav>
 <h1>APRS zprávy</h1>
 <p>Adresované zprávy přes <b>UV-K1(8) · USB KISS TNC · 144,800 MHz FM</b>. Přenos probíhá přes rádio, nikoli přes APRS-IS → RF. Zprávy jsou veřejné a mohou je číst ostatní radioamatéři.</p>
 <div class="statrow">
@@ -68,7 +69,7 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
   <p class="hint">Bez české diakritiky. Zpráva dostane identifikátor `{NNN}` a bude odeslána maximálně podle nastavení níže, dokud nepřijde ACK/REJ.</p>
   <button class="primary" id="send">Odeslat přes RF</button>
  </section>
- <section>
+ <section id="message-settings" class="settings-only">
   <h2>Nastavení APRS zpráv</h2>
   <label for="default_target">Výchozí cílová značka</label><input id="default_target" maxlength="9" spellcheck="false" placeholder="např. OK1ABC-9">
   <label for="aliases">Další přijímané značky / SSID</label>
@@ -99,7 +100,7 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
  <div id="heard" class="list" aria-live="polite"></div>
 </section>
 <div id="toast" role="status" aria-live="polite">Inicializuji…</div>
-<p><a href="/operations?admin=" id="operations">Diagnostika / objekty</a></p></main>
+<p><a href="/operations?admin=" id="operations">Diagnostika</a></p></main>
 <script src="/assets/web_locale.js"></script>
 <script>
 'use strict';
@@ -107,8 +108,8 @@ const $=id=>document.getElementById(id);
 const tr=value=>window.OK5TVRLocale.tr(value);
 const key=new URLSearchParams(location.search).get('admin')||'';
 const authUrl=p=>p+'?admin='+encodeURIComponent(key);
-$('admin').href=authUrl('/control');$('map').href=authUrl('/');
-$('objects_nav').href=authUrl('/operations')+'#objects';
+$('admin').href=authUrl('/control');$('map').href=authUrl('/map');
+$('objects_nav').href=authUrl('/objects');
 $('diagnostics_nav').href=authUrl('/operations')+'#diagnostics';
 const label={queued:'Čeká na USB',usb_queued:'V USB frontě',waiting_ack:'Čeká na ACK',ack:'ACK přijato',rej:'REJ – odmítnuto',failed:'Bez ACK',interrupted:'Přerušeno',cancelled:'Zrušeno'};
 let pane='inbox',last=null,configured=false,loading=false;

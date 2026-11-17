@@ -14,9 +14,9 @@ import time
 
 
 def category_priority(category: str) -> int:
-    if category.startswith('msgack:'):
+    if category.startswith('msgack:') or category.startswith('bbs_link:'):
         return 0
-    if category.startswith('msg:'):
+    if category.startswith('msg:') or category.startswith('bbs_data:'):
         return 1
     if category in ('manual', 'network_manual', 'status', 'position', 'object'):
         return 2

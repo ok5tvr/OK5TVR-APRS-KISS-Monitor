@@ -80,9 +80,9 @@ class WebLoginTests(unittest.TestCase):
             self.assertIn('SameSite=Strict', response.headers['Set-Cookie'])
         with self.fetch('/app') as response:
             page=response.read().decode()
-            self.assertIn('id="tab-home"', page)
-            self.assertIn('data-open="map"', page)
-            self.assertIn('data-open="messages"', page)
+            self.assertIn('id="open-aprs"', page)
+            self.assertIn('id="open-bbs"', page)
+            self.assertIn('id="open-settings"', page)
             self.assertNotIn('test-admin-token', page)
         with self.fetch('/map') as response:
             self.assertIn(b'Offline mapa',response.read())

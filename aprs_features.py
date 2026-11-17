@@ -436,7 +436,7 @@ class MonitorState:
 
     def snapshot(self):
         with self.lock:
-            return {"version":"2.3.0-dev", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
+            return {"version":"2.4.0-dev", "start":self.start, "time":datetime.now().astimezone().isoformat(timespec="seconds"),
                     "rf_status":self.rf_status, "igate_status":self.igate_status, "rx":self.rx, "demo":self.demo,
                     "tx_requests":self.tx_requests, "igate_sent":self.igate_sent,"igate_rejected":self.igate_rejected,
                     "beacons_sent":self.beacons_sent, "own_position":self.own_position,
@@ -516,7 +516,7 @@ class APRSISClient(threading.Thread):
             return False
 
     def enqueue_local(self, line: str, kind: str = 'telemetry') -> bool:
-        if kind not in ('telemetry', 'digi_beacon'):
+        if kind not in ('telemetry', 'digi_beacon') and not kind.startswith('object:'):
             raise ValueError('Unknown APRS-IS local packet type')
         if not self.connected.is_set() or self.stop.is_set() or any(c in line for c in '\r\n'):
             return False
@@ -589,6 +589,7 @@ class APRSISClient(threading.Thread):
                         except queue.Empty: break
                         created, line = event[:2]
                         kind = event[2] if len(event) == 3 else 'rf_forward'
+                        if kind.startswith('object:') and kind.split(':')[-1]!=str(getattr(self,'objects_epoch',-1)):continue
                         if time.monotonic() - created > 60: continue
                         conn.sendall(line.encode('latin-1') + b'\r\n')
                         if kind == 'rf_forward':

@@ -20,15 +20,16 @@ button:disabled{opacity:.5}
 small{display:block;margin-top:15px;line-height:1.5;color:#abc6d8}
 #error{min-height:20px;color:#ffc0be;font-size:13px;margin-top:11px}
 </style>
+<link rel="stylesheet" href="/assets/web_theme.css?v=29">
 </head><body>
 <main>
 <div class="brand">OK5TVR / APRS</div>
 <h1>Přihlášení do webové konzole</h1>
 <p>Stejné prostředí pro Raspberry Pi a Windows. Přístupový token vygeneroval program při prvním spuštění.</p>
 <form id="login">
-<label for="username">Uživatelské jméno</label>
+<label for="username">CALL bez SSID / uživatelské jméno</label>
 <input id="username" name="username" value="ok5tvr" autocomplete="username" maxlength="32" required>
-<label for="token">Přístupový token</label>
+<label for="token">Heslo / přístupový token</label>
 <input id="token" name="token" type="password" autocomplete="off" spellcheck="false" required>
 <button id="submit" type="submit">Přihlásit se</button>
 <div id="error" role="status" aria-live="polite"></div>

@@ -19,6 +19,7 @@ import threading
 import time
 from pathlib import Path
 
+from aprs_objects import ObjectSchedule
 from aprs_digi import DigiConfig, DigiRepeater
 from aprs_messages import MessageManager
 from aprs_features import (APRSISClient, MonitorState, encode_ui_packet,
@@ -28,6 +29,7 @@ from aprs_serial import SerialReader
 from aprs_tcp import TCPKissReader, TCPKissHub
 from aprs_secondary_tnc import SecondaryTNCManager
 from aprs_alerts import AlertEngine
+from aprs_bbs import AX25PBBS
 from aprs_geo import distance_bearing
 from aprs_archive import APRSArchive
 from aprs_weather import decode_weather
@@ -69,6 +71,7 @@ def find_radio_port(configured='auto'):
 class APRSService:
     def __init__(self, config: ServiceConfig, force_lan=False):
         self.config = config
+        self.operating_mode=config.data['station']['mode']
         self.state = MonitorState()
         self.events = queue.Queue(maxsize=10000)
         self.commands = queue.Queue(maxsize=50)
@@ -82,17 +85,19 @@ class APRSService:
         self.last_manual_tx = float('-inf')
         self.igate_client = None
         self.igate_events = None  # dedicated queue; stale client events cannot overwrite a new session
-        self.want_digi = bool(config.data['digi']['autostart'])
+        self.want_digi = self.operating_mode=='aprs' and bool(config.data['digi']['autostart'])
         self.secondary = SecondaryTNCManager(config.data['secondary_tncs']['devices'])
         self.alerts = AlertEngine(config.data['alerts'])
         self.next_alert_tick = 0.0
         self.gate_cache = {}
         self.isrf = SelectiveISGate(config.data['is_to_rf'], config.data['igate']['call'])
         m = config.data['messages']
+        self.bbs = AX25PBBS(config.path.with_name('bbs.sqlite3'),config.data['bbs'])
         self.messages = MessageManager(config.path.with_name('messages.sqlite3'),
                                       config.data['igate']['call'], m['path'],
                                       m['auto_ack'], m['retry_seconds'], m['max_attempts'],
                                       m.get('receive_aliases', []),m.get('blocked_senders', []))
+        if self.operating_mode!='aprs':self.messages.auto_ack=False
         self.digi = self._make_digi()
         self.state.update_digi(self.digi.snapshot())
         self._update_position()
@@ -109,6 +114,7 @@ class APRSService:
         self.serial_connections = 0
         self.journal = Journal(config.path.with_name('operations.sqlite3'))
         self.last_object_tx = float('-inf')
+        self.objects = ObjectSchedule()
         self.object_history = collections.deque(maxlen=40)
         self.telemetry = RadioWindow()
         self.telemetry_seq = {'igate': 0, 'digi': 0}
@@ -172,6 +178,47 @@ class APRSService:
         result = self.config.public_view()
         return result
 
+    def station_snapshot(self):
+        return {'call':self.config.data['station']['call'], 'mode':self.operating_mode,
+                'ip':local_ipv4(), 'time_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
+                'tnc_connected':self.radio_ready, 'tnc_port':str(self.reader.port) if self.reader else '',
+                'aprs_active':self.operating_mode=='aprs', 'bbs_active':self.operating_mode=='bbs',
+                'bbs_server':self.bbs.active and not self.bbs.client_mode,
+                'bbs_client':self.bbs.active and self.bbs.client_mode}
+
+    def _select_mode(self, mode):
+        if mode not in ('aprs','bbs','off'):raise ValueError('Invalid operating mode')
+        if mode!=self.operating_mode:
+            self._disable_igate()
+            self._disable_digi()
+            self._disconnect_reader()  # discard all queued RF frames before changing mode
+            self.messages.usb_closed()
+            self.operating_mode=mode
+            self.messages.auto_ack=self.config.data['messages']['auto_ack'] if mode=='aprs' else False
+            self.next_serial_attempt=0.0
+        self.config.update({'station':{'mode':mode},'display':{'enabled':mode!='off'}})
+        self.journal.log('MODE','selected',detail=mode)
+        return self.station_snapshot()
+
+    def bbs_snapshot(self, offset=0):
+        return self.bbs.snapshot(offset=offset)
+
+    def _bbs_stop(self):
+        self.bbs.stop()
+        if self.reader and hasattr(self.reader,'bbs_allowed'):
+            self.reader.bbs_allowed.clear()
+            self.reader.bbs_epoch=-1
+
+    def _bbs_send(self, payload, category):
+        if not self.radio_ready or self.reader is None or not self.bbs.active:
+            return False
+        # New SABM creates a new session epoch; revoke any queued frames
+        # from the previous session before accepting further BBS frames.
+        self.reader.bbs_epoch=self.bbs.epoch
+        if not self.reader.bbs_allowed.is_set():
+            return False
+        return self.reader.send(payload,category=category)
+
     def messages_snapshot(self):
         result = self.messages.snapshot()
         result['default_target'] = self.config.data['messages']['target']
@@ -183,6 +230,7 @@ class APRSService:
     def diagnostics_snapshot(self):
         now=time.monotonic()
         return {
+            'station':self.station_snapshot(),
             'uptime_s':round(now-self.started_at), 'radio_connected':self.radio_ready,
             'usb_alert': bool(not self.radio_ready and now-self.started_at>45),
             'usb_port':str(self.reader.port) if self.reader else '',
@@ -204,6 +252,7 @@ class APRSService:
             'igate_last_error':self.last_igate_error,
             'igate_enabled':self.igate_client is not None,
             'is_to_rf':self.isrf.snapshot(),
+            'bbs':self.bbs.snapshot(),
             'aprsis_received_lines':self.igate_client.received_lines if self.igate_client else 0,
             'aprsis_rx_dropped':self.igate_client.incoming_dropped if self.igate_client else 0,
             'digi':self.digi.snapshot(),
@@ -256,7 +305,7 @@ class APRSService:
     def _hub_tx(self, frame):
         # Called only by an authenticated loopback-bound KISS TCP session,
         # with explicit operator permission; no automatic TX enable on restart.
-        if not self.tnc_tx_permission or not self.radio_ready or self.reader is None:
+        if self.operating_mode!='aprs' or not self.tnc_tx_permission or not self.radio_ready or self.reader is None:
             return False
         return self.reader.send(frame, category='network_manual')
 
@@ -320,8 +369,157 @@ class APRSService:
             except (ValueError, TypeError, OSError, RuntimeError) as exc:
                 response.put_nowait((False, str(exc)))
 
+    def objects_snapshot(self):
+        return self.objects.snapshot(self.config.data['object_slots']['entries'])
+
+    def _objects_stop(self):
+        self.objects.stop()
+        if self.reader is not None:
+            self.reader.objects_epoch=self.objects.epoch
+        if self.igate_client is not None:self.igate_client.objects_epoch=self.objects.epoch
+
+    def _send_saved_object(self, index, obj):
+        if self.operating_mode!='aprs': raise ValueError('APRS není aktivní.')
+        payload=object_payload(obj['name'],obj['lat'],obj['lon'],obj['comment'],obj['alive'],obj['symbol_table'],obj['symbol'])
+        call=self.config.data['igate']['call']
+        if obj['transport']=='rf':
+            if not self.radio_ready or self.reader is None: raise ValueError('TNC není připojeno.')
+            self.reader.objects_epoch=self.objects.epoch
+            raw=encode_ui_packet(call,'APRS',obj['path'],payload)
+            ok=self.reader.send(encode_kiss_data(raw),category=f'object_slot:{index}:{self.objects.epoch}')
+            result='RF: předáno do fronty TNC / queued to TNC'
+        else:
+            if self.igate_client is None: raise ValueError('Připoj iGate / APRS-IS v Nastavení.')
+            self.igate_client.objects_epoch=self.objects.epoch
+            ok=self.igate_client.enqueue_local(f'{call}>APRS,TCPIP*:{payload}',kind=f'object:{self.objects.epoch}')
+            result='INET: předáno do fronty APRS-IS / queued to APRS-IS'
+        if not ok:raise ValueError('Transport není připraven nebo je fronta plná.')
+        stamp=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+        self.journal.log('OBJECT','queued',call,obj['name'],obj['transport'])
+        self.object_history.appendleft(dict(name=obj['name'],alive=obj['alive'],path=obj['path'],queued_utc=stamp,transport=obj['transport']))
+        return stamp+' · '+result
+
     def _execute(self, action, data):
+        if action=='objects_save':
+            self.config.update({'object_slots':{'entries':data.get('entries')}})
+            self._objects_stop()
+            self.objects.status={}
+            return 'Objekty uloženy. Plánování je vypnuté.'
+        if action=='objects_stop':
+            self._objects_stop()
+            return 'Plánování vypnuto.'
+        if action=='objects_start':
+            if self.operating_mode!='aprs' or data.get('confirm') is not True: raise ValueError('Potvrď plánované vysílání v režimu APRS.')
+            self.objects.start(self.config.data['object_slots']['entries'])
+            if self.igate_client is not None:self.igate_client.objects_epoch=self.objects.epoch
+            if self.reader is not None:self.reader.objects_epoch=self.objects.epoch
+            return 'Plánování zapnuto.'
+        if action=='object_slot_send':
+            if data.get('confirm') is not True:raise ValueError('Potvrď odeslání objektu.')
+            index=data.get('index')
+            entries=self.config.data['object_slots']['entries']
+            if type(index) is not int or not 0<=index<len(entries):raise ValueError('Invalid object slot')
+            result=self._send_saved_object(index,entries[index])
+            self.objects.status[index]=result
+            return result
+        if action=='mode_set':
+            if data.get('confirm') is not True:raise ValueError('Confirm changing operating mode')
+            return self._select_mode(data.get('mode'))
+        if action=='station_save':
+            identity=data.get('station')
+            if not isinstance(identity,dict) or not identity.get('call') or 'mode' in identity:
+                raise ValueError('Enter base CALL without SSID')
+            return self._execute('save',{'config':{'station':identity,'serial':data.get('serial',{}),'tnc':data.get('tnc',{})}})
+        aprs_actions={'igate_on','digi_on','message_send','message_ack','message_rej',
+                      'tx_test','status_send','position_send','object_send','telemetry_send_now','isrf_on'}
+        if action in aprs_actions and self.operating_mode!='aprs':
+            raise ValueError('APRS mode is not active; select APRS first')
+        if action=='tnc_server_tx' and data.get('enabled') and self.operating_mode!='aprs':
+            raise ValueError('External KISS TX is available only in APRS mode')
+        if action in ('bbs_on','bbs_client_connect'):
+            if self.operating_mode!='bbs':
+                raise ValueError('Select BBS mode first')
         # HDMI panel toggle does not touch USB, DIGI, iGate, RF, or messages.
+        if action == 'bbs_save':
+            settings=data.get('bbs')
+            if type(settings) is not dict:
+                raise ValueError('BBS setting must be an object')
+            self._bbs_stop()
+            self.config.update({'bbs':settings})
+            self.bbs.configure(self.config.data['bbs'])
+            self.journal.log('BBS','config',detail='Saved, PBBS RF TX remains OFF')
+            return 'Nastavení PBBS uloženo. BBS zůstává vypnutá.'
+        if action == 'bbs_on':
+            if data.get('confirm') is not True or data.get('confirm_channel') is not True:
+                raise ValueError('Confirm real RF TX and a suitable dedicated packet-radio channel')
+            if not self.radio_ready or self.reader is None:
+                raise ValueError('Primary KISS TNC is not connected')
+            if self.digi.enabled or self.isrf.active or self.igate_client is not None:
+                raise ValueError('BBS mode requires DIGI, iGate and IS->RF to be stopped on the primary KISS radio')
+            if self.messages.auto_ack or self.messages.ack_queue or any(
+                    item['status'] in ('queued','usb_queued','waiting_ack')
+                    for item in self.messages.snapshot()['outbox']):
+                raise ValueError('Finish/cancel APRS messages and disable automatic RF ACK before BBS mode')
+            self.bbs.start()
+            self.reader.bbs_epoch=self.bbs.epoch
+            self.reader.bbs_allowed.set()
+            self.journal.log('BBS','enabled',self.config.data['bbs']['call'])
+            return 'AX.25 PBBS zapnuta na primárním KISS TNC, do restartu/odpojení.'
+        if action=='bbs_client_connect':
+            if not self.radio_ready or self.reader is None:raise ValueError('TNC is not connected')
+            self._bbs_stop()
+            self.reader.bbs_allowed.set()
+            identity=self.config.data['station']
+            call=identity['call']+(f"-{identity['client_ssid']}" if identity['client_ssid'] else '')
+            try:self.bbs.connect(data.get('remote'),call,self._bbs_send)
+            except (ValueError,RuntimeError):
+                self._bbs_stop()
+                raise
+            return 'Connecting to remote BBS'
+        if action=='bbs_client_send':
+            if self.operating_mode!='bbs':raise ValueError('BBS mode is not active')
+            self.bbs.send_text(data.get('text'))
+            return 'Text queued for AX.25'
+        if action == 'bbs_off':
+            self._bbs_stop()
+            self.journal.log('BBS','disabled')
+            return 'AX.25 PBBS vypnuta, čekající RF BBS rámce se ruší.'
+        if action == 'bbs_post':
+            if data.get('confirm') is not True:
+                raise ValueError('Confirm storing BBS mail')
+            sender=self.config.data['bbs']['call']
+            if not sender:
+                raise ValueError('Save a separate BBS callsign first')
+            recipient=data.get('recipient','')
+            subject=data.get('subject','')
+            body=data.get('body','')
+            if not all(isinstance(v,str) for v in (recipient,subject,body)):
+                raise ValueError('BBS recipient, subject and body must be text')
+            if data.get('reply_to') is not None:
+                original=self.bbs.store.admin_get(data['reply_to'])
+                if original is None:
+                    raise ValueError('Original BBS message not found')
+                recipient=original['recipient'] if original['sender']==sender else original['sender']
+            number=self.bbs.store.post(sender,recipient.strip().upper(),subject.strip(),
+                                       body.replace('\r\n','\n').replace('\r','\n'))
+            self.journal.log('BBS','mail_posted',sender,detail=f'Message #{number} stored locally')
+            return {'id':number}
+        if action == 'bbs_disconnect':
+            if data.get('confirm') is not True:
+                raise ValueError('Confirm disconnecting the BBS station')
+            if self.bbs.session is not None:
+                if self.bbs.client_mode and self.bbs.session.waiting_ua:
+                    self._bbs_stop()
+                else:
+                    if self.bbs.client_mode:self.bbs.session.output.clear()
+                    else:self.bbs._output('Sysop requested disconnect. 73!')
+                    self.bbs.session.closing=True
+            return 'Odpojení stanice vyžádáno.'
+        if action == 'bbs_delete':
+            ident=data.get('id')
+            if data.get('confirm') is not True:
+                raise ValueError('PBBS deletion requires explicit confirmation')
+            return {'deleted':self.bbs.store.admin_delete(ident)}
         if action == 'alerts_save':
             rules=data.get('rules')
             if type(rules) is not dict:
@@ -364,6 +562,7 @@ class APRSService:
                                     new['auto_ack'], new['retry_seconds'],
                                     new['max_attempts'], new.get('receive_aliases',[]),
                                     new.get('blocked_senders',[]))
+            if self.operating_mode!='aprs':self.messages.auto_ack=False
             self.journal.log('MSG','settings',detail='Receive SSIDs/ACK settings saved')
             return ('Nastavení zpráv uloženo. Aktivní iGate a DIGI zůstávají beze změny. '
                     'Zprávy přijímáme pro: '+', '.join(self.messages.receive_calls))
@@ -457,16 +656,21 @@ class APRSService:
             self.last_manual_telemetry = time.monotonic()
             return f'Telemetry packets scheduled/submitted: {count}; route(s) per configured transport. RF requires DIGI active and uses spaced KISS frames.'
         if action == 'restore_config':
+            self._objects_stop()
             if data.get('confirm') is not True:
                 raise ValueError('Obnovení nastavení vyžaduje potvrzení.')
             restored=validate_restore_document(data.get('backup'))
+            restored.setdefault('station',{})['mode']='off'
             # Always disable transmit before applying restored settings.
             self._disable_digi()
             self._disable_igate()
+            self._bbs_stop()
             self.messages.usb_closed()
             old_port=self.config.data['serial']['port']
             old_tnc=dict(self.config.data['tnc'])
             self.config.update(restored)
+            self.operating_mode='off'
+            self.bbs.configure(self.config.data['bbs'])
             self.alerts.configure(self.config.data['alerts'])
             self.secondary.configure(self.config.data['secondary_tncs']['devices'])
             self._configure_radio_scheduler()
@@ -561,11 +765,14 @@ class APRSService:
                              ('live' if obj['alive'] else 'kill')+' '+obj['path'])
             return 'APRS objekt předán do USB KISS TX fronty; fyzické RF vysílání ověř druhým přijímačem.'
         if action == 'save':
+            self._objects_stop()
             changes = data.get('config', {})
             if not isinstance(changes, dict):
                 raise ValueError('Nastavení musí být objekt.')
             if any(not isinstance(changes.get(section, {}), dict) for section in ('digi','messages')):
                 raise ValueError('Nastavení DIGI a zpráv musí být objekt.')
+            if changes.get('station',{}).get('mode',self.operating_mode)!=self.operating_mode:
+                raise ValueError('Use mode_set to change operating mode')
             updated_digi = changes.get('digi', {})
             requested_digi_autostart = updated_digi.get('autostart', False)
             rf_beacon_enabled = (updated_digi.get('beacon_enabled',self.config.data['digi']['beacon_enabled']) and
@@ -576,7 +783,7 @@ class APRSService:
                 raise ValueError('Automatic DIGI RF position beacon requires explicit confirmation.')
             rf_telem_enabled = (updated_digi.get('telemetry_enabled',self.config.data['digi']['telemetry_enabled']) and
                                 updated_digi.get('telemetry_transport',self.config.data['digi']['telemetry_transport']) == 'rf')
-            if rf_telem_enabled and data.get('confirm_rf_telemetry') is not True:
+            if rf_telem_enabled and any(field in updated_digi for field in ('telemetry_enabled','telemetry_transport','telemetry_rf_path')) and data.get('confirm_rf_telemetry') is not True:
                 raise ValueError('Automatic DIGI RF telemetry requires explicit confirmation.')
             if requested_digi_autostart and data.get('confirm_auto_tx') is not True:
                 raise ValueError('Automatický RF TX po startu vyžaduje výslovné potvrzení.')
@@ -590,8 +797,15 @@ class APRSService:
             previous_archive = dict(self.config.data['archive'])
             previous_call = self.config.data['igate']['call']
             previous_messages = dict(self.config.data['messages'])
+            self._bbs_stop()
             previous_secondary = list(self.config.data['secondary_tncs']['devices'])
+            if 'station' in changes:
+                self._disable_igate()
+                self._disable_digi()
+                self._disconnect_reader()
+                self.next_serial_attempt=0.0
             self.config.update(changes, passcode=passcode)
+            self.bbs.configure(self.config.data['bbs'])
             self._configure_radio_scheduler()
             self.alerts.configure(self.config.data['alerts'])
             if previous_secondary != self.config.data['secondary_tncs']['devices']:
@@ -611,6 +825,7 @@ class APRSService:
             self.rf_telemetry_pending.clear()
             self.digi_last_position = float('-inf')
             self.digi_last_rf_position = float('-inf')
+            if self.operating_mode!='aprs':self.messages.auto_ack=False
             # No silent change to an already-running RF DIGI configuration.
             if self.want_digi:
                 self._disable_digi()
@@ -686,6 +901,7 @@ class APRSService:
         raise ValueError('Nepodporovaný příkaz.')
 
     def _start_igate(self):
+        if self.operating_mode!='aprs':raise ValueError('APRS mode is not active')
         if self.igate_client is not None:
             return
         if not self.config.secrets['igate_passcode']:
@@ -717,6 +933,7 @@ class APRSService:
         self.state.update_status(igate='Vypnuto')
 
     def _enable_digi(self):
+        if self.operating_mode!='aprs':return
         if not self.radio_ready or self.reader is None:
             return
         self.digi.start()
@@ -737,6 +954,8 @@ class APRSService:
         self._update_position()
 
     def _disconnect_reader(self):
+        self._objects_stop()
+        self._bbs_stop()
         self.isrf.stop()  # revoke Internet-to-RF gate after any KISS outage
         if self.reader:
             self.reader.isrf_allowed.clear()
@@ -818,6 +1037,8 @@ class APRSService:
                 self.state.note_tx()
                 if isinstance(value, dict):
                     category=value.get('category','unknown')
+                    if category.startswith('bbs_'):
+                        self.bbs.on_tx_written(category)
                     self.telemetry.record_tx(category)
                     if category == 'igate_is_to_rf':
                         self.stats['isrf_usb_written'] += 1
@@ -839,6 +1060,9 @@ class APRSService:
                 self.stats['tx_error']+=1
                 self.telemetry.record_tx_error()
                 LOG.warning('TX USB selhal: %s', value)
+                if isinstance(value, dict) and value.get('category','').startswith('bbs_'):
+                    self.bbs.on_tx_error(value['category'])
+                    if self.reader:self.reader.bbs_allowed.clear()
                 if isinstance(value, dict) and value.get('category', '').startswith(('msg:', 'msgack:')):
                     self.messages.tx_error(value['category'], value.get('error', 'Chyba USB'))
                 if isinstance(value, dict) and value.get('category') == 'digi':
@@ -894,7 +1118,9 @@ class APRSService:
                     self.telemetry.record_gate()
                 elif event == 'igate_local_sent':
                     kind = value.get('kind', 'unknown') if isinstance(value,dict) else 'unknown'
-                    self.stats['aprsis_local_'+kind] += 1
+                    self.stats['aprsis_local_'+('object' if kind.startswith('object:') else kind)] += 1
+                    if kind.startswith('object:'):
+                        self.journal.log('OBJECT','inet-sent',detail=value.get('line',''))
                     if kind == 'digi_beacon':
                         self.journal.log('BEACON','sent',self.config.data['digi']['call'],detail='APRS-IS DIGI position')
                     elif kind == 'telemetry':
@@ -937,6 +1163,12 @@ class APRSService:
             self.tcp_hub.publish(packet.raw_ax25)
         self.journal.log('RX','accepted',packet.source,packet.destination,
                          (packet.raw_info.decode('latin-1','replace') if isinstance(packet.raw_info,bytes) else str(packet.raw_info))[:250])
+        if self.bbs.on_frame(packet,self._bbs_send):
+            self.state.add(packet)
+            return
+        if self.operating_mode!='aprs':
+            self.state.add(packet)
+            return
         msg = self.messages.receive(packet, self.radio_ready)
         if msg:
             LOG.info('APRS zpráva: %s od %s', msg.get('kind'), msg.get('from'))
@@ -987,10 +1219,16 @@ class APRSService:
                          igate_online=bool(self.igate_client and self.igate_client.connected.is_set()),
                          igate_enabled=self.igate_client is not None)
 
+    def _bbs_tick(self):
+        if self.radio_ready and self.reader is not None and self.bbs.active:
+            self.bbs.tick(self._bbs_send)
+
     def _messages_tick(self):
+        if self.operating_mode!='aprs':return
         self.messages.tx_tick(self.reader, self.radio_ready)
 
     def _digi_tick(self):
+        if self.operating_mode!='aprs':return
         if not self.digi.enabled or not self.radio_ready or self.reader is None:
             return
         p = self.digi.ready()
@@ -1056,6 +1294,7 @@ class APRSService:
         return total
 
     def _rf_telemetry_tick(self):
+        if self.operating_mode!='aprs':return
         if not self.rf_telemetry_pending or not self.digi.enabled or not self.radio_ready or self.reader is None:
             return
         now=time.monotonic()
@@ -1067,6 +1306,7 @@ class APRSService:
             self.rf_telemetry_next_tx=now+12
 
     def _rf_digi_beacon_tick(self):
+        if self.operating_mode!='aprs':return
         """Queue a DIGI position via KISS on start and every configured interval.
 
         This is deliberately separate from APRS-IS beacons. DIGI RF TX must
@@ -1096,6 +1336,7 @@ class APRSService:
                              detail=d['beacon_rf_path'] or 'DIRECT')
 
     def _telemetry_tick(self):
+        if self.operating_mode!='aprs':return
         now=time.monotonic()
         if now >= self.next_telemetry_ui:
             self.state.set_telemetry(self.telemetry_snapshot())
@@ -1137,7 +1378,7 @@ class APRSService:
         else:
             LOG.info('Nativní Windows režim: webový server se nespouští.')
         self.running = True
-        if c['igate']['autostart']:
+        if self.operating_mode=='aprs' and c['igate']['autostart']:
             try:
                 self._start_igate()
             except ValueError as exc:
@@ -1153,7 +1394,9 @@ class APRSService:
                     primary_endpoint=str(self.reader.port) if self.reader else '')
                 self._alerts_tick()
                 self._messages_tick()
+                self._bbs_tick()
                 self._digi_tick()
+                self.objects.tick(self.config.data['object_slots']['entries'],self._send_saved_object)
                 self._telemetry_tick()
                 self.stop.wait(0.08)
         finally:
@@ -1161,6 +1404,7 @@ class APRSService:
             self._disconnect_reader()
             self.secondary.close()
             self.alerts.close()
+            self.bbs.close()
             self._disable_igate()
             self.web.close()
             if self.tcp_hub:

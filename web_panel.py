@@ -13,14 +13,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from web_auth import SessionAuth, LoginThrottle
+from web_views import full_page
 
 _ASSET_DIR = Path(__file__).resolve().parent
 HTML = (_ASSET_DIR / 'web_dashboard.html').read_text(encoding='utf-8')
 ADMIN_HTML = (_ASSET_DIR / 'web_control.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_control.html').exists() else ''
+OBJECTS_HTML = (_ASSET_DIR / 'web_objects.html').read_text(encoding='utf-8')
 OPERATIONS_HTML = (_ASSET_DIR / 'web_operations.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_operations.html').exists() else ''
 MESSAGES_HTML = (_ASSET_DIR / 'web_messages.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_messages.html').exists() else ''
+BBS_HTML = (_ASSET_DIR / 'web_bbs.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_bbs.html').exists() else ''
+THEME_CSS = (_ASSET_DIR / 'web_theme.css').read_text(encoding='utf-8')
 LOCALE_JS = (_ASSET_DIR / 'web_locale.js').read_text(encoding='utf-8')
 UNIFIED_HTML = (_ASSET_DIR / 'web_unified.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_unified.html').exists() else ''
+SHELL_JS = (_ASSET_DIR / 'web_shell.js').read_text(encoding='utf-8')
+SETTINGS_HTML = (_ASSET_DIR / 'web_settings.html').read_text(encoding='utf-8')
+STATION_HTML = (_ASSET_DIR / 'web_station.html').read_text(encoding='utf-8')
 LOGIN_HTML = (_ASSET_DIR / 'web_login.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_login.html').exists() else ''
 
 
@@ -41,7 +48,8 @@ class WebPanel:
         viewer_key, admin_key, allow_lan = self.token, self.admin_token, lan
         session_auth = SessionAuth(admin_key)
         throttle = LoginThrottle()
-        login_name = str(getattr(getattr(operator, 'config', None), 'secrets', {}).get('web_username', 'ok5tvr'))
+        def login_name():
+            return str(getattr(getattr(operator, 'config', None), 'secrets', {}).get('web_username', 'ok5tvr'))
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, format, *args):
@@ -106,7 +114,13 @@ class WebPanel:
                         for entry in snapshot.get('history', [])[:8]
                         if isinstance(entry, dict) and not entry.get('demo')
                     ]
+                    identity=conf.get('station',{})
+                    bbs=diag.get('bbs',{})
                     display = {
+                        'call':identity.get('call',conf.get('igate',{}).get('call','').split('-')[0]),
+                        'mode':getattr(operator,'operating_mode','aprs'),
+                        'ip':local_ipv4(),
+                        'bbs':{k:bbs.get(k) for k in ('active','connected','connecting','role','remote','mail_count','waiting_ack','queued_chars','retries','last_disconnect','console')},
                         'enabled': conf.get('display', {}).get('enabled', False),
                         'usb_connected': bool(diag.get('radio_connected')),
                         'port_configured': conf['serial']['port'],
@@ -134,15 +148,15 @@ class WebPanel:
                         self.send_header('Cache-Control', 'no-store')
                         self.end_headers()
                     else:
-                        self._respond(200, LOGIN_HTML, 'text/html; charset=utf-8')
+                        self._respond(200, LOGIN_HTML.replace('value="ok5tvr"', 'value="'+login_name()+'"'), 'text/html; charset=utf-8')
                     return
                 if parsed.path == '/api/session':
                     self._respond(200, json.dumps({'authenticated': self._allowed_admin(parsed),
-                        'username': login_name if self._allowed_admin(parsed) else None}))
+                        'username': login_name() if self._allowed_admin(parsed) else None}))
                     return
                 if parsed.path == '/' and operator is not None and not parse_qs(parsed.query).get('key'):
                     if self._allowed_admin(parsed):
-                        self._respond(200, UNIFIED_HTML, 'text/html; charset=utf-8')
+                        self._respond(200, STATION_HTML, 'text/html; charset=utf-8')
                     else:
                         self.send_response(302)
                         self.send_header('Location', '/login')
@@ -160,15 +174,41 @@ class WebPanel:
                         return
                     self._respond(200, contents, 'image/png', 'public, max-age=86400')
                     return
+                if parsed.path == '/assets/web_theme.css':
+                    self._respond(200, THEME_CSS, 'text/css; charset=utf-8', 'public, max-age=3600')
+                    return
+                if parsed.path == '/assets/web_shell.js':
+                    self._respond(200,SHELL_JS,'application/javascript; charset=utf-8','public, max-age=3600')
+                    return
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/app', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/api/heard', '/api/alerts', '/api/tx-scheduler', '/messages', '/api/messages', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
+                if parsed.path in ('/objects', '/api/objects', '/settings/objects', '/app', '/aprs', '/settings', '/settings/aprs', '/settings/messages', '/settings/bbs', '/settings/advanced', '/settings/operations', '/api/station', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/api/heard', '/api/alerts', '/api/tx-scheduler', '/messages', '/api/messages', '/bbs', '/api/bbs', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
-                    if parsed.path in ('/app', '/unified'):
-                        self._respond(200, UNIFIED_HTML, 'text/html; charset=utf-8')
+                    if parsed.path == '/api/objects':
+                        self._respond(200,json.dumps(operator.objects_snapshot(),ensure_ascii=False))
+                    elif parsed.path == '/objects':
+                        self._respond(200,full_page(OBJECTS_HTML,'aprs-objects'),'text/html; charset=utf-8')
+                    elif parsed.path == '/api/station':
+                        self._respond(200, json.dumps(operator.station_snapshot(),ensure_ascii=False))
+                    elif parsed.path=='/app':
+                        self._respond(200,full_page(STATION_HTML,'home'),'text/html; charset=utf-8')
+                    elif parsed.path in ('/aprs','/unified'):
+                        self._respond(200,full_page(UNIFIED_HTML,'aprs'),'text/html; charset=utf-8')
+                    elif parsed.path.startswith('/settings'):
+                        pages={'/settings/objects':(OBJECTS_HTML,'settings-objects'),'/settings':(SETTINGS_HTML,'settings'),
+                            '/settings/aprs':(ADMIN_HTML,'settings-aprs'),
+                            '/settings/messages':(MESSAGES_HTML,'settings-messages'),
+                            '/settings/bbs':(BBS_HTML,'settings-bbs'),
+                            '/settings/advanced':(UNIFIED_HTML,'settings-advanced'),
+                            '/settings/operations':(OPERATIONS_HTML,'settings-operations')}
+                        if parsed.path=='/settings/advanced' and parse_qs(parsed.query).get('tab',['tnc'])[0] not in ('rx','tnc','telemetry','isrf','alerts','chat2'):
+                            self._respond(400,'{"error":"Invalid settings tab"}')
+                            return
+                        html,role=pages[parsed.path]
+                        self._respond(200,full_page(html,role,settings=True),'text/html; charset=utf-8')
                     elif parsed.path == '/api/ports':
                         try:
                             from serial.tools import list_ports
@@ -179,9 +219,9 @@ class WebPanel:
                         self._respond(200, json.dumps({'ports': ports,
                              'selected': operator.config.data['serial']['port']}, ensure_ascii=False))
                     elif parsed.path == '/control':
-                        self._respond(200, ADMIN_HTML, 'text/html; charset=utf-8')
+                        self._respond(200, full_page(ADMIN_HTML,'settings-aprs',settings=True), 'text/html; charset=utf-8')
                     elif parsed.path == '/operations':
-                        self._respond(200, OPERATIONS_HTML, 'text/html; charset=utf-8')
+                        self._respond(200, full_page(OPERATIONS_HTML,'aprs-operations'), 'text/html; charset=utf-8')
                     elif parsed.path == '/api/tnc':
                         self._respond(200, json.dumps(operator.tnc_snapshot(),ensure_ascii=False))
                     elif parsed.path == '/api/archive':
@@ -231,9 +271,19 @@ class WebPanel:
                     elif parsed.path == '/api/backup':
                         self._respond(200, json.dumps(operator.config_backup(),ensure_ascii=False,indent=2))
                     elif parsed.path == '/messages':
-                        self._respond(200, MESSAGES_HTML, 'text/html; charset=utf-8')
+                        self._respond(200, full_page(MESSAGES_HTML,'aprs-messages'), 'text/html; charset=utf-8')
                     elif parsed.path == '/api/messages':
                         self._respond(200, json.dumps(operator.messages_snapshot(), ensure_ascii=False))
+                    elif parsed.path == '/bbs':
+                        self._respond(200, full_page(BBS_HTML,'bbs'), 'text/html; charset=utf-8')
+                    elif parsed.path == '/api/bbs':
+                        try:
+                            offset=int(parse_qs(parsed.query).get('offset',['0'])[0])
+                            if not 0<=offset<=2000:raise ValueError()
+                        except ValueError:
+                            self._respond(400, '{"error":"Invalid BBS page offset"}')
+                            return
+                        self._respond(200, json.dumps(operator.bbs_snapshot(offset=offset), ensure_ascii=False))
                     else:
                         self._respond(200, json.dumps(operator.public_config(), ensure_ascii=False))
                     return
@@ -243,7 +293,7 @@ class WebPanel:
                 if parsed.path == '/api/capabilities':
                     self._respond(200, json.dumps({'admin_enabled': operator is not None}))
                 elif parsed.path in ('/', '/map'):
-                    self._respond(200, HTML, 'text/html; charset=utf-8')
+                    self._respond(200, full_page(HTML,'aprs-map') if self._allowed_admin(parsed) and parse_qs(parsed.query).get('embedded')!=['1'] else HTML, 'text/html; charset=utf-8')
                 elif parsed.path == '/api/state':
                     self._respond(200, json.dumps(state.snapshot(), ensure_ascii=False))
                 elif parsed.path == '/metrics':
@@ -313,7 +363,7 @@ class WebPanel:
                         payload = json.loads(self.rfile.read(size).decode('utf-8'))
                         username, token = payload.get('username'), payload.get('token')
                         valid = (isinstance(username, str) and isinstance(token, str)
-                                 and secrets.compare_digest(username, login_name)
+                                 and secrets.compare_digest(username.strip().upper(), login_name().upper())
                                  and secrets.compare_digest(token, admin_key))
                     except (ValueError, TypeError, KeyError, AttributeError, UnicodeError):
                         valid = False
