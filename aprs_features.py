@@ -516,7 +516,7 @@ class APRSISClient(threading.Thread):
             return False
 
     def enqueue_local(self, line: str, kind: str = 'telemetry') -> bool:
-        if kind not in ('telemetry', 'digi_beacon'):
+        if kind not in ('telemetry', 'digi_beacon') and not kind.startswith('object:'):
             raise ValueError('Unknown APRS-IS local packet type')
         if not self.connected.is_set() or self.stop.is_set() or any(c in line for c in '\r\n'):
             return False
@@ -589,6 +589,7 @@ class APRSISClient(threading.Thread):
                         except queue.Empty: break
                         created, line = event[:2]
                         kind = event[2] if len(event) == 3 else 'rf_forward'
+                        if kind.startswith('object:') and kind.split(':')[-1]!=str(getattr(self,'objects_epoch',-1)):continue
                         if time.monotonic() - created > 60: continue
                         conn.sendall(line.encode('latin-1') + b'\r\n')
                         if kind == 'rf_forward':

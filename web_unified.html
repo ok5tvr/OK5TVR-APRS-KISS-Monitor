@@ -93,7 +93,7 @@ header{padding:13px clamp(14px,2vw,26px)}
 footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
 @media(max-width:750px){main{padding:9px}.two{grid-template-columns:1fr}header{padding:13px}nav.tabs{padding:7px}.tabs button{padding:9px}.panel{padding:12px}.metric-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
-<link rel="stylesheet" href="/assets/web_theme.css?v=27">
+<link rel="stylesheet" href="/assets/web_theme.css?v=28">
 </head>
 <body class="console-shell">
 <a class="skip-link" href="#main-content" data-cs="Přejít k obsahu" data-en="Skip to content">Přejít k obsahu</a>
@@ -567,7 +567,7 @@ function showTab(name) {
     btn.tabIndex = tab === name ? 0 : -1;
   }
   const settingsPage=document.body?.dataset?.pageKind==="settings";
-  const routes={map:"/map",bbs:"/bbs",messages:"/messages",objects:"/operations#objects",diagnostics:"/operations#diagnostics",igate:"/settings/aprs",tnc:"/settings/advanced?tab=tnc"};
+  const routes={map:"/map",bbs:"/bbs",messages:"/messages",objects:"/objects",diagnostics:"/operations#diagnostics",igate:"/settings/aprs",tnc:"/settings/advanced?tab=tnc"};
   if(routes[name] && !(settingsPage&&name==="tnc")){
     const target=new URL(routes[name],location.origin);if(key)target.searchParams.set("admin",key);
     location.assign(target.pathname+target.search+target.hash);return;

@@ -1,3 +1,13 @@
+## APRS objekty a přehledné provozní stránky
+
+Živá mapa nyní zobrazuje mapu a stanice bez statistických bloků. Statistiky zůstávají v části Telemetrie. Objekty mají vlastní celostránkový přehled `/objects`; Diagnostika je samostatná.
+
+V **Nastavení → APRS objekty** (`/settings/objects`) lze uložit až **5 objektů**. Každý obsahuje název, polohu, symbol, komentář, LIVE/KILL, RF cestu a samostatnou volbu **RF / INET**. RF používá společnou frontu KISS TNC; INET připojený iGate / APRS-IS a neposílá objekt přes RF. Přehled umožňuje ruční odeslání uloženého objektu.
+
+Plán: pouze ručně, interval 1–1440 minut nebo nejvýše 24 denních časů `HH:MM`. Denní časy používají místní hodiny zařízení, zobrazené na stránce. Po uložení je nutné v Nastavení zapnout plánování. Interval počítá od zapnutí; více splatných objektů se zařazuje s odstupem nejméně 5 sekund. Zmeškané časy se nedohánějí. Uložení konfigurace, restart, obnova, přepnutí režimu a odpojení TNC plánování zastaví. Definice zůstávají uložené; samotné otevření stránky nic nevysílá. Smazání definice nevysílá KILL automaticky.
+
+The live map no longer contains statistics. Up to five persistent APRS objects are configured in Settings, with independent RF or INET transport, manual transmission, intervals or daily times using the displayed device local clock. Scheduling requires explicit runtime activation and stops on configuration save, restart, restore, mode change or TNC disconnect. Missed deadlines are skipped. Queue acceptance is not confirmation of RF reception.
+
 # OK5TVR APRS KISS Monitor
 
 **Windows / Raspberry Pi APRS TNC Command Center · v2.5 dev · bidirectional selective iGate, multi-KISS RX, DIGI and messaging**
@@ -110,7 +120,7 @@ Tato větev zahrnuje v2.2 (selektivní APRS-IS → RF) a přidává **šest nov�
 3. **APRS Messaging 2.0:** seznam konverzací, nepřečtené zprávy a jejich označení přečtení, samostatné ukládání APRS `BLN` bulletinů, ignorování vybraných odesílatelů, zachované stávající RF zprávy a jejich ACK/REJ. Migrace `messages.sqlite3` doplňuje sloupec `read` a tabulku `bulletins`. Blokované zprávy **nevysílají automatická potvrzení**.
 4. **Více KISS TNC:** vedle primárního RX/TX až **dvě nezávislá RX-only** zařízení přes TCP KISS nebo přes explicitní USB/COM port. Každé má vlastní připojení/reconnect/počítadla, jeho pakety se přiřazují ke správnému zdroji ve SQLite a Heard Map. **Bez DIGI, iGate a RF TX na sekundárních TNC** – to je bezpečnostní hranice této verze. Žádné automatické propojení LoRa ↔ VHF ani duplicitní otevření jednoho primárního portu.
 5. **Upozornění a MQTT:** detekce odpojeného primárního TNC, nedostupné APRS-IS, dlouhé prodlevy bez RF, příjmu vybraných volacích značek a teplotního/tlakového limitu z APRS WX; omezená historie RAM, potlačení opakovaných upozornění, webová stránka a volitelné desktopové notifikace. Volitelný **MQTT QoS0** publish do LAN brokeru přes `paho-mqtt` (musí být nainstalován zvlášť); výchozí vypnuto, bez autentizace/TLS, používat jen důvěryhodnou lokální síť. Upozornění nikdy nevysílají APRS rámce.
-6. **Pokročilé mapy a objekty:** lokální import GPX/KML/GeoJSON (do 2 MB a 5000 GPS bodů) jako nepersistentní grafická vrstva APRS mapy; tlačítko Smazat import. Importované mapové podklady zůstávají v prohlížeči, nikoli v SQLite/RF. Formulář APRS objektů má předvolby převaděč/akce/počasí a volitelnou frekvenci MHz + CTCSS v textu objektu. Každé odeslání objektu stále vyžaduje samostatné potvrzení.
+6. **Pokročilé mapy a objekty:** lokální import GPX/KML/GeoJSON (do 2 MB a 5000 GPS bodů) jako nepersistentní grafická vrstva APRS mapy; tlačítko Smazat import. Importované mapové podklady zůstávají v prohlížeči, nikoli v SQLite/RF. Objekty se spravují jako až pět uložených definic v Nastavení → APRS objekty; ruční odeslání vyžaduje potvrzení, automatické plánování samostatné zapnutí.
 
 ### Aktualizace Raspberry Pi (vývojový build)
 

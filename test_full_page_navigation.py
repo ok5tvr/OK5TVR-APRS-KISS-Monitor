@@ -58,7 +58,7 @@ class FullPageTests(unittest.TestCase):
         self.assertEqual(err.exception.code,400)
 
     def test_operating_pages_are_full_page_and_config_controls_are_settings_only(self):
-        for route in ('/aprs','/bbs','/messages','/operations'):
+        for route in ('/aprs','/bbs','/messages','/operations','/objects'):
             with self.subTest(route=route):
                 html=self.fetch(route);parsed=Elements(html)
                 self.assertFalse(any('data-mode' in attrs for _,attrs in parsed.tags))
@@ -69,6 +69,16 @@ class FullPageTests(unittest.TestCase):
         home=Elements(self.fetch('/settings'))
         self.assertFalse(any(tag=='iframe' for tag,_ in home.tags))
         home.by_id('base-call')
+
+    def test_objects_api_is_admin_only_and_map_has_no_statistics(self):
+        with self.assertRaises(HTTPError) as err:self.fetch('/api/objects',admin=False)
+        self.assertEqual(err.exception.code,403)
+        state=json.loads(self.fetch('/api/objects'))
+        self.assertEqual(state['entries'],[]);self.assertFalse(state['active'])
+        html=self.fetch('/map');parsed=Elements(html)
+        parsed.by_id('map')
+        self.assertFalse(any(attrs.get('id') in ('rx15','avg15','rx','digi_tx') for _,attrs in parsed.tags))
+        self.assertIn('data-admin-target="objects"',html)
 
     def test_get_navigation_does_not_change_mode_or_rf_state(self):
         before=self.service.config.public_view()

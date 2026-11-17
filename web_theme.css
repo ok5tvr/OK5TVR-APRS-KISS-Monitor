@@ -65,3 +65,20 @@ body[data-page-kind="settings"] #tab-chat2>.panel>:not(.settings-only){display:n
 body[data-view-role="settings-bbs"]>h1,body[data-view-role="bbs"]>h1{margin:20px 24px}body[data-view-role="bbs"]>section,body[data-view-role="settings-bbs"]>section{margin:18px 24px;padding:20px}
 body[data-shell] main>nav:not(.global-links){display:none}
 @media(max-width:760px){#global-navigation,#settings-navigation{padding:12px}.global-status{margin-left:0;width:100%;gap:10px}.global-links{width:100%}body[data-shell]>main{padding:14px}body.console-shell[data-shell] nav.tabs{position:static;width:100%;min-height:0;border-right:0;display:flex;flex-direction:row;overflow:auto;padding:8px}body.console-shell[data-shell]>main{margin:0}body[data-view-role="bbs"]>section,body[data-view-role="settings-bbs"]>section{margin:12px;padding:14px}}
+
+/* Dedicated full-page operating views. */
+body[data-view-role="aprs-operations"] #objects{display:none!important}
+body[data-shell] .grid>*,body[data-shell] .two>*,body[data-shell] .panel{min-width:0}
+body[data-shell] .grid{max-width:100%}
+body[data-shell] header+.app-nav{display:none}
+body[data-view-role="aprs-map"]>header{display:none}
+.object-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px}
+.object-card{padding:20px;border:1px solid var(--border);border-radius:14px;background:var(--panel);min-width:0}
+.object-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.object-fields label{display:grid;gap:5px;font-size:13px}
+.object-fields input,.object-fields select{width:100%;min-width:0}.object-card p{overflow-wrap:anywhere}
+@media(max-width:600px){.object-fields{grid-template-columns:1fr}}
+
+#aprs-navigation{display:flex;flex-wrap:wrap;gap:8px;padding:10px 24px;border-bottom:1px solid var(--border);margin:0;background:var(--panel)}
+#aprs-navigation a{color:var(--ink);text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:8px}
+body[data-view-role="aprs-objects"] *,body[data-view-role="settings-objects"] *{box-sizing:border-box}
+body[data-view-role="aprs-messages"] .message,body[data-view-role="aprs-messages"] .entry{overflow-wrap:anywhere;max-width:100%}

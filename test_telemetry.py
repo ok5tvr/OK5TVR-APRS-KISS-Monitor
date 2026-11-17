@@ -262,7 +262,8 @@ class WebTelemetryTests(unittest.TestCase):
                   'igate_telemetry','digi_telemetry','digi_beacon','telemetry_interval'):
             self.assertIn('id="'+v+'"',control)
         self.assertIn('telemetry_send_now',operations)
-        self.assertIn('avg15',dashboard)
+        self.assertNotIn('id="avg15"',dashboard)
+        self.assertIn('telem-metrics',(d/'web_unified.html').read_text(encoding='utf-8'))
         self.assertIn('aprs_telemetry.py',installer)
 
 if __name__=='__main__':unittest.main()

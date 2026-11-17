@@ -24,6 +24,7 @@ from aprs_telemetry import symbol_code
 
 DEFAULT_PATH = Path.home() / '.config' / 'ok5tvr-aprs' / 'config.json'
 DEFAULT_CONFIG = {
+    'object_slots': {'entries': []},
     'station': {'call':'', 'mode':'aprs', 'igate_ssid':10, 'digi_ssid':3, 'bbs_ssid':8, 'client_ssid':7},
     'serial': {'port': 'auto', 'baud': 115200, 'retry_seconds': 4},
     'tnc': {'transport':'serial', 'tcp_host':'127.0.0.1', 'tcp_port':8001,
@@ -310,6 +311,8 @@ def validate_config(candidate):
                             symbol_code(d['symbol_table'], d['symbol'], d['overlay']))
     elif d['beacon_enabled']:
         raise ValueError('Configure own GPS before enabling a DIGI position beacon.')
+    from aprs_objects import validate_entries
+    v['object_slots']['entries']=validate_entries(v['object_slots']['entries'])
     return v
 
 

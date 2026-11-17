@@ -33,8 +33,8 @@ sudo apt-get install -y python3 python3-serial python3-tk
 sudo install -d -m 755 "$INSTALL_DIR"
 # Only runtime files, no tests or credentials in /opt.
 for f in aprs_service.py service_config.py aprs_protocol.py aprs_serial.py \
-         aprs_digi.py aprs_features.py aprs_geo.py aprs_journal.py aprs_station.py aprs_messages.py aprs_operations.py aprs_telemetry.py web_panel.py web_views.py web_auth.py aprs_tcp.py aprs_archive.py aprs_weather.py aprs_sqlite_batch.py aprs_is_to_rf.py aprs_rf_scheduler.py aprs_secondary_tnc.py aprs_alerts.py aprs_bbs.py \
-         web_dashboard.html web_control.html web_messages.html web_bbs.html web_operations.html web_unified.html web_station.html web_settings.html web_shell.js web_login.html web_locale.js web_theme.css offline_geography.json local_display.py; do
+         aprs_digi.py aprs_features.py aprs_geo.py aprs_journal.py aprs_station.py aprs_messages.py aprs_operations.py aprs_objects.py aprs_telemetry.py web_panel.py web_views.py web_auth.py aprs_tcp.py aprs_archive.py aprs_weather.py aprs_sqlite_batch.py aprs_is_to_rf.py aprs_rf_scheduler.py aprs_secondary_tnc.py aprs_alerts.py aprs_bbs.py \
+         web_dashboard.html web_control.html web_messages.html web_bbs.html web_operations.html web_objects.html web_unified.html web_station.html web_settings.html web_shell.js web_login.html web_locale.js web_theme.css offline_geography.json local_display.py; do
   sudo install -m 644 "$SRC_DIR/$f" "$INSTALL_DIR/$f"
 done
 sudo install -d -m 755 "$INSTALL_DIR/assets"

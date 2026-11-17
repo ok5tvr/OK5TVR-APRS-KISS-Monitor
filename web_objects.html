@@ -1,0 +1,56 @@
+<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>APRS · Objekty</title><link rel="stylesheet" href="/assets/web_theme.css?v=28"><style>main{margin:auto}button{margin:5px 5px 5px 0}#notice{white-space:pre-wrap;padding:12px 0}input,select{padding:9px}h1{margin-top:0}.object-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}#schedule-status{font-weight:bold}a{color:var(--accent)}</style></head><body><main>
+<h1 data-cs="APRS objekty" data-en="APRS objects">APRS objekty</h1>
+<p data-cs="Až 5 uložených objektů. Každý má vlastní trasu RF nebo INET a vlastní plán odesílání." data-en="Up to 5 saved objects, each with its own RF or INET transport and transmission schedule.">Až 5 uložených objektů. Každý má vlastní trasu RF nebo INET a vlastní plán odesílání.</p>
+<div class="object-toolbar"><span id="schedule-status"></span><span id="device-time"></span><a class="operation-only" id="configure" href="/settings/objects" data-cs="Nastavit objekty" data-en="Configure objects">Nastavit objekty</a><a class="settings-only" id="overview" href="/objects" data-cs="Přehled objektů" data-en="Object overview">Přehled objektů</a></div>
+<p data-cs="Denní časy se řídí místním časem zařízení zobrazeným výše. Interval začíná po zapnutí plánování. Zmeškané časy se nedohánějí." data-en="Daily times use the device local clock shown above. Intervals begin when scheduling starts. Missed deadlines are not replayed.">Denní časy se řídí místním časem zařízení zobrazeným výše. Interval začíná po zapnutí plánování. Zmeškané časy se nedohánějí.</p>
+<div class="settings-only"><button id="add" data-cs="Přidat objekt" data-en="Add object">Přidat objekt</button><button id="save" data-cs="Uložit všechna nastavení" data-en="Save all settings">Uložit všechna nastavení</button><button id="start" data-cs="Zapnout plánování uložených objektů" data-en="Start saved object schedules">Zapnout plánování uložených objektů</button><button id="stop" data-cs="Vypnout plánování" data-en="Stop scheduling">Vypnout plánování</button></div>
+<div id="notice" role="status"></div><div id="entries" class="object-grid"></div>
+<p data-cs="RF používá připojené TNC, INET připojený iGate / APRS-IS. Stav potvrzuje zařazení do fronty. Uložení, restart, změna režimu a odpojení TNC plánování vypnou. Smazání definice samo neodesílá KILL; pro zrušení objektu nejdříve odešli stejný název s typem KILL." data-en="RF uses the connected TNC; INET uses the connected iGate / APRS-IS. Status confirms queue acceptance. Saving, restarting, changing modes or disconnecting TNC stops scheduling. Deleting a definition does not send KILL; to remove a published object, first send the same name with type KILL.">RF používá připojené TNC, INET připojený iGate / APRS-IS. Stav potvrzuje zařazení do fronty. Uložení, restart, změna režimu a odpojení TNC plánování vypnou. Smazání definice samo neodesílá KILL; pro zrušení objektu nejdříve odešli stejný název s typem KILL.</p>
+</main><script src="/assets/web_locale.js"></script><script>
+'use strict';
+const $=id=>document.getElementById(id),key=new URLSearchParams(location.search).get('admin')||'';
+const edit=location.pathname.startsWith('/settings'),tr=(cs,en)=>window.OK5TVRLocale.language==='en'?en:cs;
+let entries=[],loaded=false,dirty=false;
+for(const id of ['configure','overview'])$(id).href+='?admin='+encodeURIComponent(key);
+function localize(){document.querySelectorAll('[data-cs][data-en]').forEach(el=>el.textContent=el.dataset[window.OK5TVRLocale.language]);}
+function field(card,obj,key,cs,en,type='text',choices=null){
+ const label=document.createElement('label');label.textContent=tr(cs,en);
+ const input=document.createElement(choices?'select':'input');if(!choices)input.type=type;
+ if(choices)for(const [value,title] of choices){const option=document.createElement('option');option.value=value;option.textContent=title;input.append(option);}
+ input.value=key==='times'?obj.times.join(', '):String(obj[key]);
+ if(type==='number'){input.step='any';input.required=true;}
+ if(key==='name')input.maxLength=9;if(key==='comment')input.maxLength=43;if(key==='symbol')input.maxLength=1;
+ input.oninput=()=>{obj[key]=key==='times'?input.value.split(',').map(t=>t.trim()).filter(Boolean):type==='number'?Number(input.value):['alive','enabled'].includes(key)?input.value==='true':input.value;dirty=true;};
+ label.append(input);card.append(label);return input;
+}
+function render(status={}){
+ $('entries').replaceChildren();
+ entries.forEach((obj,index)=>{
+  const card=document.createElement('section');card.className='object-card';const h=document.createElement('h2');h.textContent=(index+1)+' · '+obj.name;card.append(h);
+  if(edit){const fields=document.createElement('div');fields.className='object-fields';card.append(fields);
+   field(fields,obj,'name','Název (1–9 ASCII)','Name (1–9 ASCII)');field(fields,obj,'transport','Odeslat přes','Transport','text',[['rf','RF · KISS TNC'],['inet','INET · APRS-IS']]);
+   field(fields,obj,'lat','Šířka','Latitude','number');field(fields,obj,'lon','Délka','Longitude','number');field(fields,obj,'comment','Komentář (ASCII)','Comment (ASCII)');
+   field(fields,obj,'path','Cesta RF (DIRECT = přímo)','RF path (DIRECT = direct)');field(fields,obj,'symbol_table','Tabulka symbolů','Symbol table','text',[['/','/ · primary'],['\\','\\ · alternate']]);field(fields,obj,'symbol','Znak symbolu','Symbol character');
+   field(fields,obj,'alive','Typ','Type','text',[['true','LIVE'],['false','KILL']]);field(fields,obj,'enabled','Zařadit do plánování','Include in schedule','text',[['true',tr('Ano','Yes')],['false',tr('Ne','No')]]);
+   field(fields,obj,'schedule','Odesílání','Schedule','text',[['manual',tr('Pouze ručně','Manual only')],['interval',tr('Interval','Interval')],['times',tr('Denní časy','Daily times')]]);
+   field(fields,obj,'interval_minutes','Interval (1–1440 min)','Interval (1–1440 min)','number');field(fields,obj,'times','Denní časy HH:MM, HH:MM','Daily times HH:MM, HH:MM');
+   const remove=document.createElement('button');remove.textContent=tr('Odebrat definici','Remove definition');remove.onclick=()=>{entries.splice(index,1);dirty=true;render(status);};card.append(remove);
+  }else{
+   const p=document.createElement('p');p.textContent=`${obj.transport.toUpperCase()} · ${obj.lat}, ${obj.lon} · ${obj.alive?'LIVE':'KILL'} · ${obj.comment}`;card.append(p);
+   const plan=document.createElement('p');plan.textContent=!obj.enabled?tr('Mimo plánování','Excluded from schedule'):obj.schedule==='manual'?tr('Pouze ručně','Manual only'):obj.schedule==='interval'?tr('Interval: ','Interval: ')+obj.interval_minutes+' min':obj.times.join(', ');card.append(plan);
+   const button=document.createElement('button');button.textContent=tr('Odeslat nyní','Send now');button.onclick=()=>{if(confirm(tr('Odeslat uložený objekt ','Send saved object ')+obj.name+' → '+obj.transport.toUpperCase()+'?'))run('object_slot_send',{index,confirm:true});};card.append(button);
+  }
+  const last=document.createElement('p');last.dataset.slotStatus=String(index);last.textContent=status[index]||tr('Dosud neodesláno','Not sent yet');card.append(last);$('entries').append(card);
+ });
+ $('add').disabled=entries.length>=5;
+ if(!entries.length)$('entries').textContent=tr('Žádné objekty. Definuj je v Nastavení → APRS objekty.','No objects. Define them in Settings → APRS objects.');
+}
+async function refresh(){try{const r=await fetch('/api/objects?admin='+encodeURIComponent(key),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();
+ $('schedule-status').textContent=data.active?tr('Plánování ZAPNUTO','Scheduling ON'):tr('Plánování VYPNUTO','Scheduling OFF');$('device-time').textContent=data.device_time;
+ if(!loaded||!edit){entries=data.entries;render(data.status);loaded=true;}else document.querySelectorAll('[data-slot-status]').forEach(el=>el.textContent=data.status[el.dataset.slotStatus]||tr('Dosud neodesláno','Not sent yet'));
+ }catch(e){$('notice').textContent=e.message;}}
+async function run(action,data={}){try{const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key,'X-APRS-CSRF':'1'},body:JSON.stringify({action,...data})});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||r.status);$('notice').textContent=typeof j.result==='string'?j.result:JSON.stringify(j.result);if(action==='objects_save'){dirty=false;loaded=false;}await refresh();}catch(e){$('notice').textContent=e.message;}}
+$('add').onclick=()=>{if(entries.length>=5)return;entries.push({name:'OBJ'+(entries.length+1),lat:0,lon:0,comment:'',symbol_table:'/',symbol:'r',transport:'rf',path:'WIDE1-1',alive:true,enabled:true,schedule:'manual',interval_minutes:30,times:[]});dirty=true;render();};
+$('save').onclick=()=>run('objects_save',{entries});$('stop').onclick=()=>run('objects_stop');$('start').onclick=()=>{if(dirty){$('notice').textContent=tr('Nejdříve ulož změny.','Save changes first.');return;}if(confirm(tr('Spustit plánované odesílání uložených objektů?','Start scheduled transmissions of saved objects?')))run('objects_start',{confirm:true});};
+window.addEventListener('ok5tvr:language',()=>{localize();render();});window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});localize();refresh();setInterval(refresh,3000);
+</script></body></html>

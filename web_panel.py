@@ -18,6 +18,7 @@ from web_views import full_page
 _ASSET_DIR = Path(__file__).resolve().parent
 HTML = (_ASSET_DIR / 'web_dashboard.html').read_text(encoding='utf-8')
 ADMIN_HTML = (_ASSET_DIR / 'web_control.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_control.html').exists() else ''
+OBJECTS_HTML = (_ASSET_DIR / 'web_objects.html').read_text(encoding='utf-8')
 OPERATIONS_HTML = (_ASSET_DIR / 'web_operations.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_operations.html').exists() else ''
 MESSAGES_HTML = (_ASSET_DIR / 'web_messages.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_messages.html').exists() else ''
 BBS_HTML = (_ASSET_DIR / 'web_bbs.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_bbs.html').exists() else ''
@@ -182,18 +183,22 @@ class WebPanel:
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/app', '/aprs', '/settings', '/settings/aprs', '/settings/messages', '/settings/bbs', '/settings/advanced', '/settings/operations', '/api/station', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/api/heard', '/api/alerts', '/api/tx-scheduler', '/messages', '/api/messages', '/bbs', '/api/bbs', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
+                if parsed.path in ('/objects', '/api/objects', '/settings/objects', '/app', '/aprs', '/settings', '/settings/aprs', '/settings/messages', '/settings/bbs', '/settings/advanced', '/settings/operations', '/api/station', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/api/heard', '/api/alerts', '/api/tx-scheduler', '/messages', '/api/messages', '/bbs', '/api/bbs', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
-                    if parsed.path == '/api/station':
+                    if parsed.path == '/api/objects':
+                        self._respond(200,json.dumps(operator.objects_snapshot(),ensure_ascii=False))
+                    elif parsed.path == '/objects':
+                        self._respond(200,full_page(OBJECTS_HTML,'aprs-objects'),'text/html; charset=utf-8')
+                    elif parsed.path == '/api/station':
                         self._respond(200, json.dumps(operator.station_snapshot(),ensure_ascii=False))
                     elif parsed.path=='/app':
                         self._respond(200,STATION_HTML,'text/html; charset=utf-8')
                     elif parsed.path in ('/aprs','/unified'):
                         self._respond(200,full_page(UNIFIED_HTML,'aprs'),'text/html; charset=utf-8')
                     elif parsed.path.startswith('/settings'):
-                        pages={'/settings':(SETTINGS_HTML,'settings'),
+                        pages={'/settings/objects':(OBJECTS_HTML,'settings-objects'),'/settings':(SETTINGS_HTML,'settings'),
                             '/settings/aprs':(ADMIN_HTML,'settings-aprs'),
                             '/settings/messages':(MESSAGES_HTML,'settings-messages'),
                             '/settings/bbs':(BBS_HTML,'settings-bbs'),

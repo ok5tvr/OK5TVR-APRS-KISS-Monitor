@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OK5TVR APRS KISS – živá mapa</title>
+<title>OK5TVR APRS USB KISS – živá mapa</title>
 <style>
 :root{color-scheme:dark;--bg:#0a1321;--pane:#142236;--edge:#293b54;--fg:#ecf5ff;--muted:#9cb3c8;--mint:#25d8b8;--amber:#ffd08a}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,'Segoe UI',sans-serif}
@@ -83,7 +83,7 @@ body.heard-embedded #map{height:480px;border-radius:9px}
 body.heard-embedded .map-marker{font-size:11px}
 @media(max-width:750px){body.heard-embedded #map{height:380px}}
 </style>
-<link rel="stylesheet" href="/assets/web_theme.css?v=27">
+<link rel="stylesheet" href="/assets/web_theme.css?v=28">
 </head>
 <body>
 <header><div class="brand"><b>OK5TVR</b> APRS KISS <span class="muted">· živá mapa</span></div>
@@ -92,30 +92,11 @@ body.heard-embedded .map-marker{font-size:11px}
 <a href="/" id="nav-map" aria-current="page" class="nav-link-primary">Mapa / Map</a>
 <a href="/control" id="nav-control" data-admin-target="control">Nastavení</a>
 <a href="/messages" id="nav-messages" data-admin-target="messages">APRS zprávy</a>
-<a href="/operations#objects" id="nav-objects" data-admin-target="operations" data-section="objects">APRS objekty</a>
+<a href="/objects" id="nav-objects" data-admin-target="objects">APRS objekty</a>
 <a href="/operations#diagnostics" id="nav-diagnostics" data-admin-target="operations" data-section="diagnostics">Diagnostika</a>
 </nav>
 <p id="nav-info" aria-live="polite" hidden></p>
 <main>
-<div class="cards">
-<div class="card"><div class="caption">Přijaté RF rámce</div><div class="metric" id="rx">0</div></div>
-<div class="card"><div class="caption">Slyšené stanice</div><div class="metric" id="stations">0</div></div>
-<div class="card"><div class="caption">Polohy na mapě</div><div class="metric" id="positions">0</div></div>
-<div class="card"><div class="caption">RF → APRS-IS</div><div class="metric" id="gated">0</div></div>
-<div class="card"><div class="caption">TX předané do USB</div><div class="metric" id="tx">0</div></div>
-<div class="card"><div class="caption">DIGI TX (USB)</div><div class="metric" id="digi_tx">0</div></div>
-<div class="card"><div class="caption">Vlastní APRS-IS majáky</div><div class="metric" id="beacons">0</div></div>
-</div>
-<section class="panel" style="margin-bottom:16px"><h2>Statistiky za posledních 15 minut / Last 15 minutes</h2>
-<div class="cards" style="padding:14px;margin:0">
-<div class="card"><div class="caption">RX / 15 min</div><div class="metric" id="rx15">0</div></div>
-<div class="card"><div class="caption">TX / 15 min (USB)</div><div class="metric" id="tx15">0</div></div>
-<div class="card"><div class="caption">Unikátní stanice</div><div class="metric" id="unique15">0</div></div>
-<div class="card"><div class="caption">Průměrná vzdálenost (km)</div><div class="metric" id="avg15">–</div></div>
-<div class="card"><div class="caption">Maximální vzdálenost (km)</div><div class="metric" id="dx15">–</div></div>
-<div class="card"><div class="caption">iGate → IS / 15 min</div><div class="metric" id="gate15">0</div></div>
-<div class="card"><div class="caption">DIGI TX / 15 min</div><div class="metric" id="digi15">0</div></div>
-</div><p class="muted" style="padding:0 16px;font-size:12px">Vzdálenost je vypočtena z GPS poloh unikátních stanic vůči vlastní poloze. Není to měření přímého dosahu RF. / Distances are derived from reported positions, not measured RF range.</p></section>
 <div class="grid">
 <section class="panel">
 <h2 class="map-header"><span>Mapa přijatých APRS pozic</span><span>
@@ -680,8 +661,8 @@ async function refresh(){
         };
       }).sort((a,b)=>b.last.localeCompare(a.last));
     ownPosition=null;ownDigi=null;
-    $('stations').textContent=positions.length;
-    $('positions').textContent=positions.length;
+
+
     renderStations();
     renderMap(false);
     if(firstPosition&&positions.length){
@@ -697,9 +678,9 @@ async function refresh(){
   const response=await fetch(authPath('/api/state'),{cache:'no-store'});
   if(!response.ok)throw new Error('HTTP '+response.status);
   const st=await response.json();
-  $('rx').textContent=st.rx;$('stations').textContent=st.station_count;
-  $('positions').textContent=st.position_count;$('gated').textContent=st.igate_sent;$('tx').textContent=st.tx_requests;
-  $('digi_tx').textContent=st.digi?.tx_written||0;$('beacons').textContent=st.beacons_sent||0;
+
+
+
   $('rf').textContent=tr('Rádio: ')+tr(st.rf_status);$('igate').textContent='iGate: '+tr(st.igate_status);
   $('digi').textContent='DIGI: '+(st.digi?.enabled ? (tr('Zapnuto')+' · '+st.digi.call) : tr('Vypnuto'));
   $('digi').classList.toggle('off',!st.digi?.enabled);
@@ -707,12 +688,11 @@ async function refresh(){
   $('igate').classList.toggle('off',!st.igate_status.startsWith('Online'));
   positions=st.stations.sort((a,b)=>b.last.localeCompare(a.last));
   ownPosition=st.own_position||null;ownDigi=st.digi_position||null;
-  const met=st.telemetry||{};
-  $('rx15').textContent=met.rx_packets??0;$('tx15').textContent=met.tx_packets??0;
-  $('unique15').textContent=met.unique_stations??0;
-  $('avg15').textContent=met.avg_distance_km===null||met.avg_distance_km===undefined?'–':met.avg_distance_km;
-  $('dx15').textContent=met.dx_max_km===null||met.dx_max_km===undefined?'–':met.dx_max_km;
-  $('gate15').textContent=met.igate_forwarded??0;$('digi15').textContent=met.digi_tx??0;
+
+
+
+
+
   renderStations();renderMap(false);
   if(firstPosition&&(positions.some(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon))||ownPosition)){
     fitStations([...positions,...(ownPosition?[ownPosition]:[]),...(ownDigi?.active?[ownDigi]:[])]);firstPosition=false;}

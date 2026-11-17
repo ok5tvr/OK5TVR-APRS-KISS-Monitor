@@ -19,6 +19,7 @@ import threading
 import time
 from pathlib import Path
 
+from aprs_objects import ObjectSchedule
 from aprs_digi import DigiConfig, DigiRepeater
 from aprs_messages import MessageManager
 from aprs_features import (APRSISClient, MonitorState, encode_ui_packet,
@@ -113,6 +114,7 @@ class APRSService:
         self.serial_connections = 0
         self.journal = Journal(config.path.with_name('operations.sqlite3'))
         self.last_object_tx = float('-inf')
+        self.objects = ObjectSchedule()
         self.object_history = collections.deque(maxlen=40)
         self.telemetry = RadioWindow()
         self.telemetry_seq = {'igate': 0, 'digi': 0}
@@ -367,7 +369,59 @@ class APRSService:
             except (ValueError, TypeError, OSError, RuntimeError) as exc:
                 response.put_nowait((False, str(exc)))
 
+    def objects_snapshot(self):
+        return self.objects.snapshot(self.config.data['object_slots']['entries'])
+
+    def _objects_stop(self):
+        self.objects.stop()
+        if self.reader is not None:
+            self.reader.objects_epoch=self.objects.epoch
+        if self.igate_client is not None:self.igate_client.objects_epoch=self.objects.epoch
+
+    def _send_saved_object(self, index, obj):
+        if self.operating_mode!='aprs': raise ValueError('APRS není aktivní.')
+        payload=object_payload(obj['name'],obj['lat'],obj['lon'],obj['comment'],obj['alive'],obj['symbol_table'],obj['symbol'])
+        call=self.config.data['igate']['call']
+        if obj['transport']=='rf':
+            if not self.radio_ready or self.reader is None: raise ValueError('TNC není připojeno.')
+            self.reader.objects_epoch=self.objects.epoch
+            raw=encode_ui_packet(call,'APRS',obj['path'],payload)
+            ok=self.reader.send(encode_kiss_data(raw),category=f'object_slot:{index}:{self.objects.epoch}')
+            result='RF: předáno do fronty TNC / queued to TNC'
+        else:
+            if self.igate_client is None: raise ValueError('Připoj iGate / APRS-IS v Nastavení.')
+            self.igate_client.objects_epoch=self.objects.epoch
+            ok=self.igate_client.enqueue_local(f'{call}>APRS,TCPIP*:{payload}',kind=f'object:{self.objects.epoch}')
+            result='INET: předáno do fronty APRS-IS / queued to APRS-IS'
+        if not ok:raise ValueError('Transport není připraven nebo je fronta plná.')
+        stamp=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+        self.journal.log('OBJECT','queued',call,obj['name'],obj['transport'])
+        self.object_history.appendleft(dict(name=obj['name'],alive=obj['alive'],path=obj['path'],queued_utc=stamp,transport=obj['transport']))
+        return stamp+' · '+result
+
     def _execute(self, action, data):
+        if action=='objects_save':
+            self.config.update({'object_slots':{'entries':data.get('entries')}})
+            self._objects_stop()
+            self.objects.status={}
+            return 'Objekty uloženy. Plánování je vypnuté.'
+        if action=='objects_stop':
+            self._objects_stop()
+            return 'Plánování vypnuto.'
+        if action=='objects_start':
+            if self.operating_mode!='aprs' or data.get('confirm') is not True: raise ValueError('Potvrď plánované vysílání v režimu APRS.')
+            self.objects.start(self.config.data['object_slots']['entries'])
+            if self.igate_client is not None:self.igate_client.objects_epoch=self.objects.epoch
+            if self.reader is not None:self.reader.objects_epoch=self.objects.epoch
+            return 'Plánování zapnuto.'
+        if action=='object_slot_send':
+            if data.get('confirm') is not True:raise ValueError('Potvrď odeslání objektu.')
+            index=data.get('index')
+            entries=self.config.data['object_slots']['entries']
+            if type(index) is not int or not 0<=index<len(entries):raise ValueError('Invalid object slot')
+            result=self._send_saved_object(index,entries[index])
+            self.objects.status[index]=result
+            return result
         if action=='mode_set':
             if data.get('confirm') is not True:raise ValueError('Confirm changing operating mode')
             return self._select_mode(data.get('mode'))
@@ -602,6 +656,7 @@ class APRSService:
             self.last_manual_telemetry = time.monotonic()
             return f'Telemetry packets scheduled/submitted: {count}; route(s) per configured transport. RF requires DIGI active and uses spaced KISS frames.'
         if action == 'restore_config':
+            self._objects_stop()
             if data.get('confirm') is not True:
                 raise ValueError('Obnovení nastavení vyžaduje potvrzení.')
             restored=validate_restore_document(data.get('backup'))
@@ -710,6 +765,7 @@ class APRSService:
                              ('live' if obj['alive'] else 'kill')+' '+obj['path'])
             return 'APRS objekt předán do USB KISS TX fronty; fyzické RF vysílání ověř druhým přijímačem.'
         if action == 'save':
+            self._objects_stop()
             changes = data.get('config', {})
             if not isinstance(changes, dict):
                 raise ValueError('Nastavení musí být objekt.')
@@ -898,6 +954,7 @@ class APRSService:
         self._update_position()
 
     def _disconnect_reader(self):
+        self._objects_stop()
         self._bbs_stop()
         self.isrf.stop()  # revoke Internet-to-RF gate after any KISS outage
         if self.reader:
@@ -1061,7 +1118,9 @@ class APRSService:
                     self.telemetry.record_gate()
                 elif event == 'igate_local_sent':
                     kind = value.get('kind', 'unknown') if isinstance(value,dict) else 'unknown'
-                    self.stats['aprsis_local_'+kind] += 1
+                    self.stats['aprsis_local_'+('object' if kind.startswith('object:') else kind)] += 1
+                    if kind.startswith('object:'):
+                        self.journal.log('OBJECT','inet-sent',detail=value.get('line',''))
                     if kind == 'digi_beacon':
                         self.journal.log('BEACON','sent',self.config.data['digi']['call'],detail='APRS-IS DIGI position')
                     elif kind == 'telemetry':
@@ -1337,6 +1396,7 @@ class APRSService:
                 self._messages_tick()
                 self._bbs_tick()
                 self._digi_tick()
+                self.objects.tick(self.config.data['object_slots']['entries'],self._send_saved_object)
                 self._telemetry_tick()
                 self.stop.wait(0.08)
         finally:
