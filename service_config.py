@@ -24,6 +24,7 @@ from aprs_telemetry import symbol_code
 
 DEFAULT_PATH = Path.home() / '.config' / 'ok5tvr-aprs' / 'config.json'
 DEFAULT_CONFIG = {
+    'station': {'call':'', 'mode':'aprs', 'igate_ssid':10, 'digi_ssid':3, 'bbs_ssid':8, 'client_ssid':7},
     'serial': {'port': 'auto', 'baud': 115200, 'retry_seconds': 4},
     'tnc': {'transport':'serial', 'tcp_host':'127.0.0.1', 'tcp_port':8001,
             'kiss_server_enabled':False, 'kiss_server_host':'127.0.0.1',
@@ -111,6 +112,20 @@ def _int(value, name, lo, hi):
 def validate_config(candidate):
     """Return normalized copy; rejects risky or invalid values and booleans-as-int."""
     v = _merge_known(copy.deepcopy(DEFAULT_CONFIG), candidate)
+    identity=v['station']
+    if not isinstance(identity['call'],str):raise ValueError('CALL must be text')
+    identity['call']=identity['call'].strip().upper()
+    if identity['call'] and not re.fullmatch(r'[A-Z0-9]{3,6}',identity['call']):
+        raise ValueError('CALL: 3-6 letters/digits, without SSID')
+    if identity['mode'] not in ('aprs','bbs','off'):raise ValueError('Mode must be APRS, BBS or off')
+    for role in ('igate','digi','bbs','client'):
+        identity[role+'_ssid']=_int(identity[role+'_ssid'],role+' SSID',0,15)
+    if identity['call']:
+        for role in ('igate','digi','bbs'):
+            number=identity[role+'_ssid']
+            v[role]['call']=identity['call']+(f'-{number}' if number else '')
+        if identity['client_ssid']==identity['bbs_ssid']:
+            raise ValueError('BBS server and client must have different SSIDs')
     s = v['serial']
     if not isinstance(s['port'], str) or not 1 <= len(s['port']) <= 128 or any(c in s['port'] for c in '\n\r\x00'):
         raise ValueError('Neplatný název sériového portu.')
@@ -355,6 +370,22 @@ class ServiceConfig:
         else:
             self.data = validate_config({})
             _atomic_json(self.path, self.data)
+        # One-time migration from full per-function callsigns.
+        if not self.data['station']['call']:
+            identity=self.data['station']
+            identity['call']=self.data['igate']['call'].split('-')[0]
+            used=set()
+            for role in ('igate','digi','bbs'):
+                call=self.data[role]['call']
+                if call:
+                    identity[role+'_ssid']=int(call.split('-')[1]) if '-' in call else 0
+                used.add(identity[role+'_ssid'])
+            if identity['bbs_ssid'] in (identity['igate_ssid'],identity['digi_ssid']):
+                identity['bbs_ssid']=next(n for n in range(1,16) if n not in used)
+            if identity['client_ssid']==identity['bbs_ssid']:
+                identity['client_ssid']=next(n for n in range(1,16) if n!=identity['bbs_ssid'])
+            self.data=validate_config(self.data)
+            _atomic_json(self.path,self.data)
         if self.secret_path.exists():
             secret_data = json.loads(self.secret_path.read_text(encoding='utf-8'))
             if not isinstance(secret_data, dict):
@@ -362,7 +393,7 @@ class ServiceConfig:
         else:
             secret_data = {}
         self.secrets = {
-            'web_username': secret_data.get('web_username', 'ok5tvr'),
+            'web_username': self.data['station']['call'],
             'viewer_token': secret_data.get('viewer_token') or secrets.token_urlsafe(32),
             'admin_token': secret_data.get('admin_token') or secrets.token_urlsafe(32),
             'igate_passcode': str(secret_data.get('igate_passcode', '')),
@@ -374,11 +405,36 @@ class ServiceConfig:
         return self
 
     def update(self, changes: dict, passcode: str | None = None):
+        changes=copy.deepcopy(changes)
+        identity=dict(changes.get('station',{}))
+        # Retain compatibility with old clients saving full callsigns.
+        for role in ('igate','digi','bbs'):
+            call=changes.get(role,{}).get('call')
+            if call is not None:
+                if not isinstance(call,str) or not re.fullmatch(r'[A-Z0-9]{3,6}(?:-(?:[1-9]|1[0-5]))?',call.upper()):
+                    raise ValueError('Invalid function callsign')
+                base=call.upper().split('-')[0]
+                if role=='igate':identity.setdefault('call',base)
+                elif base!=identity.get('call',self.data['station']['call']):
+                    raise ValueError('Use the shared station CALL for all functions')
+                identity.setdefault(role+'_ssid',int(call.split('-')[1]) if '-' in call else 0)
+        if identity:changes['station']=identity
+        new_base=(identity.get('call') or changes.get('igate',{}).get('call',self.data['station']['call']).split('-')[0]).strip().upper()
+        if not re.fullmatch(r'[A-Z0-9]{3,6}',new_base):raise ValueError('Invalid base CALL')
+        if identity:identity['call']=new_base
+        if new_base!=self.data['station']['call']:
+            aliases=self.data['messages']['receive_aliases']
+            changes.setdefault('messages',{}).setdefault('receive_aliases',
+                [new_base+('-'+a.split('-')[1] if '-' in a else '') for a in aliases])
         new = validate_config(_merge_known(copy.deepcopy(self.data), changes))
         if passcode is not None:
             if passcode and (not passcode.isascii() or not passcode.isdigit() or not 0 <= int(passcode) <= 32767):
                 raise ValueError('APRS-IS passcode musí být číslo 0–32767.')
+        changed_call=new['station']['call']!=self.data['station']['call']
         self.data = new
+        self.secrets['web_username']=new['station']['call']
+        if changed_call:self.secrets['igate_passcode']=''
+        _atomic_json(self.secret_path,self.secrets)
         _atomic_json(self.path, self.data)
         if passcode is not None:
             self.secrets['igate_passcode'] = passcode
@@ -396,5 +452,5 @@ class ServiceConfig:
                 'login': prefix+'/login',
                 'map': prefix+'/map?key='+self.secrets['viewer_token'],
                 'admin':prefix+'/app',
-                'messages':prefix+'/app#messages',
-                'operations':prefix+'/app#objects'}
+                'messages':prefix+'/app#aprs/messages',
+                'operations':prefix+'/app#aprs/objects'}

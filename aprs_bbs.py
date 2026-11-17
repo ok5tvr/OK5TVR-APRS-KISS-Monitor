@@ -200,6 +200,8 @@ class Link:
     list_page: int = 0
     skip_lf: bool = False
     input_overflow: bool = False
+    connect_at: float | None = None
+    connect_retries: int = 0
 
 
 class AX25PBBS:
@@ -217,13 +219,20 @@ class AX25PBBS:
         self.rejected={}
         self.last_error=''
         self.last_disconnect='not_connected'
+        self.client_mode=False
+        self.local_call=self.config['call']
+        self.console=''
 
     def configure(self, config):
         self.stop()
         self.config=dict(config)
+        self.local_call=self.config['call']
+        self.client_mode=False
         self.store.max_messages=config['max_messages']
 
     def start(self):
+        self.client_mode=False
+        self.local_call=self.config['call']
         if not self.config['call']:
             raise ValueError('Set a separate BBS callsign before enabling TX')
         self.stop()
@@ -237,6 +246,31 @@ class AX25PBBS:
         self.epoch+=1  # invalidates still queued KISS frames
         self.tx_times.clear()
 
+    def connect(self, remote, local_call, send):
+        if not isinstance(remote,str) or not CALL_RE.fullmatch(remote.upper()):
+            raise ValueError('Enter a remote BBS callsign with SSID')
+        if not CALL_RE.fullmatch(local_call) or remote.upper()==local_call:
+            raise ValueError('Local and remote BBS callsigns must differ')
+        self.stop()
+        self.client_mode=True
+        self.local_call=local_call
+        self.console=''
+        self.active=True
+        self.session=Link(remote.upper(),self.epoch,self.clock(),stage='client')
+        if not self._send(send,remote.upper(),0x3F,kind='connect',response=False):
+            self.stop()
+            raise RuntimeError('Cannot queue AX.25 connect request')
+        self.last_disconnect=''
+
+    def send_text(self, text):
+        if not self.client_mode or not self.active or not self.session or self.session.waiting_ua or self.session.closing:
+            raise ValueError('BBS client is not connected')
+        if not isinstance(text,str) or not 0<=len(text)<=100 or any(not 32<=ord(c)<=126 for c in text):
+            raise ValueError('Send one ASCII line, up to 100 characters')
+        if len(self.session.output)>3000:raise ValueError('Wait for the outgoing text queue')
+        self._output(text)
+        self.console=(self.console+'\n> '+text)[-6000:]
+
     def close(self):
         self.stop()
         self.store.close()
@@ -244,7 +278,7 @@ class AX25PBBS:
     def _build(self, remote, control, payload=b'', response=True):
         # AX.25 command/response C bits in destination/source addresses.
         dst=address_bytes(remote, repeated=not response)
-        src=address_bytes(self.config['call'], last=True, repeated=response)
+        src=address_bytes(self.local_call, last=True, repeated=response)
         return encode_kiss_data(dst+src+bytes((control,))+payload)
 
     def _send(self, send, remote, control, payload=b'', kind='link', response=True):
@@ -296,7 +330,7 @@ class AX25PBBS:
 
     def on_frame(self, packet, send):
         """Return True if connected-mode frame addressed to the BBS was handled."""
-        if not self.active or packet.simulated or packet.destination!=self.config['call']:
+        if not self.active or packet.simulated or packet.destination!=self.local_call:
             return False
         if packet.control is None or packet.control==0x03:
             return False
@@ -315,6 +349,14 @@ class AX25PBBS:
         # U-frames (bit 0+1 both 1); P/F bit can vary.
         if ctrl & 3 == 3:
             base=ctrl & ~0x10
+            if base==0x63 and self.client_mode and self.session and self.session.remote==source and self.session.waiting_ua:
+                self.session.waiting_ua=False
+                self.session.last=now
+                self.counters['connections']+=1
+                return True
+            if base==0x2F and self.client_mode:
+                self._control(send,source,0x1F)
+                return True
             if base==0x2F:  # SABM, modulo-8
                 if self.session is not None and self.session.remote!=source:
                     last=self.rejected.get(source,float('-inf'))
@@ -395,6 +437,11 @@ class AX25PBBS:
             self.counters['ack_i']+=1
 
     def _accept_text(self, data):
+        if self.client_mode:
+            text=data.decode('ascii','replace').replace('\r\n','\n').replace('\r','\n')
+            text=''.join(c for c in text if c in '\n\t' or 32<=ord(c)<=126)
+            self.console=(self.console+text)[-6000:]
+            return
         link=self.session
         for octet in data[:256]:
             if octet == 10 and link.skip_lf:
@@ -551,7 +598,9 @@ class AX25PBBS:
         link=self.session
         if link is None or category.rsplit(':',1)[-1]!=str(link.epoch):
             return
-        if category.startswith('bbs_link:') and link.waiting_ua:
+        if category.startswith('bbs_connect:'):
+            link.connect_at=self.clock()
+        if category.startswith('bbs_link:') and link.waiting_ua and not self.client_mode:
             link.waiting_ua=False
         if category.startswith('bbs_data:') and link.unacked:
             link.unacked['queued']=False
@@ -575,7 +624,16 @@ class AX25PBBS:
             self.session=None
             self.epoch+=1
             return
-        if link.waiting_ua:return
+        if link.waiting_ua:
+            if self.client_mode and link.connect_at is not None and now-link.connect_at>=T1:
+                if link.connect_retries>=N2:
+                    self.last_disconnect='connect_timeout'
+                    self.session=None
+                    self.epoch+=1
+                elif self._send(send,link.remote,0x3F,kind='connect',response=False):
+                    link.connect_retries+=1
+                    link.connect_at=None  # retry timer begins at actual KISS write
+            return
         if link.disc_sent is not None:
             if now-link.disc_sent>20:
                 self.last_disconnect='disconnect_timeout'
@@ -606,15 +664,17 @@ class AX25PBBS:
                               'last':now,'queued':True,'retries':0}
                 link.vs=(link.vs+1)&7
         elif link.closing:
-            if self._control(send,link.remote,0x53):
+            if self._send(send,link.remote,0x53,response=False):
                 link.disc_sent=now
 
     def snapshot(self, offset=0, limit=50):
         count,items=self.store.admin_list(limit=limit,offset=offset)
         link=self.session
         return {
-            'active':self.active, 'call':self.config['call'],
-            'connected':bool(link), 'remote':link.remote if link else '',
+            'active':self.active, 'call':self.local_call,
+            'role':'client' if self.client_mode else 'server', 'console':self.console,
+            'connecting':bool(link and self.client_mode and link.waiting_ua),
+            'connected':bool(link and not (self.client_mode and link.waiting_ua)), 'remote':link.remote if link else '',
             'stage':link.stage if link else '',
             'queued_chars':len(link.output) if link else 0,
             'waiting_ack':bool(link and link.unacked),

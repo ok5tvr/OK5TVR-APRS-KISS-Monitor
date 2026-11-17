@@ -1,10 +1,25 @@
 # OK5TVR APRS KISS Monitor
 
-**Windows / Raspberry Pi APRS TNC Command Center · v2.4 dev · bidirectional selective iGate, multi-KISS RX, DIGI and messaging**
+**Windows / Raspberry Pi APRS TNC Command Center · v2.5 dev · bidirectional selective iGate, multi-KISS RX, DIGI and messaging**
 
-Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální vývojová verze zdrojových kódů: **v2.4 dev**.
+Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplikace **KISS TNC**). Aktuální vývojová verze zdrojových kódů: **v2.5 dev**.
 
 > **Stav testování:** USB KISS RX/TX byl ověřen na UV-K1(8). Webové služby, zprávy, automatický DIGI a iGate prošly simulovanými testy, ale celý provoz v reálné APRS síti a trvalý běh na Raspberry Pi je nutné ještě ověřit.
+
+## v2.5 dev – rozcestník APRS / BBS / Nastavení
+
+Po přihlášení se otevře rozcestník se třemi velkými tlačítky. Zelená označuje aktivní provozní režim, červená vypnutý; Nastavení je společná konfigurační sekce. Lišta ukazuje CALL, připojení TNC, místní čas prohlížeče, IP zařízení a verzi. Otevření Nastavení nemění běžící režim.
+
+- **APRS**: příjem, mapy, iGate, DIGI, zprávy, objekty a telemetrie. BBS je z vnitřní APRS navigace odstraněna.
+- **BBS**: místní PBBS server / pošta a nový AX.25 klient. Klient používá vlastní SSID, naváže DIRECT spojení se vzdálenou BBS, zobrazí terminál a odešle ASCII řádky do 100 znaků. Server a klient se střídají na jednom TNC.
+- **Nastavení**: jediný základní CALL bez SSID, samostatné číselné SSID pro iGate / DIGI / BBS server / BBS klient a společné USB/TCP TNC. SSID 0 znamená značku bez přípony. Odvozené značky jsou v jednotlivých sekcích pouze pro čtení.
+- **Přihlášení**: uživatelské jméno je základní CALL (velikost písmen se nerozlišuje); heslem zůstává dosavadní administrátorský přístupový token. Změna CALL se projeví bez restartu webu. Token se nemění. APRS-IS passcode se při změně CALL odstraní, protože patří původní značce; nastav správný pro novou značku.
+- **Přepnutí režimu** zastaví iGate, DIGI a BBS, přeruší čekající APRS zprávy, zruší RF oprávnění a zavře starou frontu TNC. Znovu se připojí stejné nakonfigurované TNC. Serverové kontroly nepovolí APRS vysílání v BBS režimu ani BBS v APRS režimu. Volba režimu sama nezapíná RF server ani DIGI/iGate; tyto funkce mají vlastní potvrzená tlačítka.
+- **Raspberry HDMI** se povolí zvolením APRS nebo BBS a automaticky mění rozložení: APRS ukazuje rámce, stanice a statistiky; BBS ukazuje server/klienta, protistanici, poštu, frontu a v režimu klienta terminál. Vypnutí režimu obrazovku skryje. Zůstává nutná běžící grafická relace a desktopový autostart panelu.
+
+Při migraci se CALL převezme ze stávající značky iGate, číselná SSID z dosavadních nastavení. Zálohuj celé `~/.config/ok5tvr-aprs` po zastavení služby. Po aktualizaci obnov web přes **Ctrl+F5**. Login nově vede na `/app`; podrobné původní APRS ovládání zůstává na `/unified`.
+
+BBS klient je testován virtuálním propojením dvou KISS TNC včetně SABM/UA, textu, RR a DISC/UA. Skutečnou RF kompatibilitu UV-K1 a fyzické rozložení HDMI panelu je potřeba ověřit na zařízení. Spojovaná BBS nadále patří na vhodný packet-radio kanál, nikoli na 144,800 MHz APRS.
 
 ## Modernizované webové rozhraní
 

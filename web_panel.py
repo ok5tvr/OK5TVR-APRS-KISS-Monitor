@@ -23,6 +23,7 @@ BBS_HTML = (_ASSET_DIR / 'web_bbs.html').read_text(encoding='utf-8') if (_ASSET_
 THEME_CSS = (_ASSET_DIR / 'web_theme.css').read_text(encoding='utf-8')
 LOCALE_JS = (_ASSET_DIR / 'web_locale.js').read_text(encoding='utf-8')
 UNIFIED_HTML = (_ASSET_DIR / 'web_unified.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_unified.html').exists() else ''
+STATION_HTML = (_ASSET_DIR / 'web_station.html').read_text(encoding='utf-8')
 LOGIN_HTML = (_ASSET_DIR / 'web_login.html').read_text(encoding='utf-8') if (_ASSET_DIR / 'web_login.html').exists() else ''
 
 
@@ -43,7 +44,8 @@ class WebPanel:
         viewer_key, admin_key, allow_lan = self.token, self.admin_token, lan
         session_auth = SessionAuth(admin_key)
         throttle = LoginThrottle()
-        login_name = str(getattr(getattr(operator, 'config', None), 'secrets', {}).get('web_username', 'ok5tvr'))
+        def login_name():
+            return str(getattr(getattr(operator, 'config', None), 'secrets', {}).get('web_username', 'ok5tvr'))
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, format, *args):
@@ -108,7 +110,13 @@ class WebPanel:
                         for entry in snapshot.get('history', [])[:8]
                         if isinstance(entry, dict) and not entry.get('demo')
                     ]
+                    identity=conf.get('station',{})
+                    bbs=diag.get('bbs',{})
                     display = {
+                        'call':identity.get('call',conf.get('igate',{}).get('call','').split('-')[0]),
+                        'mode':getattr(operator,'operating_mode','aprs'),
+                        'ip':local_ipv4(),
+                        'bbs':{k:bbs.get(k) for k in ('active','connected','connecting','role','remote','mail_count','waiting_ack','queued_chars','retries','last_disconnect','console')},
                         'enabled': conf.get('display', {}).get('enabled', False),
                         'usb_connected': bool(diag.get('radio_connected')),
                         'port_configured': conf['serial']['port'],
@@ -136,15 +144,15 @@ class WebPanel:
                         self.send_header('Cache-Control', 'no-store')
                         self.end_headers()
                     else:
-                        self._respond(200, LOGIN_HTML, 'text/html; charset=utf-8')
+                        self._respond(200, LOGIN_HTML.replace('value="ok5tvr"', 'value="'+login_name()+'"'), 'text/html; charset=utf-8')
                     return
                 if parsed.path == '/api/session':
                     self._respond(200, json.dumps({'authenticated': self._allowed_admin(parsed),
-                        'username': login_name if self._allowed_admin(parsed) else None}))
+                        'username': login_name() if self._allowed_admin(parsed) else None}))
                     return
                 if parsed.path == '/' and operator is not None and not parse_qs(parsed.query).get('key'):
                     if self._allowed_admin(parsed):
-                        self._respond(200, UNIFIED_HTML, 'text/html; charset=utf-8')
+                        self._respond(200, STATION_HTML, 'text/html; charset=utf-8')
                     else:
                         self.send_response(302)
                         self.send_header('Location', '/login')
@@ -168,12 +176,14 @@ class WebPanel:
                 if parsed.path == '/assets/web_locale.js':
                     self._respond(200, LOCALE_JS, 'application/javascript; charset=utf-8', 'public, max-age=3600')
                     return
-                if parsed.path in ('/app', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/api/heard', '/api/alerts', '/api/tx-scheduler', '/messages', '/api/messages', '/bbs', '/api/bbs', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
+                if parsed.path in ('/app', '/api/station', '/unified', '/control', '/api/config', '/api/tnc', '/api/archive', '/api/archive/positions', '/api/weather', '/api/heard', '/api/alerts', '/api/tx-scheduler', '/messages', '/api/messages', '/bbs', '/api/bbs', '/operations', '/api/diagnostics', '/api/journal', '/api/backup', '/api/ports'):
                     if not self._allowed_admin(parsed):
                         self._respond(403, '{"error":"Vyžadován administrátorský odkaz."}')
                         return
-                    if parsed.path in ('/app', '/unified'):
-                        self._respond(200, UNIFIED_HTML, 'text/html; charset=utf-8')
+                    if parsed.path == '/api/station':
+                        self._respond(200, json.dumps(operator.station_snapshot(),ensure_ascii=False))
+                    elif parsed.path in ('/app', '/unified'):
+                        self._respond(200, STATION_HTML if parsed.path=='/app' else UNIFIED_HTML, 'text/html; charset=utf-8')
                     elif parsed.path == '/api/ports':
                         try:
                             from serial.tools import list_ports
@@ -328,7 +338,7 @@ class WebPanel:
                         payload = json.loads(self.rfile.read(size).decode('utf-8'))
                         username, token = payload.get('username'), payload.get('token')
                         valid = (isinstance(username, str) and isinstance(token, str)
-                                 and secrets.compare_digest(username, login_name)
+                                 and secrets.compare_digest(username.strip().upper(), login_name().upper())
                                  and secrets.compare_digest(token, admin_key))
                     except (ValueError, TypeError, KeyError, AttributeError, UnicodeError):
                         valid = False

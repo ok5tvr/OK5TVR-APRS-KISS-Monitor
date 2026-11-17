@@ -70,6 +70,7 @@ def find_radio_port(configured='auto'):
 class APRSService:
     def __init__(self, config: ServiceConfig, force_lan=False):
         self.config = config
+        self.operating_mode=config.data['station']['mode']
         self.state = MonitorState()
         self.events = queue.Queue(maxsize=10000)
         self.commands = queue.Queue(maxsize=50)
@@ -83,7 +84,7 @@ class APRSService:
         self.last_manual_tx = float('-inf')
         self.igate_client = None
         self.igate_events = None  # dedicated queue; stale client events cannot overwrite a new session
-        self.want_digi = bool(config.data['digi']['autostart'])
+        self.want_digi = self.operating_mode=='aprs' and bool(config.data['digi']['autostart'])
         self.secondary = SecondaryTNCManager(config.data['secondary_tncs']['devices'])
         self.alerts = AlertEngine(config.data['alerts'])
         self.next_alert_tick = 0.0
@@ -95,6 +96,7 @@ class APRSService:
                                       config.data['igate']['call'], m['path'],
                                       m['auto_ack'], m['retry_seconds'], m['max_attempts'],
                                       m.get('receive_aliases', []),m.get('blocked_senders', []))
+        if self.operating_mode!='aprs':self.messages.auto_ack=False
         self.digi = self._make_digi()
         self.state.update_digi(self.digi.snapshot())
         self._update_position()
@@ -174,6 +176,28 @@ class APRSService:
         result = self.config.public_view()
         return result
 
+    def station_snapshot(self):
+        return {'call':self.config.data['station']['call'], 'mode':self.operating_mode,
+                'ip':local_ipv4(), 'time_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
+                'tnc_connected':self.radio_ready, 'tnc_port':str(self.reader.port) if self.reader else '',
+                'aprs_active':self.operating_mode=='aprs', 'bbs_active':self.operating_mode=='bbs',
+                'bbs_server':self.bbs.active and not self.bbs.client_mode,
+                'bbs_client':self.bbs.active and self.bbs.client_mode}
+
+    def _select_mode(self, mode):
+        if mode not in ('aprs','bbs','off'):raise ValueError('Invalid operating mode')
+        if mode!=self.operating_mode:
+            self._disable_igate()
+            self._disable_digi()
+            self._disconnect_reader()  # discard all queued RF frames before changing mode
+            self.messages.usb_closed()
+            self.operating_mode=mode
+            self.messages.auto_ack=self.config.data['messages']['auto_ack'] if mode=='aprs' else False
+            self.next_serial_attempt=0.0
+        self.config.update({'station':{'mode':mode},'display':{'enabled':mode!='off'}})
+        self.journal.log('MODE','selected',detail=mode)
+        return self.station_snapshot()
+
     def bbs_snapshot(self, offset=0):
         return self.bbs.snapshot(offset=offset)
 
@@ -204,6 +228,7 @@ class APRSService:
     def diagnostics_snapshot(self):
         now=time.monotonic()
         return {
+            'station':self.station_snapshot(),
             'uptime_s':round(now-self.started_at), 'radio_connected':self.radio_ready,
             'usb_alert': bool(not self.radio_ready and now-self.started_at>45),
             'usb_port':str(self.reader.port) if self.reader else '',
@@ -278,7 +303,7 @@ class APRSService:
     def _hub_tx(self, frame):
         # Called only by an authenticated loopback-bound KISS TCP session,
         # with explicit operator permission; no automatic TX enable on restart.
-        if not self.tnc_tx_permission or not self.radio_ready or self.reader is None:
+        if self.operating_mode!='aprs' or not self.tnc_tx_permission or not self.radio_ready or self.reader is None:
             return False
         return self.reader.send(frame, category='network_manual')
 
@@ -343,6 +368,23 @@ class APRSService:
                 response.put_nowait((False, str(exc)))
 
     def _execute(self, action, data):
+        if action=='mode_set':
+            if data.get('confirm') is not True:raise ValueError('Confirm changing operating mode')
+            return self._select_mode(data.get('mode'))
+        if action=='station_save':
+            identity=data.get('station')
+            if not isinstance(identity,dict) or not identity.get('call') or 'mode' in identity:
+                raise ValueError('Enter base CALL without SSID')
+            return self._execute('save',{'config':{'station':identity,'serial':data.get('serial',{}),'tnc':data.get('tnc',{})}})
+        aprs_actions={'igate_on','digi_on','message_send','message_ack','message_rej',
+                      'tx_test','status_send','position_send','object_send','telemetry_send_now','isrf_on'}
+        if action in aprs_actions and self.operating_mode!='aprs':
+            raise ValueError('APRS mode is not active; select APRS first')
+        if action=='tnc_server_tx' and data.get('enabled') and self.operating_mode!='aprs':
+            raise ValueError('External KISS TX is available only in APRS mode')
+        if action in ('bbs_on','bbs_client_connect'):
+            if self.operating_mode!='bbs':
+                raise ValueError('Select BBS mode first')
         # HDMI panel toggle does not touch USB, DIGI, iGate, RF, or messages.
         if action == 'bbs_save':
             settings=data.get('bbs')
@@ -369,6 +411,21 @@ class APRSService:
             self.reader.bbs_allowed.set()
             self.journal.log('BBS','enabled',self.config.data['bbs']['call'])
             return 'AX.25 PBBS zapnuta na primárním KISS TNC, do restartu/odpojení.'
+        if action=='bbs_client_connect':
+            if not self.radio_ready or self.reader is None:raise ValueError('TNC is not connected')
+            self._bbs_stop()
+            self.reader.bbs_allowed.set()
+            identity=self.config.data['station']
+            call=identity['call']+(f"-{identity['client_ssid']}" if identity['client_ssid'] else '')
+            try:self.bbs.connect(data.get('remote'),call,self._bbs_send)
+            except (ValueError,RuntimeError):
+                self._bbs_stop()
+                raise
+            return 'Connecting to remote BBS'
+        if action=='bbs_client_send':
+            if self.operating_mode!='bbs':raise ValueError('BBS mode is not active')
+            self.bbs.send_text(data.get('text'))
+            return 'Text queued for AX.25'
         if action == 'bbs_off':
             self._bbs_stop()
             self.journal.log('BBS','disabled')
@@ -397,8 +454,12 @@ class APRSService:
             if data.get('confirm') is not True:
                 raise ValueError('Confirm disconnecting the BBS station')
             if self.bbs.session is not None:
-                self.bbs._output('Sysop requested disconnect. 73!')
-                self.bbs.session.closing=True
+                if self.bbs.client_mode and self.bbs.session.waiting_ua:
+                    self._bbs_stop()
+                else:
+                    if self.bbs.client_mode:self.bbs.session.output.clear()
+                    else:self.bbs._output('Sysop requested disconnect. 73!')
+                    self.bbs.session.closing=True
             return 'Odpojení stanice vyžádáno.'
         if action == 'bbs_delete':
             ident=data.get('id')
@@ -447,6 +508,7 @@ class APRSService:
                                     new['auto_ack'], new['retry_seconds'],
                                     new['max_attempts'], new.get('receive_aliases',[]),
                                     new.get('blocked_senders',[]))
+            if self.operating_mode!='aprs':self.messages.auto_ack=False
             self.journal.log('MSG','settings',detail='Receive SSIDs/ACK settings saved')
             return ('Nastavení zpráv uloženo. Aktivní iGate a DIGI zůstávají beze změny. '
                     'Zprávy přijímáme pro: '+', '.join(self.messages.receive_calls))
@@ -543,6 +605,7 @@ class APRSService:
             if data.get('confirm') is not True:
                 raise ValueError('Obnovení nastavení vyžaduje potvrzení.')
             restored=validate_restore_document(data.get('backup'))
+            restored.setdefault('station',{})['mode']='off'
             # Always disable transmit before applying restored settings.
             self._disable_digi()
             self._disable_igate()
@@ -551,6 +614,7 @@ class APRSService:
             old_port=self.config.data['serial']['port']
             old_tnc=dict(self.config.data['tnc'])
             self.config.update(restored)
+            self.operating_mode='off'
             self.bbs.configure(self.config.data['bbs'])
             self.alerts.configure(self.config.data['alerts'])
             self.secondary.configure(self.config.data['secondary_tncs']['devices'])
@@ -651,6 +715,8 @@ class APRSService:
                 raise ValueError('Nastavení musí být objekt.')
             if any(not isinstance(changes.get(section, {}), dict) for section in ('digi','messages')):
                 raise ValueError('Nastavení DIGI a zpráv musí být objekt.')
+            if changes.get('station',{}).get('mode',self.operating_mode)!=self.operating_mode:
+                raise ValueError('Use mode_set to change operating mode')
             updated_digi = changes.get('digi', {})
             requested_digi_autostart = updated_digi.get('autostart', False)
             rf_beacon_enabled = (updated_digi.get('beacon_enabled',self.config.data['digi']['beacon_enabled']) and
@@ -661,7 +727,7 @@ class APRSService:
                 raise ValueError('Automatic DIGI RF position beacon requires explicit confirmation.')
             rf_telem_enabled = (updated_digi.get('telemetry_enabled',self.config.data['digi']['telemetry_enabled']) and
                                 updated_digi.get('telemetry_transport',self.config.data['digi']['telemetry_transport']) == 'rf')
-            if rf_telem_enabled and data.get('confirm_rf_telemetry') is not True:
+            if rf_telem_enabled and any(field in updated_digi for field in ('telemetry_enabled','telemetry_transport','telemetry_rf_path')) and data.get('confirm_rf_telemetry') is not True:
                 raise ValueError('Automatic DIGI RF telemetry requires explicit confirmation.')
             if requested_digi_autostart and data.get('confirm_auto_tx') is not True:
                 raise ValueError('Automatický RF TX po startu vyžaduje výslovné potvrzení.')
@@ -677,6 +743,11 @@ class APRSService:
             previous_messages = dict(self.config.data['messages'])
             self._bbs_stop()
             previous_secondary = list(self.config.data['secondary_tncs']['devices'])
+            if 'station' in changes:
+                self._disable_igate()
+                self._disable_digi()
+                self._disconnect_reader()
+                self.next_serial_attempt=0.0
             self.config.update(changes, passcode=passcode)
             self.bbs.configure(self.config.data['bbs'])
             self._configure_radio_scheduler()
@@ -698,6 +769,7 @@ class APRSService:
             self.rf_telemetry_pending.clear()
             self.digi_last_position = float('-inf')
             self.digi_last_rf_position = float('-inf')
+            if self.operating_mode!='aprs':self.messages.auto_ack=False
             # No silent change to an already-running RF DIGI configuration.
             if self.want_digi:
                 self._disable_digi()
@@ -773,6 +845,7 @@ class APRSService:
         raise ValueError('Nepodporovaný příkaz.')
 
     def _start_igate(self):
+        if self.operating_mode!='aprs':raise ValueError('APRS mode is not active')
         if self.igate_client is not None:
             return
         if not self.config.secrets['igate_passcode']:
@@ -804,6 +877,7 @@ class APRSService:
         self.state.update_status(igate='Vypnuto')
 
     def _enable_digi(self):
+        if self.operating_mode!='aprs':return
         if not self.radio_ready or self.reader is None:
             return
         self.digi.start()
@@ -1033,6 +1107,9 @@ class APRSService:
         if self.bbs.on_frame(packet,self._bbs_send):
             self.state.add(packet)
             return
+        if self.operating_mode!='aprs':
+            self.state.add(packet)
+            return
         msg = self.messages.receive(packet, self.radio_ready)
         if msg:
             LOG.info('APRS zpráva: %s od %s', msg.get('kind'), msg.get('from'))
@@ -1088,9 +1165,11 @@ class APRSService:
             self.bbs.tick(self._bbs_send)
 
     def _messages_tick(self):
+        if self.operating_mode!='aprs':return
         self.messages.tx_tick(self.reader, self.radio_ready)
 
     def _digi_tick(self):
+        if self.operating_mode!='aprs':return
         if not self.digi.enabled or not self.radio_ready or self.reader is None:
             return
         p = self.digi.ready()
@@ -1156,6 +1235,7 @@ class APRSService:
         return total
 
     def _rf_telemetry_tick(self):
+        if self.operating_mode!='aprs':return
         if not self.rf_telemetry_pending or not self.digi.enabled or not self.radio_ready or self.reader is None:
             return
         now=time.monotonic()
@@ -1167,6 +1247,7 @@ class APRSService:
             self.rf_telemetry_next_tx=now+12
 
     def _rf_digi_beacon_tick(self):
+        if self.operating_mode!='aprs':return
         """Queue a DIGI position via KISS on start and every configured interval.
 
         This is deliberately separate from APRS-IS beacons. DIGI RF TX must
@@ -1196,6 +1277,7 @@ class APRSService:
                              detail=d['beacon_rf_path'] or 'DIRECT')
 
     def _telemetry_tick(self):
+        if self.operating_mode!='aprs':return
         now=time.monotonic()
         if now >= self.next_telemetry_ui:
             self.state.set_telemetry(self.telemetry_snapshot())
@@ -1237,7 +1319,7 @@ class APRSService:
         else:
             LOG.info('Nativní Windows režim: webový server se nespouští.')
         self.running = True
-        if c['igate']['autostart']:
+        if self.operating_mode=='aprs' and c['igate']['autostart']:
             try:
                 self._start_igate()
             except ValueError as exc:

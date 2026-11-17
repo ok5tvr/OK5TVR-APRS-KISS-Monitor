@@ -17,12 +17,12 @@ class ModernWebTests(unittest.TestCase):
         panel = WebPanel(MonitorState())
         panel.start(port=0)
         try:
-            with urlopen(f'http://127.0.0.1:{panel.port}/assets/web_theme.css?v=25', timeout=3) as response:
+            with urlopen(f'http://127.0.0.1:{panel.port}/assets/web_theme.css?v=26', timeout=3) as response:
                 self.assertEqual(response.headers.get_content_type(), 'text/css')
                 self.assertIn('--sidebar:', response.read().decode())
             for name in ('web_unified.html', 'web_dashboard.html', 'web_control.html',
                          'web_messages.html', 'web_bbs.html', 'web_operations.html', 'web_login.html'):
-                self.assertIn('/assets/web_theme.css?v=25', (ROOT/name).read_text())
+                self.assertIn('/assets/web_theme.css?v=26', (ROOT/name).read_text())
             for installer in ('install_raspberry.sh', 'sestavit_EXE_windows.bat'):
                 self.assertIn('web_theme.css', (ROOT/installer).read_text())
         finally:
@@ -55,7 +55,7 @@ class ModernWebTests(unittest.TestCase):
         tabs = re.findall(r'<button[^>]*data-tab="([^"]+)"', html)
         script = '''const assert=require('node:assert/strict');
         const tabIds=TABS;
-        let currentTab='home',configLoaded=true;
+        let currentTab='home',configLoaded=true;const params=new URLSearchParams();
         const destinations={},location={hash:'#home'},visits=[];
         const history={pushState:(a,b,hash)=>{visits.push(hash);location.hash=hash;}};
         const buttons=tabIds.map(tab=>({dataset:{tab},textContent:tab,

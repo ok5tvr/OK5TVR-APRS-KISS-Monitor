@@ -182,6 +182,7 @@ class PbbsServiceTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()
         self.conf=ServiceConfig(Path(self.tmp.name)/'config.json').load_or_create()
+        self.conf.update({'station':{'mode':'bbs'}})
         self.service=APRSService(self.conf)
         self.tnc=FakeTNC()
         self.service.reader=self.tnc

@@ -14,7 +14,7 @@ button,.link{cursor:pointer;border:none;background:#2a4961;color:#fff;padding:10
 button.primary{background:#167f70}button.danger{background:#9e4651}button:disabled{opacity:.5;cursor:default}
 .summary{display:flex;gap:20px;flex-wrap:wrap}.summary b{color:var(--mint)}.note{font-size:12px;color:var(--warn)}
 #result{white-space:pre-wrap;background:#152739;border-radius:8px;padding:12px;min-height:48px}
-</style><link rel="stylesheet" href="/assets/web_theme.css?v=25">
+</style><link rel="stylesheet" href="/assets/web_theme.css?v=26">
 </head>
 <body><main><h1>OK5TVR · APRS KISS služba</h1>
 <p>Správa Raspberry Pi / PC bez monitoru. Přenos je HTTP: používej pouze v důvěryhodné LAN, bez přesměrování portu do internetu.</p>
@@ -29,7 +29,7 @@ button.primary{background:#167f70}button.danger{background:#9e4651}button:disabl
 <label>Interval opakování USB (s)</label><input id="retry" type="number" min="2" max="60">
 <p class="note">Změna USB portu se projeví po restartu služby. Výchozí režim nevyžaduje displej.</p></section>
 <section><h2>APRS-IS iGate · RF → internet</h2>
-<label>Značka iGate</label><input id="igate_call"><label>APRS-IS passcode (ponech prázdný pro zachování)</label><input type="password" id="passcode" autocomplete="new-password">
+<label>Značka iGate</label><input id="igate_call" readonly title="CALL + SSID: společné Nastavení"><label>APRS-IS passcode (ponech prázdný pro zachování)</label><input type="password" id="passcode" autocomplete="new-password">
 <label>Server</label><input id="host"><label>TCP port</label><input type="number" id="igate_port" min="1" max="65535">
 <label class="check"><input id="is_auto" type="checkbox"> Spustit iGate automaticky po restartu</label>
 <label>APRS iGate – tabulka ikon / Symbol table</label><select id="igate_table"><option value="\">Alternativní / Alternate (\)</option><option value="/">Primární / Primary (/)</option></select>
@@ -41,7 +41,7 @@ button.primary{background:#167f70}button.danger{background:#9e4651}button:disabl
 <label>Longitude (desetinné °)</label><input id="lon" placeholder="13.3736"><label>ASCII komentář</label><input id="comment">
 <label>Interval majáku (minuty)</label><input id="beacon_interval" type="number" min="30" max="120">
 <label class="check"><input type="checkbox" id="beacon"> Veřejný APRS-IS poziční maják (ne na RF)</label></section>
-<section><h2>APRS DIGI · opakování na RF</h2><label>Značka DIGI</label><input id="digi_call">
+<section><h2>APRS DIGI · opakování na RF</h2><label>Značka DIGI</label><input id="digi_call" readonly title="CALL + SSID: společné Nastavení">
 <label>Režim</label><select id="mode"><option value="fill">Fill-in WIDE1-1</option><option value="regional">Regionální WIDE1/WIDE2</option></select>
 <label class="check"><input type="checkbox" id="trace"> Volitelné TRACE2-N</label>
 <label>Zpoždění před retransmisí (s)</label><input type="number" id="delay" min="0" max="10" step="0.5">

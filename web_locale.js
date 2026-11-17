@@ -2,6 +2,18 @@
 "use strict";
 (() => {
 const english = {
+  "BBS klient · vzdálené spojení": "BBS client · remote connection",
+  "Klient a server sdílejí jedno TNC a nemohou běžet současně. Připojení klienta vypne místní server.": "Client and server share one TNC and cannot run together. Connecting the client stops the local server.",
+  "Značka vzdálené BBS / SSID": "Remote BBS callsign / SSID",
+  "Vlastní značka klienta": "Client callsign",
+  "Připojit vzdálenou BBS": "Connect remote BBS",
+  "Odpojit klienta": "Disconnect client",
+  "Příkaz / řádek textu (ASCII)": "Command / text line (ASCII)",
+  "Odeslat řádek": "Send line",
+  "Připojit klienta přes RF? Místní BBS server se vypne. Ověř samostatný packet-radio kanál.": "Connect the client over RF? The local BBS server will stop. Verify a dedicated packet-radio channel.",
+  "CALL + SSID: společné Nastavení": "CALL + SSID: shared Settings",
+  "Přejít na stránku": "Go to page",
+
   "Příznak přečtení znamená vyžádání zprávy příkazem R, nikoli potvrzení jejího úplného RF doručení.": "Read status means the recipient requested the message with R; it does not confirm complete RF delivery.",
   "Nová zpráva / odpověď": "New message / reply",
   "Pošta se uloží do místní BBS. Adresát si ji vyzvedne připojením přes RF; uložení samo nespouští vysílání.": "Mail is stored in the local BBS for retrieval over RF; storing mail does not start transmission.",

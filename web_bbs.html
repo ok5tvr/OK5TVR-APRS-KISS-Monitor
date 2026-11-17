@@ -24,13 +24,20 @@ td,th{text-align:left;border-bottom:1px solid #2c4a64;padding:8px}
 pre{white-space:pre-wrap;word-break:break-word;font-size:12px}
 #messages td:nth-child(6){white-space:pre-wrap;min-width:220px;max-width:520px;overflow-wrap:anywhere}
 #notice{min-height:26px;color:#ffd18a}#err{color:#ff9fa3}
-</style><link rel="stylesheet" href="/assets/web_theme.css?v=25">
+</style><link rel="stylesheet" href="/assets/web_theme.css?v=26">
 </head><body>
 <h1>OK5TVR · AX.25 Packet BBS</h1>
 <p>Jednoduchá osobní BBS (PBBS) přes <strong>primární externí USB / TCP KISS TNC</strong>.
 Používá spojovaný režim AX.25, není to APRS Inbox ani APRS-IS.
 <strong class="warning">Nevysílej trvalou BBS na sdíleném APRS kanálu 144,800 MHz.
 Zvol vhodný packet-radio kmitočet a ověř nastavení svého TNC.</strong></p>
+<section id="bbs-client"><h2 data-cs="BBS klient · vzdálené spojení" data-en="BBS client · remote connection">BBS klient · vzdálené spojení</h2>
+<p class="hint" data-cs="Klient a server sdílejí jedno TNC a nemohou běžet současně. Připojení klienta vypne místní server." data-en="Client and server share one TNC and cannot run together. Connecting the client stops the local server.">Klient a server sdílejí jedno TNC a nemohou běžet současně. Připojení klienta vypne místní server.</p>
+<div class="flex"><div><label for="client-remote" data-cs="Značka vzdálené BBS / SSID" data-en="Remote BBS callsign / SSID">Značka vzdálené BBS / SSID</label><input id="client-remote" maxlength="9" placeholder="OK1ABC-8" spellcheck="false"></div><div><label data-cs="Vlastní značka klienta" data-en="Client callsign">Vlastní značka klienta</label><div id="client-own">—</div><div id="client-status" role="status">—</div></div></div>
+<button id="client-connect" class="primary" data-cs="Připojit vzdálenou BBS" data-en="Connect remote BBS">Připojit vzdálenou BBS</button>
+<button id="client-disconnect" data-cs="Odpojit klienta" data-en="Disconnect client">Odpojit klienta</button>
+<pre id="client-console" data-untranslated role="log" aria-live="polite" style="max-height:320px;overflow:auto;min-height:110px;padding:12px"></pre>
+<form id="client-form"><label for="client-line" data-cs="Příkaz / řádek textu (ASCII)" data-en="Command / text line (ASCII)">Příkaz / řádek textu (ASCII)</label><input id="client-line" maxlength="100" autocomplete="off" spellcheck="false"><button id="client-send" type="submit" data-cs="Odeslat řádek" data-en="Send line">Odeslat řádek</button></form></section>
 <section><h2>Stav BBS a aktivního AX.25 spojení</h2>
 <div class="grid">
 <div class="stat">RF BBS<br><b id="state">Načítám</b></div>
@@ -49,7 +56,7 @@ maximálně jedno AX.25 spojení, nepřeposílá poštu do APRS-IS a nepouští 
 </section>
 <section><h2>Nastavení osobní BBS</h2>
 <div class="flex">
-<div><label for="bbs-call">Samostatná značka / SSID</label><input id="bbs-call" placeholder="OK5TVR-8" maxlength="9">
+<div><label for="bbs-call">Samostatná značka / SSID</label><input id="bbs-call" readonly title="CALL + SSID: společné Nastavení" placeholder="OK5TVR-8" maxlength="9">
 <label for="bbs-welcome">Uvítací text (ASCII, 75 znaků)</label>
 <input id="bbs-welcome" maxlength="75" placeholder="OK5TVR Packet Radio PBBS"></div>
 <div><label for="bbs-idle">Odpojení při nečinnosti (s)</label>
@@ -171,7 +178,13 @@ async function load(){
    busy=false;return await load();
   }
   current=rt;
-  put("state",tr(rt.active?"ZAPNUTO":"VYPNUTO"));put("call",rt.call||tr("Nenastaveno"));
+  const identity=cfg.station||{};
+  put("client-own",(identity.call||"—")+(identity.client_ssid?"-"+identity.client_ssid:""));
+  put("client-status",rt.role==="client"?(rt.connecting?"CONNECTING":rt.connected?"CONNECTED":"DISCONNECTED"):"OFF");
+  if($("client-console").textContent!==(rt.console||"")){$("client-console").textContent=rt.console||"";$("client-console").scrollTop=$("client-console").scrollHeight;}
+  $("client-send").disabled=!(rt.role==="client"&&rt.connected);
+  $("client-disconnect").disabled=!(rt.role==="client"&&(rt.connected||rt.connecting));
+  put("state",tr(rt.active&&rt.role!=="client"?"ZAPNUTO":"VYPNUTO"));put("call",rt.call||tr("Nenastaveno"));
   put("remote",rt.remote||"—");put("count",rt.mail_count);
   put("waiting",tr(rt.waiting_ack?"Ano":"Ne"));
   $("err").textContent="";
@@ -183,7 +196,7 @@ async function load(){
   $("mail-prev").disabled=mailOffset===0;
   $("mail-next").disabled=mailOffset+50>=rt.mail_count;
   $("mail-page").textContent=(rt.mail_count?mailOffset+1:0)+"–"+Math.min(mailOffset+50,rt.mail_count)+" / "+rt.mail_count;
-  $("activate").disabled=rt.active;
+  $("activate").disabled=rt.active&&rt.role!=="client";
   $("deactivate").disabled=!rt.active;
   if(!everLoaded){
    const conf=cfg.bbs||{};
@@ -221,6 +234,14 @@ async function load(){
   $("activate").disabled=true;
  }finally{busy=false;}
 }
+$("client-connect").onclick=async()=>{
+ if(!confirm(tr("Připojit klienta přes RF? Místní BBS server se vypne. Ověř samostatný packet-radio kanál.")))return;
+ try{note(await command("bbs_client_connect",{remote:$("client-remote").value.trim().toUpperCase(),confirm:true,confirm_channel:true}));await load();}catch(e){note(e.message,true);}
+};
+$("client-disconnect").onclick=async()=>{try{await command("bbs_disconnect",{confirm:true});await load();}catch(e){note(e.message,true);}};
+$("client-form").addEventListener("submit",async event=>{
+ event.preventDefault();try{await command("bbs_client_send",{text:$("client-line").value});$("client-line").value="";await load();}catch(e){note(e.message,true);}
+});
 $("mail-prev").onclick=()=>{if(!busy){mailOffset=Math.max(0,mailOffset-50);load();}};
 $("mail-next").onclick=()=>{if(!busy&&current&&mailOffset+50<current.mail_count){mailOffset+=50;load();}};
 $("mail-body").addEventListener("input",updateDraftInfo);

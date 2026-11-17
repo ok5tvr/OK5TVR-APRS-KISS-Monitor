@@ -74,6 +74,7 @@ class Panel:
         self.config_path = config_path
         self.visible = False
         self.last_rows = None
+        self.mode="aprs"
 
         root.withdraw()
         root.title("OK5TVR APRS KISS | Raspberry HDMI")
@@ -114,9 +115,13 @@ class Panel:
                         **kwargs)
 
     def _build(self):
+        if self.mode=="bbs":
+            self._build_bbs()
+            return
         header = tk.Frame(self.root, bg=BG, padx=14, pady=7)
         header.pack(fill="x")
-        self._label(header, "OK5TVR  /  APRS KISS", size=18, bold=True, color=GREEN).pack(side="left")
+        self.brand=self._label(header, "Radio Station / APRS", size=18, bold=True, color=GREEN)
+        self.brand.pack(side="left")
         self.clock = self._label(header, "--:--:--", size=15, color=MUTED)
         self.clock.pack(side="right")
 
@@ -185,6 +190,20 @@ class Panel:
         self.info.pack(side="left")
         self._label(footer, "F11: celá obrazovka  •  Esc: okno", 9, MUTED).pack(side="right")
 
+    def _build_bbs(self):
+        header=tk.Frame(self.root,bg=BG,padx=14,pady=12);header.pack(fill="x")
+        self.brand=self._label(header,"Radio Station / BBS",18,GREEN,bold=True);self.brand.pack(side="left")
+        self.clock=self._label(header,"--:--",15,MUTED);self.clock.pack(side="right")
+        statuses=tk.Frame(self.root,bg=BG,padx=14,pady=8);statuses.pack(fill="x")
+        self.usb=self._status(statuses,"TNC")
+        self.bbs_server=self._status(statuses,"BBS SERVER")
+        self.bbs_client=self._status(statuses,"BBS CLIENT")
+        self.bbs_remote=self._label(self.root,"Stanice: —",17,INK,bold=True);self.bbs_remote.pack(anchor="w",padx=18,pady=12)
+        self.bbs_metrics=self._label(self.root,"",13,MUTED);self.bbs_metrics.pack(anchor="w",padx=18,pady=8)
+        self.bbs_text=tk.Text(self.root,bg=PANEL,fg=INK,font=("DejaVu Sans Mono",12),wrap="word",state="disabled",height=9,borderwidth=0)
+        self.bbs_text.pack(fill="both",expand=True,padx=14,pady=8)
+        self.info=self._label(self.root,"",11,MUTED);self.info.pack(anchor="w",padx=18,pady=8)
+
     def _status(self, parent, name):
         box = tk.Frame(parent, bg=PANEL, padx=9, pady=5)
         box.pack(side="left", fill="x", expand=True, padx=(0, 7))
@@ -198,6 +217,28 @@ class Panel:
                         fg=GREEN if enabled else RED)
 
     def _draw(self, data):
+        mode=data.get('mode','aprs')
+        if mode!=self.mode:
+            self.mode=mode
+            self.last_rows=None
+            for widget in self.root.winfo_children():widget.destroy()
+            self._build()
+        call=data.get('call') or 'Radio Station'
+        self.brand.configure(text=f"{call} / {mode.upper()}")
+        self.root.title(f"{call} · {mode.upper()} · Raspberry")
+        if mode=='bbs':
+            bbs=data.get('bbs',{})
+            client=bbs.get('role')=='client'
+            self.clock.configure(text=datetime.now().strftime('%H:%M:%S'))
+            self._set_status(self.usb,bool(data.get('usb_connected')))
+            self._set_status(self.bbs_server,bool(bbs.get('active')) and not client)
+            self._set_status(self.bbs_client,bool(bbs.get('active')) and client)
+            self.bbs_remote.configure(text=('Vzdálená BBS: ' if client else 'Připojená stanice: ')+(bbs.get('remote') or '—'))
+            self.bbs_metrics.configure(text=f"Pošta: {bbs.get('mail_count',0)}   Fronta: {bbs.get('queued_chars',0)}   Opakování: {bbs.get('retries',0)}   ACK: {bool(bbs.get('waiting_ack'))}")
+            text=(bbs.get('console') or '') if client else 'Osobní Packet BBS\n\nČekám na AX.25 spojení.' if not bbs.get('connected') else 'AX.25 spojení aktivní.\nPošta je spravována z webu nebo rádiovým terminálem.'
+            self.bbs_text.configure(state='normal');self.bbs_text.delete('1.0','end');self.bbs_text.insert('1.0',text);self.bbs_text.see('end');self.bbs_text.configure(state='disabled')
+            self.info.configure(text='IP: '+str(data.get('ip','—'))+'   TNC: '+str(data.get('port_actual','—')))
+            return
         self.clock.configure(text=datetime.now().strftime("%H:%M:%S"))
         self._set_status(self.usb, bool(data.get("usb_connected")),
                          "PŘIPOJENO", "ODPOJENO")
@@ -224,7 +265,7 @@ class Panel:
                 tags = ("direct",) if values[3] == "DIRECT" else ()
                 self.table.insert("", "end", values=values, tags=tags)
         self.info.configure(text="USB spojení: " + str(data.get("usb_connections", 0)) +
-                            "    |    APRS KISS Monitor – pouze čtení")
+                            "    |    IP: "+str(data.get("ip","—")))
         self.last_updated.configure(text="Aktualizace: " + datetime.now().strftime("%H:%M:%S"))
 
     def poll(self):
