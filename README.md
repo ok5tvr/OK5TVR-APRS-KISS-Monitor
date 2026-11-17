@@ -1,3 +1,13 @@
+## BBS server: více současných klientů
+
+V **Nastavení → BBS server → Maximum současných klientů** lze nastavit **1–10 spojení**, výchozí hodnota je **5**. Každá stanice (CALL + SSID) má vlastní AX.25 sekvenci, potvrzování, opakování, čas nečinnosti, textovou frontu a rozepsanou zprávu. Schránka je společná; oprávnění ke čtení osobních zpráv se nadále posuzují podle značky uživatele.
+
+Web zobrazuje tabulku jednotlivých spojení a umožňuje odpojit vybranou stanici nebo všechny klienty. Displej Raspberry ukazuje počet klientů a přehled jejich spojení. Při naplnění limitu další spojení odmítne; po uvolnění místa se může nová stanice připojit. Reset či odpojení jedné stanice neukončuje ostatní. Zastavení BBS, změna konfigurace, režimu nebo výpadek TNC ukončí všechna spojení.
+
+Všechna spojení sdílejí **jedno rádio a společný limit BBS TX za minutu**. RF rámce se střídají, nejde o více fyzicky současných vysílání. Více klientů znamená menší propustnost na stanici; počet lze snížit i na původní jeden. Režim klienta pro připojení ke vzdálené BBS zůstává jedním odchozím spojením.
+
+The BBS server supports 1–10 concurrent AX.25 clients (default 5), with isolated protocol and message-composition state, per-station disconnect controls and a shared RF rate limit. Serial and TCP KISS transports validate each queued frame against its own connection generation. The outgoing BBS client remains single-session.
+
 ## Displej Raspberry: přepínání APRS / BBS
 
 Lokální displej sleduje skutečný provozní režim služby. Při přepnutí na BBS zobrazí značku BBS, stav serveru/klienta, stav navazování nebo aktivního AX.25 spojení, vzdálenou stanici, počet zpráv, RX I rámce, frontu, ACK, opakování a případnou chybu. Klient zobrazuje konzoli vzdálené BBS. Návrat do APRS obnoví příjmový panel. Displej je pouze pro čtení.

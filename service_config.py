@@ -55,7 +55,7 @@ DEFAULT_CONFIG = {
              'beacon_transport': 'is', 'beacon_rf_path': '', 'telemetry_enabled': False,
              'telemetry_transport': 'is', 'telemetry_rf_path': ''},
     'bbs': {'call':'', 'welcome':'OK5TVR Packet Radio PBBS', 'max_messages':500,
-            'idle_seconds':180, 'max_tx_per_minute':10, 'allow_posts':True},
+            'idle_seconds':180, 'max_clients':5, 'max_tx_per_minute':10, 'allow_posts':True},
     'messages': {'target': '', 'path': 'WIDE1-1', 'receive_aliases': [], 'auto_ack': False,
                  'retry_seconds': 45, 'max_attempts': 3,
                  'blocked_senders':[]},

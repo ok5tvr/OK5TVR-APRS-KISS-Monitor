@@ -212,9 +212,10 @@ class APRSService:
     def _bbs_send(self, payload, category):
         if not self.radio_ready or self.reader is None or not self.bbs.active:
             return False
-        # New SABM creates a new session epoch; revoke any queued frames
-        # from the previous session before accepting further BBS frames.
+        # Validate queued frames against their own link generation at write time;
+        # another station connecting must not invalidate existing links.
         self.reader.bbs_epoch=self.bbs.epoch
+        self.reader.bbs_valid=self.bbs.tx_valid
         if not self.reader.bbs_allowed.is_set():
             return False
         return self.reader.send(payload,category=category)
@@ -507,13 +508,11 @@ class APRSService:
         if action == 'bbs_disconnect':
             if data.get('confirm') is not True:
                 raise ValueError('Confirm disconnecting the BBS station')
-            if self.bbs.session is not None:
-                if self.bbs.client_mode and self.bbs.session.waiting_ua:
-                    self._bbs_stop()
-                else:
-                    if self.bbs.client_mode:self.bbs.session.output.clear()
-                    else:self.bbs._output('Sysop requested disconnect. 73!')
-                    self.bbs.session.closing=True
+            remote=data.get('remote')
+            if remote is not None and not isinstance(remote,str):raise ValueError('Invalid remote callsign')
+            if self.bbs.client_mode and self.bbs.session and self.bbs.session.waiting_ua:
+                self._bbs_stop()
+            else:self.bbs.request_disconnect(remote)
             return 'Odpojení stanice vyžádáno.'
         if action == 'bbs_delete':
             ident=data.get('id')

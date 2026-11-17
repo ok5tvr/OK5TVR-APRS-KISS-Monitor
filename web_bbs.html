@@ -48,9 +48,11 @@ Zvol vhodný packet-radio kmitočet a ověř nastavení svého TNC.</strong></p>
 </div>
 <div class="settings-only" id="server-switches"><button id="activate" class="primary">Zapnout BBS (RF TX)</button>
 <button id="deactivate" class="danger">Vypnout BBS</button>
-</div><div><button id="refresh">Obnovit stav</button><button id="disconnect">Odpojit stanici</button></div>
+</div><div><button id="refresh">Obnovit stav</button><button id="disconnect">Odpojit všechny stanice</button></div>
 <p class="hint">BBS se po spuštění nebo výpadku KISS automaticky nezapne. Přijímá
-maximálně jedno AX.25 spojení, nepřeposílá poštu do APRS-IS a nepouští žádné systémové příkazy.</p>
+více nezávislých AX.25 spojení podle nastaveného limitu, nepřeposílá poštu do APRS-IS a nepouští žádné systémové příkazy.</p>
+<p><span data-cs="Připojení / limit: " data-en="Connections / limit: ">Připojení / limit: </span><b id="client-count">0 / 5</b></p>
+<div class="scroll"><table><thead><tr><th data-cs="Stanice" data-en="Station">Stanice</th><th data-cs="Stav" data-en="State">Stav</th><th>ACK</th><th data-cs="Fronta / opakování" data-en="Queue / retries">Fronta / opakování</th><th data-cs="Nečinnost (s)" data-en="Idle (s)">Nečinnost (s)</th><th data-cs="Ovládání" data-en="Controls">Ovládání</th></tr></thead><tbody id="bbs-sessions"></tbody></table></div>
 <div class="hint" id="link-details"></div>
 <div id="notice" role="status"></div><div id="err" role="alert"></div>
 </section>
@@ -62,7 +64,8 @@ maximálně jedno AX.25 spojení, nepřeposílá poštu do APRS-IS a nepouští 
 <div><label for="bbs-idle">Odpojení při nečinnosti (s)</label>
 <input id="bbs-idle" type="number" min="60" max="600">
 <label for="bbs-rate">Maximum BBS TX za minutu</label>
-<input id="bbs-rate" type="number" min="2" max="24"></div>
+<input id="bbs-rate" type="number" min="2" max="24">
+<label for="bbs-clients" data-cs="Maximum současných klientů (1–10)" data-en="Maximum simultaneous clients (1–10)">Maximum současných klientů (1–10)</label><input id="bbs-clients" type="number" min="1" max="10"></div>
 <div><label for="bbs-max">Maximum uložených zpráv</label>
 <input id="bbs-max" type="number" min="50" max="2000">
 <label><input id="bbs-posts" type="checkbox"> Povolit ukládání zpráv z RF</label>
@@ -186,6 +189,15 @@ async function load(){
   $("client-disconnect").disabled=!(rt.role==="client"&&(rt.connected||rt.connecting));
   put("state",tr(rt.active&&rt.role!=="client"?"ZAPNUTO":"VYPNUTO"));put("call",rt.call||tr("Nenastaveno"));
   put("remote",rt.remote||"—");put("count",rt.mail_count);
+  put("client-count",(rt.client_count||0)+" / "+(rt.max_clients||1));
+  $("bbs-sessions").replaceChildren();
+  for(const session of rt.sessions||[]){
+   const row=document.createElement('tr');
+   for(const text of [session.remote,session.connecting?'CONNECTING':session.closing?'CLOSING':session.connected?'CONNECTED':'WAITING',session.waiting_ack?'WAIT':'—',(session.queued_chars||0)+' / '+(session.retries||0),session.idle_seconds||0]){const cell=document.createElement('td');cell.textContent=text;row.append(cell);}
+   const cell=document.createElement('td'),button=document.createElement('button');button.textContent=window.OK5TVRLocale.language==='en'?'Disconnect':'Odpojit';
+   button.onclick=async()=>{if(!confirm((window.OK5TVRLocale.language==='en'?'Disconnect ':'Odpojit ')+session.remote+'?'))return;try{note(await command('bbs_disconnect',{remote:session.remote,confirm:true}));await load();}catch(e){note(e.message,true);}};
+   cell.append(button);row.append(cell);$("bbs-sessions").append(row);
+  }
   put("waiting",tr(rt.waiting_ack?"Ano":"Ne"));
   $("err").textContent="";
   $("disconnect").disabled=!rt.connected;
@@ -204,6 +216,7 @@ async function load(){
    $("bbs-welcome").value=conf.welcome||"";
    $("bbs-idle").value=conf.idle_seconds||180;
    $("bbs-rate").value=conf.max_tx_per_minute||10;
+   $("bbs-clients").value=conf.max_clients||5;
    $("bbs-max").value=conf.max_messages||500;
    $("bbs-posts").checked=!!conf.allow_posts;
    everLoaded=true;
@@ -271,7 +284,7 @@ $("compose").addEventListener("submit",async event=>{
  }
 });
 $("disconnect").onclick=async()=>{
- if(!confirm(tr("Odpojit aktuální BBS stanici?")))return;
+ if(!confirm(tr("Odpojit všechny připojené BBS stanice?")))return;
  try{note(await command("bbs_disconnect",{confirm:true}));await load();}catch(e){note(e.message,true);}
 };
 $("save").onclick=async()=>{
@@ -279,6 +292,7 @@ $("save").onclick=async()=>{
   welcome:$("bbs-welcome").value.trim(),
   idle_seconds:Number($("bbs-idle").value),
   max_tx_per_minute:Number($("bbs-rate").value),
+  max_clients:Number($("bbs-clients").value),
   max_messages:Number($("bbs-max").value),
   allow_posts:$("bbs-posts").checked};
  if(!confirm(tr("Uložit nastavení BBS? BBS se vypne. RF vysílání se nespustí.")))return;

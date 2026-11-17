@@ -1,6 +1,6 @@
 """Small AX.25 modulo-8 connected-mode personal packet BBS over an external KISS TNC.
 
-Single RF link, stop-and-wait (window=1), direct connections only. This is not
+Multiple independent RF links, stop-and-wait (window=1), direct connections only. This is not
 APRS message handling; it handles SABM/UA/I/RR/REJ/DISC/DM frames. All BBS RF
 TX is OFF on startup and requires an authenticated operator action.
 
@@ -32,6 +32,7 @@ def validate_bbs_config(cfg, igate='', digi=''):
     if type(cfg) is not dict:
         raise ValueError('BBS: expected configuration object')
     out = dict(cfg)
+    out.setdefault('max_clients',5)
     call = out.get('call')
     if not isinstance(call, str) or (call and not CALL_RE.fullmatch(call.upper())):
         raise ValueError('BBS: enter a valid AX.25 callsign or leave blank')
@@ -41,7 +42,7 @@ def validate_bbs_config(cfg, igate='', digi=''):
             raise ValueError('BBS must use a separate SSID from IGate and DIGI')
         if igate and out['call'].split('-')[0] != igate.upper().split('-')[0]:
             raise ValueError('BBS callsign must belong to the same licensed operator')
-    for key, lower, upper in (('max_messages', 50, 2000),
+    for key, lower, upper in (('max_clients', 1, 10), ('max_messages', 50, 2000),
                               ('idle_seconds', 60, 600),
                               ('max_tx_per_minute', 2, 24)):
         value = out.get(key)
@@ -212,8 +213,11 @@ class AX25PBBS:
         self.config=dict(config)
         self.store=BBSStore(path,self.config['max_messages'])
         self.active=False
-        self.session=None
+        self.sessions={}
+        self._selected=None
+        self._round_robin=0
         self.epoch=0
+        self._run_epoch=0
         self.counters=Counter()
         self.tx_times=deque(maxlen=64)
         self.rejected={}
@@ -222,6 +226,39 @@ class AX25PBBS:
         self.client_mode=False
         self.local_call=self.config['call']
         self.console=''
+
+    @property
+    def session(self):
+        return self.sessions.get(self._selected) if self._selected is not None else next(iter(self.sessions.values()),None)
+
+    @session.setter
+    def session(self, link):
+        if link is None:
+            key=self._selected if self._selected is not None else next(iter(self.sessions),None)
+            self.sessions.pop(key,None)
+        else:
+            self.sessions[link.remote]=link
+            self._selected=link.remote
+
+    def tx_valid(self, category):
+        """Validate at the actual TNC write, independently for each AX.25 link."""
+        if not self.active:return False
+        try:epoch=int(category.rsplit(':',1)[-1])
+        except (ValueError,AttributeError):return False
+        if category.startswith('bbs_reply:'):
+            parts=category.split(':')
+            return len(parts)==3 and epoch==self._run_epoch and parts[1] not in self.sessions
+        return category.startswith('bbs_') and any(link.epoch==epoch for link in tuple(self.sessions.values()))
+
+    def request_disconnect(self, remote=None):
+        if remote is not None and remote not in self.sessions:raise ValueError('BBS station is not connected')
+        targets=[self.sessions[remote]] if remote is not None else list(self.sessions.values())
+        for link in targets:
+            self._selected=link.remote
+            if self.client_mode:link.output.clear()
+            else:self._output('Sysop requested disconnect. 73!')
+            link.closing=True
+        self._selected=None
 
     def configure(self, config):
         self.stop()
@@ -242,8 +279,10 @@ class AX25PBBS:
         if self.session is not None:
             self.last_disconnect='operator_stop'
         self.active=False
-        self.session=None
+        self.sessions.clear()
+        self._selected=None
         self.epoch+=1  # invalidates still queued KISS frames
+        self._run_epoch=self.epoch
         self.tx_times.clear()
 
     def connect(self, remote, local_call, send):
@@ -288,7 +327,9 @@ class AX25PBBS:
         if len(self.tx_times)>=self.config['max_tx_per_minute']:
             self.counters['rate_limited']+=1
             return False
-        cat=f'bbs_{kind}:{self.epoch}'
+        if kind=='link' and self.session is None:kind='reply'
+        epoch=self._run_epoch if kind=='reply' else self.session.epoch if self.session else self.epoch
+        cat=f'bbs_reply:{remote}:{epoch}' if kind=='reply' else f'bbs_{kind}:{epoch}'
         if send(self._build(remote,control,payload,response),cat):
             self.tx_times.append(now)
             self.counters['queued_to_kiss']+=1
@@ -296,8 +337,8 @@ class AX25PBBS:
         self.counters['queue_full']+=1
         return False
 
-    def _control(self, send, remote, control):
-        return self._send(send,remote,control,kind='link')
+    def _control(self, send, remote, control, final=False):
+        return self._send(send,remote,control,kind='reply' if final else 'link')
 
     def _output(self, text):
         link=self.session
@@ -329,6 +370,11 @@ class AX25PBBS:
         return None
 
     def on_frame(self, packet, send):
+        self._selected=packet.source
+        try:return self._on_frame(packet,send)
+        finally:self._selected=None
+
+    def _on_frame(self, packet, send):
         """Return True if connected-mode frame addressed to the BBS was handled."""
         if not self.active or packet.simulated or packet.destination!=self.local_call:
             return False
@@ -358,7 +404,7 @@ class AX25PBBS:
                 self._control(send,source,0x1F)
                 return True
             if base==0x2F:  # SABM, modulo-8
-                if self.session is not None and self.session.remote!=source:
+                if self.session is None and len(self.sessions)>=self.config.get('max_clients',5):
                     last=self.rejected.get(source,float('-inf'))
                     if now-last>30:
                         self._control(send,source,0x1F if ctrl&0x10 else 0x0F)
@@ -383,9 +429,9 @@ class AX25PBBS:
                 return True
             if base==0x43:  # DISC
                 self.last_disconnect='remote_disconnect'
-                self._control(send,source,0x73 if ctrl&0x10 else 0x63)
                 self.session=None
                 self.epoch+=1
+                self._control(send,source,0x73 if ctrl&0x10 else 0x63,final=True)
                 self.counters['disconnects']+=1
             elif base==0x0F:  # DM
                 self.last_disconnect='remote_dm'
@@ -595,7 +641,8 @@ class AX25PBBS:
         self._prompt()
 
     def on_tx_written(self, category):
-        link=self.session
+        epoch=category.rsplit(':',1)[-1]
+        link=next((item for item in self.sessions.values() if str(item.epoch)==epoch),None)
         if link is None or category.rsplit(':',1)[-1]!=str(link.epoch):
             return
         if category.startswith('bbs_connect:'):
@@ -608,13 +655,24 @@ class AX25PBBS:
 
     def on_tx_error(self, category):
         if (category.startswith('bbs_') and
-                category.rsplit(':',1)[-1]==str(self.epoch)):
+                self.tx_valid(category)):
             self.counters['tx_errors']+=1
             self.last_error='KISS write failed'
             self.stop()
             self.last_disconnect='tnc_error'
 
     def tick(self, send):
+        remotes=list(self.sessions)
+        if not remotes:return
+        start=self._round_robin%len(remotes)
+        self._round_robin+=1
+        try:
+            for remote in remotes[start:]+remotes[:start]:
+                self._selected=remote
+                self._tick(send)
+        finally:self._selected=None
+
+    def _tick(self, send):
         if not self.active or self.session is None:return
         link=self.session
         now=self.clock()
@@ -670,14 +728,21 @@ class AX25PBBS:
     def snapshot(self, offset=0, limit=50):
         count,items=self.store.admin_list(limit=limit,offset=offset)
         link=self.session
+        sessions=[dict(remote=item.remote,connected=not(self.client_mode and item.waiting_ua),
+                       connecting=self.client_mode and item.waiting_ua,stage=item.stage,
+                       queued_chars=len(item.output),waiting_ack=bool(item.unacked),
+                       retries=item.unacked['retries'] if item.unacked else 0,
+                       idle_seconds=round(max(0,self.clock()-item.last),1),remote_busy=item.remote_busy,closing=item.closing)
+                  for item in tuple(self.sessions.values())]
         return {
+            'sessions':sessions,'client_count':len(sessions),'max_clients':1 if self.client_mode else self.config.get('max_clients',5),
             'active':self.active, 'call':self.local_call,
             'role':'client' if self.client_mode else 'server', 'console':self.console,
             'connecting':bool(link and self.client_mode and link.waiting_ua),
-            'connected':bool(link and not (self.client_mode and link.waiting_ua)), 'remote':link.remote if link else '',
+            'connected':any(item['connected'] for item in sessions), 'remote':', '.join(self.sessions),
             'stage':link.stage if link else '',
-            'queued_chars':len(link.output) if link else 0,
-            'waiting_ack':bool(link and link.unacked),
+            'queued_chars':sum(item['queued_chars'] for item in sessions),
+            'waiting_ack':any(item['waiting_ack'] for item in sessions),
             'mail_count':count, 'messages':items, 'stats':dict(self.counters),
             'max_tx_per_minute':self.config['max_tx_per_minute'],
             'allow_posts':self.config['allow_posts'],

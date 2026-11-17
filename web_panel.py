@@ -120,7 +120,7 @@ class WebPanel:
                         'call':identity.get('call',conf.get('igate',{}).get('call','').split('-')[0]),
                         'mode':getattr(operator,'operating_mode','aprs'),
                         'ip':local_ipv4(),
-                        'bbs':{k:bbs.get(k) for k in ('call','active','connected','connecting','role','remote','mail_count','waiting_ack','queued_chars','retries','last_disconnect','last_error','remote_busy','stats','console')},
+                        'bbs':{k:bbs.get(k) for k in ('sessions','client_count','max_clients','call','active','connected','connecting','role','remote','mail_count','waiting_ack','queued_chars','retries','last_disconnect','last_error','remote_busy','stats','console')},
                         'enabled': conf.get('display', {}).get('enabled', False),
                         'usb_connected': bool(diag.get('radio_connected')),
                         'port_configured': conf['serial']['port'],

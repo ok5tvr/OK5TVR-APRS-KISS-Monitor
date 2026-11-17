@@ -85,7 +85,7 @@ def bbs_view(data):
     call=bbs.get('call') or '—'
     remote=bbs.get('remote') or '—'
     stats=bbs.get('stats') or {}
-    details=[f"{state} · {call}",
+    details=[f"{state} · {call} · klienti {bbs.get('client_count',0)}/{bbs.get('max_clients',1)}",
              f"Pošta: {bbs.get('mail_count') or 0}   RX I: {stats.get('received_i',0)}   Spojení: {stats.get('connections',0)}",
              f"Fronta: {bbs.get('queued_chars') or 0} znaků   Opakování: {bbs.get('retries') or 0}   ACK: {'čekám' if bbs.get('waiting_ack') else '—'}"]
     if bbs.get('remote_busy'):details.append('Vzdálená stanice: BUSY')
@@ -93,6 +93,8 @@ def bbs_view(data):
     elif bbs.get('last_disconnect') and not bbs.get('connected'):
         details.append('Poslední odpojení: '+str(bbs['last_disconnect']))
     console=str(bbs.get('console') or '')[-6000:] if client else ''
+    if not client and bbs.get('sessions'):
+        console='\n'.join(f"{item['remote']}  {item.get('stage','command')}  ACK: {'WAIT' if item.get('waiting_ack') else '-'}  fronta: {item.get('queued_chars',0)}" for item in bbs['sessions'])
     if not console:
         console=(('Klienta připoj z webu → BBS.' if client else 'Server se zapíná v Nastavení → BBS server.') if not active else
                  'Klienta ovládej z webu → BBS.' if client else

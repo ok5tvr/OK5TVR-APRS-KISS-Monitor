@@ -79,7 +79,8 @@ class PbbsEngineTests(unittest.TestCase):
                     dict(welcome='Hello\nworld')]:
             with self.subTest(bad=bad),self.assertRaises(ValueError):bbs_cfg(**bad)
 
-    def test_connect_and_no_second_station_or_via(self):
+    def test_capacity_one_and_no_via(self):
+        self.pbbs.config['max_clients']=1
         self.connect()
         self.assertTrue(self.pbbs.on_frame(rx(src='OK2XYZ-7'),self.send))
         self.assertEqual(self.parsed_output().control,0x1F)
