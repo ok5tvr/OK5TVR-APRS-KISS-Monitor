@@ -64,8 +64,8 @@ AUTOSTART_FILE="$USER_HOME/.config/autostart/ok5tvr-aprs-hdmi.desktop"
 cat > "$AUTOSTART_FILE" <<EOF
 [Desktop Entry]
 Type=Application
-Name=OK5TVR APRS HDMI Panel
-Comment=Optional read-only APRS receive/status panel
+Name=OK5TVR APRS / BBS HDMI Panel
+Comment=Read-only station panel, follows APRS / BBS mode
 Exec=/usr/bin/python3 $INSTALL_DIR/local_display.py --config $CONFIG_PATH
 Terminal=false
 StartupNotify=false
@@ -106,6 +106,8 @@ sudo install -m 644 "$TMP_UNIT" "$UNIT_FILE"
 sudo systemctl daemon-reload
 sudo systemctl enable --now ok5tvr-aprs.service
 sudo systemctl restart ok5tvr-aprs.service
+# A graphical panel is a separate long-running process; refresh its loaded code too.
+python3 "$INSTALL_DIR/local_display.py" --config "$CONFIG_PATH" --restart-running
 printf '\nSluzba: sudo systemctl status ok5tvr-aprs\n'
 printf 'Log: sudo journalctl -u ok5tvr-aprs -f\n'
 printf 'Soukrome URL: python3 %s/aprs_service.py --config %s --links\n' "$INSTALL_DIR" "$CONFIG_PATH"

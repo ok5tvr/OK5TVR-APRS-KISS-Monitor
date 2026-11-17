@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only APRS status panel for a Raspberry Pi graphical HDMI desktop.
+"""Read-only APRS/BBS status panel for a Raspberry Pi graphical HDMI desktop.
 
 This program never opens the serial port, controls RF, or reads admin credentials.
 It is launched by the user's desktop session, separately from the systemd service.
@@ -9,6 +9,11 @@ from __future__ import annotations
 import argparse
 from datetime import datetime
 import json
+import os
+import signal
+import subprocess
+import sys
+import time
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
@@ -68,12 +73,79 @@ def frame_rows(data: dict, count: int = 7) -> list[tuple[str, str, str, str, str
     return result
 
 
+def bbs_view(data):
+    """Prepare compact BBS information independently of Tk and APRS counters."""
+    bbs=data.get('bbs') or {}
+    client=bbs.get('role')=='client'
+    active=bool(bbs.get('active'))
+    state=('BBS klient vypnut' if client else 'BBS server vypnut')
+    if active:
+        state='Navazuji AX.25 spojení…' if bbs.get('connecting') else (
+            'AX.25 spojení aktivní' if bbs.get('connected') else 'Čekám na AX.25 spojení')
+    call=bbs.get('call') or '—'
+    remote=bbs.get('remote') or '—'
+    stats=bbs.get('stats') or {}
+    details=[f"{state} · {call}",
+             f"Pošta: {bbs.get('mail_count') or 0}   RX I: {stats.get('received_i',0)}   Spojení: {stats.get('connections',0)}",
+             f"Fronta: {bbs.get('queued_chars') or 0} znaků   Opakování: {bbs.get('retries') or 0}   ACK: {'čekám' if bbs.get('waiting_ack') else '—'}"]
+    if bbs.get('remote_busy'):details.append('Vzdálená stanice: BUSY')
+    if bbs.get('last_error'):details.append('Chyba: '+str(bbs['last_error']))
+    elif bbs.get('last_disconnect') and not bbs.get('connected'):
+        details.append('Poslední odpojení: '+str(bbs['last_disconnect']))
+    console=str(bbs.get('console') or '')[-6000:] if client else ''
+    if not console:
+        console=(('Klienta připoj z webu → BBS.' if client else 'Server se zapíná v Nastavení → BBS server.') if not active else
+                 'Klienta ovládej z webu → BBS.' if client else
+                 'Připojený uživatel pracuje s osobní poštovní schránkou.\nFunkce: seznam, čtení a odesílání zpráv.' if bbs.get('connected') else
+                 'Osobní Packet BBS připravena.\nČekám na připojení vzdálené stanice.')
+    return dict(client=client,active=active,remote=('Vzdálená BBS: ' if client else 'Připojená stanice: ')+remote,
+                metrics='\n'.join(details),console=console)
+
+
+def restart_running_panel(config_path, proc_root=Path('/proc')):
+    """Refresh only this user's installed panel, preserving its graphical session.
+
+    Called after installation; never launches a GUI on an otherwise headless Pi.
+    Exact script/config matches avoid terminating unrelated Python applications.
+    """
+    script=str(Path(__file__).resolve())
+    matches=[]
+    for process in proc_root.iterdir():
+        if not process.name.isdigit() or int(process.name)==os.getpid():continue
+        try:
+            if process.stat().st_uid!=os.getuid():continue
+            args=(process/'cmdline').read_bytes().decode().strip('\0').split('\0')
+            if script not in args or '--restart-running' in args:continue
+            candidate=Path(args[args.index('--config')+1]) if '--config' in args else DEFAULT_CONFIG
+            if candidate.expanduser().resolve()!=config_path.expanduser().resolve():continue
+            environment=dict(item.split('=',1) for item in (process/'environ').read_bytes().decode().strip('\0').split('\0') if '=' in item)
+            if not (environment.get('DISPLAY') or environment.get('WAYLAND_DISPLAY')):continue
+            matches.append((int(process.name),environment))
+        except (OSError,ValueError,IndexError,UnicodeError):continue
+    if not matches:return 0
+    for pid,_ in matches:
+        try:os.kill(pid,signal.SIGTERM)
+        except ProcessLookupError:pass
+    deadline=time.monotonic()+3
+    for pid,_ in matches:
+        while time.monotonic()<deadline:
+            try:
+                stat=(proc_root/str(pid)/'stat').read_text()
+                if stat.rsplit(')',1)[-1].split()[0]=='Z':break
+            except (OSError,IndexError):break
+            time.sleep(.05)
+    subprocess.Popen([sys.executable,script,'--config',str(config_path)],env=matches[0][1],
+                     stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+    return len(matches)
+
+
 class Panel:
     def __init__(self, root: tk.Tk, config_path: Path):
         self.root = root
         self.config_path = config_path
         self.visible = False
         self.last_rows = None
+        self.last_bbs_text = None
         self.mode="aprs"
 
         root.withdraw()
@@ -198,9 +270,9 @@ class Panel:
         self.usb=self._status(statuses,"TNC")
         self.bbs_server=self._status(statuses,"BBS SERVER")
         self.bbs_client=self._status(statuses,"BBS CLIENT")
-        self.bbs_remote=self._label(self.root,"Stanice: —",17,INK,bold=True);self.bbs_remote.pack(anchor="w",padx=18,pady=12)
-        self.bbs_metrics=self._label(self.root,"",13,MUTED);self.bbs_metrics.pack(anchor="w",padx=18,pady=8)
-        self.bbs_text=tk.Text(self.root,bg=PANEL,fg=INK,font=("DejaVu Sans Mono",12),wrap="word",state="disabled",height=9,borderwidth=0)
+        self.bbs_remote=self._label(self.root,"Stanice: —",17,INK,bold=True);self.bbs_remote.pack(anchor="w",padx=18,pady=6)
+        self.bbs_metrics=self._label(self.root,"",11,MUTED,justify="left");self.bbs_metrics.pack(anchor="w",padx=18,pady=8)
+        self.bbs_text=tk.Text(self.root,bg=PANEL,fg=INK,font=("DejaVu Sans Mono",11),wrap="word",state="disabled",height=9,borderwidth=0)
         self.bbs_text.pack(fill="both",expand=True,padx=14,pady=8)
         self.info=self._label(self.root,"",11,MUTED);self.info.pack(anchor="w",padx=18,pady=8)
 
@@ -221,23 +293,24 @@ class Panel:
         if mode!=self.mode:
             self.mode=mode
             self.last_rows=None
+            self.last_bbs_text=None
             for widget in self.root.winfo_children():widget.destroy()
             self._build()
         call=data.get('call') or 'Radio Station'
         self.brand.configure(text=f"{call} / {mode.upper()}")
         self.root.title(f"{call} · {mode.upper()} · Raspberry")
         if mode=='bbs':
-            bbs=data.get('bbs',{})
-            client=bbs.get('role')=='client'
+            view=bbs_view(data)
             self.clock.configure(text=datetime.now().strftime('%H:%M:%S'))
-            self._set_status(self.usb,bool(data.get('usb_connected')))
-            self._set_status(self.bbs_server,bool(bbs.get('active')) and not client)
-            self._set_status(self.bbs_client,bool(bbs.get('active')) and client)
-            self.bbs_remote.configure(text=('Vzdálená BBS: ' if client else 'Připojená stanice: ')+(bbs.get('remote') or '—'))
-            self.bbs_metrics.configure(text=f"Pošta: {bbs.get('mail_count',0)}   Fronta: {bbs.get('queued_chars',0)}   Opakování: {bbs.get('retries',0)}   ACK: {bool(bbs.get('waiting_ack'))}")
-            text=(bbs.get('console') or '') if client else 'Osobní Packet BBS\n\nČekám na AX.25 spojení.' if not bbs.get('connected') else 'AX.25 spojení aktivní.\nPošta je spravována z webu nebo rádiovým terminálem.'
-            self.bbs_text.configure(state='normal');self.bbs_text.delete('1.0','end');self.bbs_text.insert('1.0',text);self.bbs_text.see('end');self.bbs_text.configure(state='disabled')
-            self.info.configure(text='IP: '+str(data.get('ip','—'))+'   TNC: '+str(data.get('port_actual','—')))
+            self._set_status(self.usb,bool(data.get('usb_connected')),'PŘIPOJENO','ODPOJENO')
+            self._set_status(self.bbs_server,view['active'] and not view['client'])
+            self._set_status(self.bbs_client,view['active'] and view['client'])
+            self.bbs_remote.configure(text=view['remote'])
+            self.bbs_metrics.configure(text=view['metrics'])
+            if view['console']!=self.last_bbs_text:
+                self.last_bbs_text=view['console']
+                self.bbs_text.configure(state='normal');self.bbs_text.delete('1.0','end');self.bbs_text.insert('1.0',view['console']);self.bbs_text.see('end');self.bbs_text.configure(state='disabled')
+            self.info.configure(text='IP: '+str(data.get('ip') or '—')+'   TNC: '+str(data.get('port_actual') or '—'))
             return
         self.clock.configure(text=datetime.now().strftime("%H:%M:%S"))
         self._set_status(self.usb, bool(data.get("usb_connected")),
@@ -285,7 +358,7 @@ class Panel:
             if self.visible:
                 self.clock.configure(text=datetime.now().strftime("%H:%M:%S"))
                 self.usb.configure(text="● SLUŽBA OFFLINE", fg=RED)
-                self.info.configure(text="Webová APRS služba neodpovídá: " + str(exc)[:70])
+                self.info.configure(text="Služba stanice neodpovídá: " + str(exc)[:70])
         finally:
             self.root.after(POLL_MS, self.poll)
 
@@ -293,7 +366,12 @@ class Panel:
 def main():
     parser = argparse.ArgumentParser(description="OK5TVR read-only Raspberry HDMI panel")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--restart-running",action="store_true",help="Refresh an already running panel after installation")
     args = parser.parse_args()
+    if args.restart_running:
+        count=restart_running_panel(args.config)
+        print(f"HDMI: obnoven běžící panel ({count} procesů)." if count else "HDMI: panel neběží; spustí se při grafickém přihlášení.")
+        return
     root = tk.Tk()
     Panel(root, args.config)
     root.mainloop()

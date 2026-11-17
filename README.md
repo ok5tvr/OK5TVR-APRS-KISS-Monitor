@@ -1,3 +1,11 @@
+## Displej Raspberry: přepínání APRS / BBS
+
+Lokální displej sleduje skutečný provozní režim služby. Při přepnutí na BBS zobrazí značku BBS, stav serveru/klienta, stav navazování nebo aktivního AX.25 spojení, vzdálenou stanici, počet zpráv, RX I rámce, frontu, ACK, opakování a případnou chybu. Klient zobrazuje konzoli vzdálené BBS. Návrat do APRS obnoví příjmový panel. Displej je pouze pro čtení.
+
+Instalátor nově obnoví i již spuštěný grafický panel, který by jinak používal starý kód až do odhlášení nebo restartu Raspberry. Obnovuje pouze panel stejného uživatele a konfigurace, zachová jeho grafické prostředí a na bezobslužném Raspberry bez běžícího panelu grafiku nespouští. Ruční obnova z účtu grafického uživatele: `python3 /opt/ok5tvr-aprs/local_display.py --config ~/.config/ok5tvr-aprs/config.json --restart-running`.
+
+The Raspberry display follows the service operating mode and switches between APRS reception and BBS server/client status. The installer also refreshes an already running graphical panel while preserving its desktop-session environment; it does not start a GUI on a headless installation.
+
 ## Jednotné webové prostředí
 
 Všechny přihlášené stránky mají společnou horní lištu (CALL, TNC, provozní režim, čas a IP), stejné levé menu a stejné formulářové prvky. Menu je dostupné v přehledu, živé mapě, zprávách, objektech, diagnostice, BBS i ve všech Nastaveních. Aktivní stránka je zvýrazněná; skupiny APRS / BBS / Nastavení lze rozbalovat. Na telefonu menu otevře tlačítko **Menu**; zavře se po výběru stránky nebo klávesou Escape. Navigace nemění provozní režim ani nic nevysílá.

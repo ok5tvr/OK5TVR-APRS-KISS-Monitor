@@ -114,7 +114,12 @@ class ModeTests(unittest.TestCase):
             self.assertNotIn(key,json.dumps(display))
             self.assertNotIn('messages',display['bbs'])
             self.service._execute('mode_set',{'mode':'bbs','confirm':True})
-            with urlopen(root+'/api/local-display') as response:self.assertEqual(json.load(response)['mode'],'bbs')
+            with urlopen(root+'/api/local-display') as response:
+                display=json.load(response)
+            self.assertEqual(display['mode'],'bbs')
+            self.assertEqual(display['bbs']['call'],'OK2XYZ-8')
+            self.assertIn('stats',display['bbs'])
+            self.assertNotIn('messages',display['bbs'])
         finally:panel.close()
 
     def test_client_cancel_does_not_start_server(self):
