@@ -32,7 +32,7 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
 #toast{position:sticky;bottom:9px;padding:11px 14px;margin-top:15px;background:#214156;border:1px solid #557b8b;border-radius:9px;color:#fff;white-space:pre-wrap;min-height:41px}
 #custom_path_wrap{display:none}#counter{text-align:right}.empty{color:var(--muted);text-align:center;padding:27px}
 </style>
-<link rel="stylesheet" href="/assets/web_theme.css?v=26">
+<link rel="stylesheet" href="/assets/web_theme.css?v=27">
 </head>
 <body>
 <main>
@@ -69,7 +69,7 @@ button.primary{background:#128073;border-color:#3bbda9}button.danger{color:#ffd2
   <p class="hint">Bez české diakritiky. Zpráva dostane identifikátor `{NNN}` a bude odeslána maximálně podle nastavení níže, dokud nepřijde ACK/REJ.</p>
   <button class="primary" id="send">Odeslat přes RF</button>
  </section>
- <section>
+ <section id="message-settings" class="settings-only">
   <h2>Nastavení APRS zpráv</h2>
   <label for="default_target">Výchozí cílová značka</label><input id="default_target" maxlength="9" spellcheck="false" placeholder="např. OK1ABC-9">
   <label for="aliases">Další přijímané značky / SSID</label>
@@ -108,7 +108,7 @@ const $=id=>document.getElementById(id);
 const tr=value=>window.OK5TVRLocale.tr(value);
 const key=new URLSearchParams(location.search).get('admin')||'';
 const authUrl=p=>p+'?admin='+encodeURIComponent(key);
-$('admin').href=authUrl('/control');$('map').href=authUrl('/');
+$('admin').href=authUrl('/control');$('map').href=authUrl('/map');
 $('objects_nav').href=authUrl('/operations')+'#objects';
 $('diagnostics_nav').href=authUrl('/operations')+'#diagnostics';
 const label={queued:'Čeká na USB',usb_queued:'V USB frontě',waiting_ack:'Čeká na ACK',ack:'ACK přijato',rej:'REJ – odmítnuto',failed:'Bez ACK',interrupted:'Přerušeno',cancelled:'Zrušeno'};

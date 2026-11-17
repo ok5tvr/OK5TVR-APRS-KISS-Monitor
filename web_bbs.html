@@ -24,7 +24,7 @@ td,th{text-align:left;border-bottom:1px solid #2c4a64;padding:8px}
 pre{white-space:pre-wrap;word-break:break-word;font-size:12px}
 #messages td:nth-child(6){white-space:pre-wrap;min-width:220px;max-width:520px;overflow-wrap:anywhere}
 #notice{min-height:26px;color:#ffd18a}#err{color:#ff9fa3}
-</style><link rel="stylesheet" href="/assets/web_theme.css?v=26">
+</style><link rel="stylesheet" href="/assets/web_theme.css?v=27">
 </head><body>
 <h1>OK5TVR · AX.25 Packet BBS</h1>
 <p>Jednoduchá osobní BBS (PBBS) přes <strong>primární externí USB / TCP KISS TNC</strong>.
@@ -38,7 +38,7 @@ Zvol vhodný packet-radio kmitočet a ověř nastavení svého TNC.</strong></p>
 <button id="client-disconnect" data-cs="Odpojit klienta" data-en="Disconnect client">Odpojit klienta</button>
 <pre id="client-console" data-untranslated role="log" aria-live="polite" style="max-height:320px;overflow:auto;min-height:110px;padding:12px"></pre>
 <form id="client-form"><label for="client-line" data-cs="Příkaz / řádek textu (ASCII)" data-en="Command / text line (ASCII)">Příkaz / řádek textu (ASCII)</label><input id="client-line" maxlength="100" autocomplete="off" spellcheck="false"><button id="client-send" type="submit" data-cs="Odeslat řádek" data-en="Send line">Odeslat řádek</button></form></section>
-<section><h2>Stav BBS a aktivního AX.25 spojení</h2>
+<section id="bbs-status"><h2>Stav BBS a aktivního AX.25 spojení</h2>
 <div class="grid">
 <div class="stat">RF BBS<br><b id="state">Načítám</b></div>
 <div class="stat">BBS značka<br><b id="call">—</b></div>
@@ -46,15 +46,15 @@ Zvol vhodný packet-radio kmitočet a ověř nastavení svého TNC.</strong></p>
 <div class="stat">Zprávy v SQLite<br><b id="count">0</b></div>
 <div class="stat">Čeká na ACK<br><b id="waiting">Ne</b></div>
 </div>
-<div><button id="activate" class="primary">Zapnout BBS (RF TX)</button>
+<div class="settings-only" id="server-switches"><button id="activate" class="primary">Zapnout BBS (RF TX)</button>
 <button id="deactivate" class="danger">Vypnout BBS</button>
-<button id="refresh">Obnovit stav</button><button id="disconnect">Odpojit stanici</button></div>
+</div><div><button id="refresh">Obnovit stav</button><button id="disconnect">Odpojit stanici</button></div>
 <p class="hint">BBS se po spuštění nebo výpadku KISS automaticky nezapne. Přijímá
 maximálně jedno AX.25 spojení, nepřeposílá poštu do APRS-IS a nepouští žádné systémové příkazy.</p>
 <div class="hint" id="link-details"></div>
 <div id="notice" role="status"></div><div id="err" role="alert"></div>
 </section>
-<section><h2>Nastavení osobní BBS</h2>
+<section id="bbs-configuration" class="settings-only"><h2>Nastavení osobní BBS</h2>
 <div class="flex">
 <div><label for="bbs-call">Samostatná značka / SSID</label><input id="bbs-call" readonly title="CALL + SSID: společné Nastavení" placeholder="OK5TVR-8" maxlength="9">
 <label for="bbs-welcome">Uvítací text (ASCII, 75 znaků)</label>
@@ -71,7 +71,7 @@ Zprávy v BBS nejsou soukromé; sysop může číst všechny.</p></div>
 </div>
 <button id="save">Uložit nastavení (BBS vypnuta)</button>
 </section>
-<section><h2>Příkazy vzdáleného uživatele</h2>
+<section id="bbs-help"><h2>Příkazy vzdáleného uživatele</h2>
 <pre id="bbs-commands-cs">H                 pomoc
 L                 veřejné a vlastní zprávy
 LM                jen vlastní zprávy
@@ -111,7 +111,7 @@ Jedno spojení může uložit maximálně 3 zprávy.</p>
 <div class="hint" id="draft-info" role="status"></div>
 <button id="mail-save" class="primary" type="submit">Uložit do BBS</button><button id="draft-cancel" type="button">Zrušit koncept</button>
 </form></section>
-<section><h2>Uložené zprávy / správa sysop</h2>
+<section id="bbs-mail"><h2>Uložené zprávy / správa sysop</h2>
 <div><button id="mail-prev">Předchozí stránka</button><span id="mail-page" class="hint"></span><button id="mail-next">Další stránka</button></div>
 <div class="scroll"><table><thead><tr><th>ID</th><th>UTC</th><th>Od</th><th>Komu</th><th>Předmět</th><th>Text</th><th>Akce</th><th>Přečteno adresátem</th></tr></thead>
 <tbody id="messages"></tbody></table></div>

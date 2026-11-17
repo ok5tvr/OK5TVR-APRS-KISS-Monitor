@@ -18,6 +18,8 @@ py -3 -m PyInstaller --clean --noconfirm --onefile --windowed ^
  --add-data "web_operations.html;." ^
  --add-data "web_unified.html;." ^
  --add-data "web_station.html;." ^
+ --add-data "web_settings.html;." ^
+ --add-data "web_shell.js;." ^
  --add-data "web_login.html;." ^
  --add-data "web_bbs.html;." ^
  --add-data "web_theme.css;." ^

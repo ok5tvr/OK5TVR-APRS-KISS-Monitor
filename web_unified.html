@@ -93,7 +93,7 @@ header{padding:13px clamp(14px,2vw,26px)}
 footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
 @media(max-width:750px){main{padding:9px}.two{grid-template-columns:1fr}header{padding:13px}nav.tabs{padding:7px}.tabs button{padding:9px}.panel{padding:12px}.metric-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
-<link rel="stylesheet" href="/assets/web_theme.css?v=26">
+<link rel="stylesheet" href="/assets/web_theme.css?v=27">
 </head>
 <body class="console-shell">
 <a class="skip-link" href="#main-content" data-cs="Přejít k obsahu" data-en="Skip to content">Přejít k obsahu</a>
@@ -163,7 +163,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   </div>
 </section>
 <section class="view" id="tab-rx" hidden>
-  <div class="panel">
+  <div class="panel settings-only">
     <h2 data-cs="USB KISS · Quansheng UV-K1(8)" data-en="USB KISS · Quansheng UV-K1(8)">USB KISS · Quansheng UV-K1(8)</h2>
     <div class="toolbar">
       <div class="select-serial"><label for="serial-port" data-cs="Port USB KISS" data-en="USB KISS port">Port USB KISS</label><select id="serial-port"><option value="auto">auto</option></select></div>
@@ -171,7 +171,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
       <button id="serial-connect" class="primary" data-cs="Připojit" data-en="Connect">Připojit</button>
       <button id="serial-disconnect" data-cs="Odpojit" data-en="Disconnect">Odpojit</button>
       <button id="rf-test" class="warn" data-cs="Test RF TX" data-en="RF TX test">Test RF TX</button>
-      <button id="rx-csv" data-cs="Export CSV" data-en="Export CSV">Export CSV</button>
+
     </div>
     <p class="note" data-cs="Změna USB portu při ukládání bezpečně vypne aktivní iGate/DIGI. Zápis do USB KISS není důkazem skutečného RF vysílání." data-en="Saving a changed USB port safely stops active iGate/DIGI. Writing to USB KISS does not prove actual RF transmission.">Změna USB portu při ukládání bezpečně vypne aktivní iGate/DIGI. Zápis do USB KISS není důkazem skutečného RF vysílání.</p>
     <div class="message" id="rx-notice" role="status" aria-live="polite"></div>
@@ -199,6 +199,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
 <select id="rx-filter-type" style="margin:3px 0"><option value="">Všechny rámce</option><option value="Pozice">Pozice</option><option value="Zpráva">Zprávy</option><option value="Mic-E">Mic-E</option><option value="RAW">RAW</option></select></label>
 <label class="check" for="rx-filter-direct" style="padding-top:15px"><input id="rx-filter-direct" type="checkbox"> Jen DIRECT</label>
 <span id="rx-filter-count" class="muted"></span>
+      <button id="rx-csv" data-cs="Export CSV" data-en="Export CSV">Export CSV</button>
 </div>
 <div class="scroll"><table><thead><tr>
       <th>UTC / local</th><th data-cs="Zdroj" data-en="Source">Zdroj</th><th data-cs="Cíl" data-en="Destination">Cíl</th><th data-cs="Cesta" data-en="Path">Cesta</th><th data-cs="Typ" data-en="Type">Typ</th><th data-cs="Obsah" data-en="Content">Obsah</th>
@@ -273,9 +274,9 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
     <div class="scroll"><table><thead><tr><th>UTC</th><th>Od</th><th>Komu</th><th>Text</th><th>Stav</th></tr></thead><tbody id="chat2-inbox"></tbody></table></div>
     <h3>APRS bulletiny (BLN)</h3>
     <div class="scroll"><table><thead><tr><th>UTC</th><th>Zdroj</th><th>Bulletin</th><th>Text</th><th>Stav</th></tr></thead><tbody id="chat2-bulletins"></tbody></table></div>
-    <h3>Blokovaní odesílatelé</h3>
+    <div class="settings-only"><h3>Blokovaní odesílatelé</h3>
     <textarea id="chat2-blocked" rows="3" placeholder="OK1ABC-7&#10;OK2XYZ-9" style="width:100%;background:#101f2e;color:#eff8fd;border-radius:8px"></textarea>
-    <div class="toolbar"><button class="primary" id="chat2-block-save">Uložit seznam blokovaných stanic</button><span id="chat2-notice"></span></div>
+    <div class="toolbar"><button class="primary" id="chat2-block-save">Uložit seznam blokovaných stanic</button><span id="chat2-notice"></span></div></div>
   </div>
 </section>
 <section class="view" id="tab-objects" hidden></section>
@@ -298,7 +299,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   </div>
 </section>
 <section class="view" id="tab-telemetry" hidden>
-  <div class="panel">
+  <div class="panel settings-only">
     <h2 data-cs="Odesílání APRS telemetrie T#" data-en="APRS T# telemetry transmission">Odesílání APRS telemetrie T#</h2>
     <div class="two">
       <div>
@@ -322,7 +323,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   <div class="panel">
     <h2>Upozornění a monitoring</h2>
     <p class="note">Upozornění zobrazujeme v prohlížeči a volitelně posíláme do lokálního MQTT brokeru. Nevyvolávají žádné APRS/RF vysílání.</p>
-    <div class="form-grid">
+    <div class="settings-only"><div class="form-grid">
       <label class="check"><input id="alert-enabled" type="checkbox" checked> Zapnout pravidla</label>
       <div><label for="alert-offline">TNC offline (s)</label><input type="number" id="alert-offline" min="30" max="3600"></div>
       <div><label for="alert-no-rf">Bez RF příjmu (min)</label><input type="number" id="alert-no-rf" min="5" max="240"></div>
@@ -339,13 +340,13 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
       <button id="alert-refresh">Obnovit upozornění</button>
       <button id="alert-browser">Zapnout upozornění v prohlížeči</button>
     </div>
-    <div id="alert-notice" class="message"></div>
+    </div><div id="alert-notice" class="message"></div>
     <div id="alert-status" class="muted"></div>
     <div class="scroll"><table><thead><tr><th>UTC</th><th>Typ</th><th>Stanice</th><th>Upozornění</th></tr></thead><tbody id="alert-rows"></tbody></table></div>
   </div>
 </section>
 <section class="view" id="tab-tnc" hidden>
-  <div class="panel">
+  <div class="panel settings-only">
     <h2 data-cs="TNC Manager – USB / TCP KISS" data-en="TNC Manager – USB / TCP KISS">TNC Manager – USB / TCP KISS</h2>
     <p class="note" data-cs="Jedno TNC smí mít jen jedno primární spojení. Změna transportu odpojí stávající TNC. TCP server je standardně RX-only; sdílení do LAN zapínej jen na důvěryhodné síti."
       data-en="Only one primary connection per TNC. Changing the transport disconnects the current TNC. TCP server defaults to RX-only; use LAN sharing only on trusted networks.">Jedno TNC smí mít jen jedno primární spojení. Změna transportu odpojí stávající TNC. TCP server je standardně RX-only; sdílení do LAN zapínej jen na důvěryhodné síti.</p>
@@ -430,7 +431,7 @@ footer {padding:12px 22px;border-top:1px solid var(--border);color:var(--muted);
   </div>
 </section>
 <section class="view" id="tab-isrf" hidden>
-  <div class="panel">
+  <div class="panel settings-only">
     <h2 data-cs="APRS-IS → RF · selektivní iGate" data-en="APRS-IS → RF · Selective IGate">APRS-IS → RF · selektivní iGate</h2>
     <p class="note" data-cs="Internet se NIKDY nepřeposílá automaticky celý na RF. Nejprve vyber konkrétní značky / objekty a ulož filtry. Teprve poté zapni přenos výslovným potvrzením. Po odpojení rádia nebo APRS-IS se přenos vypne."
       data-en="The entire APRS-IS feed is NEVER forwarded to RF. Select exact callsigns/objects, save filters, and explicitly enable transmission. Radio/APRS-IS disconnect revokes permission.">Internet se NIKDY nepřeposílá automaticky celý na RF. Nejprve vyber konkrétní značky / objekty a ulož filtry. Teprve poté zapni přenos výslovným potvrzením.</p>
@@ -537,7 +538,10 @@ function setLanguage(value) {
   }
 }
 function syncNavigation() {
-  const buttons = Array.from(document.querySelectorAll("nav.tabs [data-tab]")).filter(btn=>params.get("scope")!=="aprs"||btn.dataset.tab!=="bbs");
+  const buttons = Array.from(document.querySelectorAll("nav.tabs [data-tab]")).filter(btn=>{
+    const hide=document.body?.dataset?.pageKind==="operation"&&["igate","tnc","bbs"].includes(btn.dataset.tab);
+    btn.hidden=hide;return !hide;
+  });
   const select = $("page-select");
   if (!select) return;
   select.replaceChildren(...buttons.map(btn => {
@@ -554,7 +558,7 @@ function syncNavigation() {
   }
 }
 function showTab(name) {
-  if (!tabIds.includes(name) || (params.get("scope")==="aprs" && name==="bbs")) name = "home";
+  if (!tabIds.includes(name)) name = "home";
   currentTab = name;
   for (const tab of tabIds) {
     $("tab-" + tab).hidden = tab !== name;
@@ -562,18 +566,11 @@ function showTab(name) {
     btn.setAttribute("aria-selected", tab === name ? "true" : "false");
     btn.tabIndex = tab === name ? 0 : -1;
   }
-  if (destinations[name]) {
-    const container = $("tab-" + name);
-    let frame = container.querySelector("iframe");
-    if (!frame) {
-      frame = document.createElement("iframe");
-      frame.className = "frame";
-      frame.title = name;
-      frame.referrerPolicy = "no-referrer";
-      frame.src = auth(destinations[name]) + (name === "objects" ? "#objects" : name === "diagnostics" ? "#diagnostics" : "");
-      frame.addEventListener("load", () => { trimEmbedded(frame,name); resizeFrame(frame); });
-      container.appendChild(frame);
-    } else { setTimeout(() => resizeFrame(frame),40); }
+  const settingsPage=document.body?.dataset?.pageKind==="settings";
+  const routes={map:"/map",bbs:"/bbs",messages:"/messages",objects:"/operations#objects",diagnostics:"/operations#diagnostics",igate:"/settings/aprs",tnc:"/settings/advanced?tab=tnc"};
+  if(routes[name] && !(settingsPage&&name==="tnc")){
+    const target=new URL(routes[name],location.origin);if(key)target.searchParams.set("admin",key);
+    location.assign(target.pathname+target.search+target.hash);return;
   }
   if (name === "telemetry" && !configLoaded) loadTelemetryConfig();
   if (name === "tnc") {loadTncConfig();loadHistory();}
@@ -635,10 +632,11 @@ document.querySelectorAll("nav.tabs button").forEach((btn,index) => {
   panel.setAttribute("aria-labelledby", btn.id);
   btn.addEventListener("click", () => showTab(btn.dataset.tab));
   btn.addEventListener("keydown", event => {
-    const buttons = Array.from(document.querySelectorAll("nav.tabs button"));
-    let next = index;
-    if (["ArrowDown","ArrowRight"].includes(event.key)) next = (index+1)%buttons.length;
-    else if (["ArrowUp","ArrowLeft"].includes(event.key)) next = (index-1+buttons.length)%buttons.length;
+    const buttons = Array.from(document.querySelectorAll("nav.tabs button")).filter(button=>!button.hidden);
+    const position=buttons.indexOf(btn);
+    let next = position;
+    if (["ArrowDown","ArrowRight"].includes(event.key)) next = (position+1)%buttons.length;
+    else if (["ArrowUp","ArrowLeft"].includes(event.key)) next = (position-1+buttons.length)%buttons.length;
     else if (event.key === "Home") next = 0;
     else if (event.key === "End") next = buttons.length-1;
     else return;
@@ -1414,8 +1412,8 @@ async function refresh() {
   }
   finally{pollBusy=false;}
 }
-if(params.get("scope")==="aprs"){document.body.classList.add("embedded-console");$("language-preferences").hidden=true;}
-reloadPorts();loadHdmiDisplay();setLanguage(language);showTab(location.hash.slice(1)||"home");refresh();
+$("language-preferences").hidden=true;
+reloadPorts();loadHdmiDisplay();setLanguage(language);showTab(params.get("tab")||location.hash.slice(1)||(document.body.dataset.pageKind==="settings"?"tnc":"home"));refresh();
 setInterval(refresh,3000);
 </script>
 </body>

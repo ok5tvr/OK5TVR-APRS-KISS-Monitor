@@ -8,7 +8,13 @@ Vyvíjený projekt pro **Quansheng UV-K1(8)** s firmwarem **F4HWN Labs** (aplika
 
 ## v2.5 dev – rozcestník APRS / BBS / Nastavení
 
-Po přihlášení se otevře rozcestník se třemi velkými tlačítky. Zelená označuje aktivní provozní režim, červená vypnutý; Nastavení je společná konfigurační sekce. Lišta ukazuje CALL, připojení TNC, místní čas prohlížeče, IP zařízení a verzi. Otevření Nastavení nemění běžící režim.
+Po přihlášení se otevře rozcestník se třemi velkými navigačními tlačítky. **Kliknutí na APRS, BBS ani Nastavení nic nezapíná ani nevypíná.** Zelená označuje skutečně aktivní provozní režim, červená vypnutý. Lišta ukazuje CALL, připojení TNC, místní čas prohlížeče, IP zařízení a verzi.
+
+Pod tlačítky je živý terminál posledních 150 dekódovaných rámců v časovém pořadí. Zobrazuje čas, zdroj, cíl, cestu, typ, obsah a dekódovaný popis. Pozastavení, automatické posouvání a vyčištění výpisu ovlivňují pouze pohled v prohlížeči; nezastavují příjem ani nemažou archiv.
+
+APRS (`/aprs`), BBS (`/bbs`) a Nastavení (`/settings`) jsou samostatné stránky přes celé okno. Nevkládají se pod úvodní tlačítka ani do pracovního iframe. Jednotná horní navigace umožňuje návrat na Úvod. Mapový graf historie může nadále používat izolovanou mapovou komponentu.
+
+**Veškerá konfigurace a zapínání režimů jsou v Nastavení.** Společná nabídka obsahuje CALL/SSID/TNC, iGate/DIGI/GPS, APRS zprávy, USB/displej, TNC/síť/archiv, telemetrii, IS→RF, upozornění/MQTT, blokované stanice, BBS server a zálohu/obnovu. Přepínače APRS ON / BBS ON / Vypnout jsou pouze v této sekci; ovládání BBS serveru je v Nastavení → BBS server. Provozní stránky obsahují příjem, mapy, poštu a terminál klienta.
 
 - **APRS**: příjem, mapy, iGate, DIGI, zprávy, objekty a telemetrie. BBS je z vnitřní APRS navigace odstraněna.
 - **BBS**: místní PBBS server / pošta a nový AX.25 klient. Klient používá vlastní SSID, naváže DIRECT spojení se vzdálenou BBS, zobrazí terminál a odešle ASCII řádky do 100 znaků. Server a klient se střídají na jednom TNC.
@@ -17,7 +23,7 @@ Po přihlášení se otevře rozcestník se třemi velkými tlačítky. Zelená 
 - **Přepnutí režimu** zastaví iGate, DIGI a BBS, přeruší čekající APRS zprávy, zruší RF oprávnění a zavře starou frontu TNC. Znovu se připojí stejné nakonfigurované TNC. Serverové kontroly nepovolí APRS vysílání v BBS režimu ani BBS v APRS režimu. Volba režimu sama nezapíná RF server ani DIGI/iGate; tyto funkce mají vlastní potvrzená tlačítka.
 - **Raspberry HDMI** se povolí zvolením APRS nebo BBS a automaticky mění rozložení: APRS ukazuje rámce, stanice a statistiky; BBS ukazuje server/klienta, protistanici, poštu, frontu a v režimu klienta terminál. Vypnutí režimu obrazovku skryje. Zůstává nutná běžící grafická relace a desktopový autostart panelu.
 
-Při migraci se CALL převezme ze stávající značky iGate, číselná SSID z dosavadních nastavení. Zálohuj celé `~/.config/ok5tvr-aprs` po zastavení služby. Po aktualizaci obnov web přes **Ctrl+F5**. Login nově vede na `/app`; podrobné původní APRS ovládání zůstává na `/unified`.
+Při migraci se CALL převezme ze stávající značky iGate, číselná SSID z dosavadních nastavení. Zálohuj celé `~/.config/ok5tvr-aprs` po zastavení služby. Po aktualizaci obnov web přes **Ctrl+F5**. Login vede na `/app`; APRS je na `/aprs` a starý odkaz `/unified` zůstává podporovaný.
 
 BBS klient je testován virtuálním propojením dvou KISS TNC včetně SABM/UA, textu, RR a DISC/UA. Skutečnou RF kompatibilitu UV-K1 a fyzické rozložení HDMI panelu je potřeba ověřit na zařízení. Spojovaná BBS nadále patří na vhodný packet-radio kanál, nikoli na 144,800 MHz APRS.
 

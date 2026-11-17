@@ -48,3 +48,20 @@ body.console-shell.embedded-console>header,body.console-shell.embedded-console>f
 body.console-shell.embedded-console nav.tabs{top:0;min-height:100vh}
 body.console-shell.embedded-console>main{padding-top:16px}
 .console-shell nav.tabs button[hidden],.console-shell .home-link[hidden]{display:none}
+/* Full-page workspaces and a single settings area. */
+#global-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:14px 24px;background:#0f192b;border-bottom:1px solid var(--border);position:relative;z-index:20}
+.global-brand{font-size:18px;font-weight:700}.global-brand b{color:var(--accent)}.global-status{display:flex;flex-wrap:wrap;gap:14px;color:var(--muted);font-size:12px;margin-left:auto}.global-links{display:flex;gap:7px;flex-wrap:wrap}.global-links a,#settings-navigation a{display:inline-block;padding:7px 12px;color:var(--ink);border:1px solid var(--border);border-radius:8px;text-decoration:none;background:#192a40;font-size:12px}
+#settings-navigation{padding:16px 24px;border-bottom:1px solid var(--border);background:#111e30}#settings-navigation nav{display:flex;gap:7px;flex-wrap:wrap}.settings-mode{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.settings-mode button.on{background:#17634c;border-color:#42af89}.good{color:#8febc3}.bad{color:#ffa9b6}
+body[data-shell]{padding:0;max-width:none}body[data-shell]>main{padding:22px;max-width:1600px}body.console-shell[data-shell]>header,body.console-shell[data-shell]>footer{display:none}body.console-shell[data-shell] nav.tabs{top:var(--shell-height,72px);min-height:calc(100vh - var(--shell-height,72px))}body.console-shell[data-shell]>main{max-width:none}
+body[data-page-kind="operation"] .settings-only{display:none!important}
+body[data-page-kind="settings"] .operation-only{display:none!important}
+body[data-page-kind="settings"].console-shell nav.tabs,body[data-page-kind="settings"].console-shell .page-heading,body[data-page-kind="settings"] #language-preferences{display:none!important}
+body[data-page-kind="settings"].console-shell>main{margin-left:0;max-width:1600px;margin-right:auto;margin-left:auto}
+body[data-view-role="settings-messages"] section:not(#message-settings),body[data-view-role="settings-messages"] .statrow{display:none!important}body[data-view-role="settings-messages"] .grid{grid-template-columns:1fr}
+body[data-view-role="settings-bbs"] #bbs-client,body[data-view-role="settings-bbs"] #bbs-help,body[data-view-role="settings-bbs"] #compose-section,body[data-view-role="settings-bbs"] #bbs-mail{display:none!important}
+body[data-view-role="settings-operations"] #objects{display:none!important}
+body[data-page-kind="operation"] nav.tabs [data-tab="igate"],body[data-page-kind="operation"] nav.tabs [data-tab="tnc"],body[data-page-kind="operation"] .home-link[data-open="igate"],body[data-page-kind="operation"] .home-link[data-open="tnc"],body[data-page-kind="operation"] nav.tabs [data-tab="bbs"],body[data-page-kind="operation"] .home-link[data-open="bbs"]{display:none!important}
+body[data-page-kind="settings"] #tab-chat2>.panel>:not(.settings-only){display:none!important}
+body[data-view-role="settings-bbs"]>h1,body[data-view-role="bbs"]>h1{margin:20px 24px}body[data-view-role="bbs"]>section,body[data-view-role="settings-bbs"]>section{margin:18px 24px;padding:20px}
+body[data-shell] main>nav:not(.global-links){display:none}
+@media(max-width:760px){#global-navigation,#settings-navigation{padding:12px}.global-status{margin-left:0;width:100%;gap:10px}.global-links{width:100%}body[data-shell]>main{padding:14px}body.console-shell[data-shell] nav.tabs{position:static;width:100%;min-height:0;border-right:0;display:flex;flex-direction:row;overflow:auto;padding:8px}body.console-shell[data-shell]>main{margin:0}body[data-view-role="bbs"]>section,body[data-view-role="settings-bbs"]>section{margin:12px;padding:14px}}

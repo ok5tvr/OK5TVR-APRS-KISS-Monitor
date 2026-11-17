@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer">
-<title>Radio Station · APRS / BBS</title><link rel="stylesheet" href="/assets/web_theme.css?v=26">
+<title>Radio Station · APRS / BBS</title><link rel="stylesheet" href="/assets/web_theme.css?v=27">
 <style>
 *{box-sizing:border-box}body{margin:0;font:14px/1.55 system-ui,sans-serif;background:#0b1120;color:#edf3fc}header{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:18px 28px;border-bottom:1px solid #2d4058;background:#0f192b}.brand{font-weight:750;font-size:23px}.brand b{color:#64dfc5}.sub{color:#a5b6cc;font-size:12px}.statusbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.badge{padding:7px 11px;border:1px solid #34475e;border-radius:8px;font-size:12px}.good{color:#8febc3}.bad{color:#ffa9b6}main{max-width:1600px;margin:auto;padding:28px}h1{font-size:27px;margin:0 0 6px}p{color:#a5b6cc}.launcher{display:grid;grid-template-columns:1fr 1fr .8fr;gap:20px;margin:26px 0}.launch{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:14px;min-height:205px;padding:26px;border-radius:17px;border:1px solid #82404d;background:linear-gradient(130deg,#381d2a,#191d2d);color:#ffe7ed;cursor:pointer}.launch strong{font-size:34px;letter-spacing:-.03em}.launch span{font-size:13px;line-height:1.6;max-width:320px}.launch .state{font-size:11px;letter-spacing:.07em;border:1px solid #9b5260;border-radius:30px;padding:4px 11px}.launch.on{border-color:#3b9b79;background:linear-gradient(130deg,#123d32,#162c39);color:#d6ffed}.launch.on .state{border-color:#4eae8e;color:#92eec7}.launch.settings{border-color:#3c5477;background:linear-gradient(130deg,#233551,#192438);color:#dce9ff}.launch:hover{filter:brightness(1.13)}.workspace{border-top:1px solid #2d4058;padding-top:23px}.workspace[hidden]{display:none}iframe{display:block;width:100%;border:0;min-height:800px;background:#0b1120}.workspace-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}.workspace-head h2{margin:0;font-size:22px}.notice{border:1px solid #84612e;background:#34291c;border-radius:10px;padding:12px 16px;color:#ffdaa6;white-space:pre-wrap}.notice:empty{display:none}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}.panel{padding:22px;margin-bottom:16px;border:1px solid #2d4058;border-radius:14px;background:#131e30}label{display:block;font-size:12px;color:#a5b6cc;margin-bottom:6px}input,select{width:100%}button{cursor:pointer}#settings-result{white-space:pre-wrap}.mode-summary{display:flex;gap:24px;flex-wrap:wrap;color:#b8cbe0;padding:8px 0}footer{padding:16px 28px;font-size:11px;color:#a5b6cc;border-top:1px solid #2d4058}.check{display:flex;align-items:center;gap:9px}.check input{width:auto}@media(max-width:750px){header{padding:16px}.brand{font-size:20px}main{padding:18px 14px}.launcher{grid-template-columns:1fr;gap:12px;margin:20px 0}.launch{min-height:130px;padding:20px;gap:8px}.launch strong{font-size:28px}.launch.settings{min-height:110px}.statusbar{gap:6px}.badge{font-size:11px}h1{font-size:23px}.workspace{padding-top:18px}}
 .launcher .launch:hover:not(:disabled){background:linear-gradient(130deg,#4a2535,#25243a)}.launcher .launch.on:hover:not(:disabled){background:linear-gradient(130deg,#1b5142,#1a3949)}.launcher .launch.settings:hover:not(:disabled){background:linear-gradient(130deg,#2e4669,#22324b)}</style></head><body>
@@ -8,88 +8,52 @@
 <div class="statusbar"><span id="station-tnc" class="badge">TNC: —</span><span id="station-clock" class="badge">—</span><span id="station-ip" class="badge">IP: —</span><button id="logout" data-cs="Odhlásit" data-en="Log out">Odhlásit</button></div></header>
 <main>
 <h1 data-cs="Řízení radiové stanice" data-en="Radio station control">Řízení radiové stanice</h1>
-<p data-cs="Vyber APRS, BBS nebo společné nastavení. Současně může běžet pouze jeden provozní režim." data-en="Choose APRS, BBS or shared settings. Only one operating mode can run at a time.">Vyber APRS, BBS nebo společné nastavení. Současně může běžet pouze jeden provozní režim.</p>
+<p data-cs="Tlačítka otevřou příslušnou stránku. Zapínání funkcí a všechny parametry najdeš v Nastavení." data-en="Buttons open their pages. Start and stop functions and edit all parameters in Settings.">Tlačítka otevřou příslušnou stránku. Zapínání funkcí a všechny parametry najdeš v Nastavení.</p>
 <div id="station-notice" class="notice" role="status" aria-live="polite"></div>
 <div class="launcher">
 <button id="open-aprs" class="launch" data-section="aprs"><strong>APRS ↗</strong><span data-cs="Příjem, mapa, DIGI, iGate, zprávy, objekty a telemetrie." data-en="Receive, map, DIGI, iGate, messaging, objects and telemetry.">Příjem, mapa, DIGI, iGate, zprávy, objekty a telemetrie.</span><span id="aprs-state" class="state">—</span></button>
 <button id="open-bbs" class="launch" data-section="bbs"><strong>BBS ↗</strong><span data-cs="Osobní poštovní schránka, AX.25 server a klient vzdálené BBS." data-en="Personal mailbox, AX.25 server and remote BBS client.">Osobní poštovní schránka, AX.25 server a klient vzdálené BBS.</span><span id="bbs-state" class="state">—</span></button>
 <button id="open-settings" class="launch settings" data-section="settings"><strong data-cs="Nastavení ↗" data-en="Settings ↗">Nastavení ↗</strong><span data-cs="Společný CALL, uživatelské jméno, SSID, TNC a jazyk." data-en="Shared CALL, username, SSIDs, TNC and language.">Společný CALL, uživatelské jméno, SSID, TNC a jazyk.</span><span class="state" data-cs="SPOLEČNÁ KONFIGURACE" data-en="SHARED CONFIGURATION">SPOLEČNÁ KONFIGURACE</span></button>
 </div>
-<div class="mode-summary"><span id="mode-summary">—</span><button id="mode-off" data-cs="Vypnout provozní režim" data-en="Stop operating mode">Vypnout provozní režim</button></div>
-<section id="workspace-aprs" class="workspace" hidden><div class="workspace-head"><h2>APRS</h2><button class="back" data-cs="Zpět na přehled" data-en="Back to overview">Zpět na přehled</button></div><div id="frame-aprs"></div></section>
-<section id="workspace-bbs" class="workspace" hidden><div class="workspace-head"><h2>AX.25 BBS · server / client</h2><button class="back" data-cs="Zpět na přehled" data-en="Back to overview">Zpět na přehled</button></div><div id="frame-bbs"></div></section>
-<section id="workspace-settings" class="workspace" hidden>
-<div class="workspace-head"><h2 data-cs="Společné nastavení" data-en="Shared settings">Společné nastavení</h2><button class="back" data-cs="Zpět na přehled" data-en="Back to overview">Zpět na přehled</button></div>
-<form id="station-settings"><div class="panel"><div class="form-grid">
-<div><label for="base-call">CALL / username</label><input id="base-call" maxlength="6" pattern="[A-Za-z0-9]{3,6}" required autocomplete="username" placeholder="OK5TVR"><p data-cs="Bez SSID. Stejná značka slouží k přihlášení a označuje web i displej Raspberry." data-en="Without SSID. This callsign is also your username and identifies the web and Raspberry display.">Bez SSID. Stejná značka slouží k přihlášení a označuje web i displej Raspberry.</p></div>
-<div><label for="igate-ssid">iGate SSID</label><input id="igate-ssid" type="number" min="0" max="15" required><label for="digi-ssid">DIGI SSID</label><input id="digi-ssid" type="number" min="0" max="15" required></div>
-<div><label for="bbs-ssid">BBS server SSID</label><input id="bbs-ssid" type="number" min="0" max="15" required><label for="client-ssid">BBS client SSID</label><input id="client-ssid" type="number" min="0" max="15" required></div>
-<div><label for="ui-language-choice" data-cs="Jazyk webového rozhraní" data-en="Web interface language">Jazyk webového rozhraní</label><select id="ui-language-choice"><option value="cs">Čeština</option><option value="en">English</option></select><p data-cs="SSID 0 znamená značku bez přípony." data-en="SSID 0 means a callsign without a suffix.">SSID 0 znamená značku bez přípony.</p></div>
-</div></div>
-<div class="panel"><div class="form-grid"><div><label for="tnc-transport">TNC transport</label><select id="tnc-transport"><option value="serial">USB / serial KISS</option><option value="tcp">TCP KISS</option></select></div><div><label for="tnc-port" data-cs="USB port" data-en="USB port">USB port</label><input id="tnc-port" placeholder="auto"></div><div><label for="tnc-host">TCP host</label><input id="tnc-host"></div><div><label for="tnc-tcp-port">TCP port</label><input id="tnc-tcp-port" type="number" min="1" max="65535"></div></div></div>
-<button id="settings-save" class="primary" data-cs="Uložit nastavení" data-en="Save settings">Uložit nastavení</button><p id="settings-result" role="status"></p></form>
+<div class="mode-summary"><span id="mode-summary">—</span></div>
+<section class="panel live-terminal"><div class="workspace-head"><h2 data-cs="Dekódované rámce · živý terminál" data-en="Decoded frames · live terminal">Dekódované rámce · živý terminál</h2>
+<div class="statusbar"><label class="check"><input id="terminal-pause" type="checkbox"><span data-cs="Pozastavit" data-en="Pause">Pozastavit</span></label><label class="check"><input id="terminal-scroll" type="checkbox" checked><span data-cs="Automaticky posouvat" data-en="Auto-scroll">Automaticky posouvat</span></label><button id="terminal-clear" data-cs="Vyčistit výpis" data-en="Clear view">Vyčistit výpis</button></div></div>
+<pre id="terminal-output" data-untranslated role="log" aria-label="Decoded AX.25 frames" tabindex="0" style="height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;color:#a5efce;line-height:1.7"></pre><div id="terminal-count" class="sub" role="status"></div>
 </section>
-</main><footer data-cs="Zelená = aktivní režim · červená = vypnutý režim. Přepnutí ukončí předchozí funkci; RF server a jednotlivé přenosy se povolují v příslušné sekci." data-en="Green = active mode · red = stopped mode. Switching stops the previous function; enable the RF server and individual transmissions in their section.">Zelená = aktivní režim · červená = vypnutý režim. Přepnutí ukončí předchozí funkci; RF server a jednotlivé přenosy se povolují v příslušné sekci.</footer>
+</main><footer data-cs="Zelená = aktivní režim · červená = vypnutý režim. Tlačítka pouze otevírají stránky. Funkce zapínej a vypínej v Nastavení." data-en="Green = active mode · red = stopped mode. Buttons only open pages. Start and stop functions in Settings.">Zelená = aktivní režim · červená = vypnutý režim. Tlačítka pouze otevírají stránky. Funkce zapínej a vypínej v Nastavení.</footer>
 <script src="/assets/web_locale.js"></script><script>
 "use strict";
 const $=id=>document.getElementById(id),key=new URLSearchParams(location.search).get('admin')||'';
 const auth=path=>path+(key?(path.includes('?')?'&':'?')+'admin='+encodeURIComponent(key):'');
 const tr=(cs,en)=>window.OK5TVRLocale.language==='en'?en:cs;
-let current=null,section='',loaded=false,polling=false,changing=false;
-function language(){document.querySelectorAll('[data-cs][data-en]').forEach(el=>el.textContent=el.dataset[window.OK5TVRLocale.language]);if(current)render(current);}
-async function get(path){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);try{const r=await fetch(auth(path),{cache:'no-store',signal:controller.signal});if(!r.ok)throw Error('HTTP '+r.status);return await r.json();}finally{clearTimeout(timer);}}
-async function command(action,data={}){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json','X-APRS-Admin':key,'X-APRS-CSRF':'1'},body:JSON.stringify({action,...data})});const result=await r.json();if(!r.ok||!result.ok)throw Error(result.error||'HTTP '+r.status);return result.result;}
-function size(frame){try{frame.style.height=Math.max(800,frame.contentDocument.body.offsetHeight+28)+'px';}catch(_){}}
-function openSection(name){
- const aprsTabs=['home','rx','map','heard','messages','chat2','objects','igate','telemetry','diagnostics','alerts','tnc','weather','isrf'];
- const parts=String(name).split('/');
- const legacy=aprsTabs.includes(parts[0])&&parts[0]!=='home';
- const nested=legacy?parts[0]:parts[0]==='aprs'&&aprsTabs.includes(parts[1])?parts[1]:'';
- section=legacy?'aprs':['aprs','bbs','settings'].includes(parts[0])?parts[0]:'';
- for(const value of ['aprs','bbs','settings'])$('workspace-'+value).hidden=section!==value;
- if(section==='aprs'||section==='bbs'){
-  let frame=$('frame-'+section).querySelector('iframe');
-  if(!frame){frame=document.createElement('iframe');frame.title=section==='aprs'?'APRS':'AX.25 BBS server / client';frame.referrerPolicy='no-referrer';
-   frame.src=auth(section==='aprs'?'/unified?scope=aprs':'/bbs')+(nested?'#'+nested:'');
-   frame.addEventListener('load',()=>{try{const doc=frame.contentDocument;doc.body.classList.add('embedded-view');if(section==='aprs')doc.body.classList.add('embedded-console');size(frame);}catch(_){}});
-   $('frame-'+section).appendChild(frame);
-  }else if(nested){frame.src=auth('/unified?scope=aprs')+'#'+nested;}
- }
- const hash=section?'#'+section+(nested?'/'+nested:''):'';
- if(location.hash!==hash)history[legacy?'replaceState':'pushState'](null,'',hash||location.pathname+location.search);
-}
-function render(s){
- current=s;$('station-call').textContent=s.call||'—';document.title=(s.call||'Radio Station')+' · '+(section?section.toUpperCase():'APRS / BBS');
- $('station-ip').textContent='IP: '+s.ip;
- $('station-tnc').textContent='TNC: '+tr(s.tnc_connected?'PŘIPOJENO':'ODPOJENO',s.tnc_connected?'CONNECTED':'DISCONNECTED')+(s.tnc_port?' · '+s.tnc_port:'');
- $('station-tnc').className='badge '+(s.tnc_connected?'good':'bad');
+let current=null,polling=false,terminalSignature=null,hiddenFrames=new Set();
+function language(){document.querySelectorAll('[data-cs][data-en]').forEach(el=>{if(!el.children.length)el.textContent=el.dataset[window.OK5TVRLocale.language];});if(current)render(current);}
+async function get(path){const c=new AbortController(),timer=setTimeout(()=>c.abort(),10000);try{const r=await fetch(auth(path),{cache:'no-store',signal:c.signal});if(!r.ok)throw Error('HTTP '+r.status);return await r.json();}finally{clearTimeout(timer);}}
+function render(s){current=s;$('station-call').textContent=s.call||'—';document.title=(s.call||'Radio Station')+' · APRS / BBS';$('station-ip').textContent='IP: '+s.ip;
+ $('station-tnc').textContent='TNC: '+tr(s.tnc_connected?'PŘIPOJENO':'ODPOJENO',s.tnc_connected?'CONNECTED':'DISCONNECTED')+(s.tnc_port?' · '+s.tnc_port:'');$('station-tnc').className='badge '+(s.tnc_connected?'good':'bad');
  for(const mode of ['aprs','bbs']){$('open-'+mode).classList.toggle('on',s.mode===mode);$(mode+'-state').textContent=tr(s.mode===mode?'ZAPNUTO':'VYPNUTO',s.mode===mode?'RUNNING':'STOPPED');}
  $('mode-summary').textContent=tr('Aktivní režim: ','Active mode: ')+(s.mode==='off'?tr('VYPNUTO','OFF'):s.mode.toUpperCase());
- $('mode-off').disabled=s.mode==='off';
- for(const frame of document.querySelectorAll('iframe'))size(frame);
 }
-async function refresh(){if(polling)return;polling=true;try{render(await get('/api/station'));$('station-notice').textContent='';}catch(e){$('station-notice').textContent=tr('Spojení se službou přerušeno; zobrazený stav může být neaktuální. ','Service connection lost; displayed state may be outdated. ')+e.message;}finally{polling=false;}}
-async function select(name){
- if(changing)return;
- if(name==='settings'){openSection(name);return;}
- if(!current){await refresh();if(!current)return;}
- if(current.mode!==name&&!confirm(tr('Přepnout na '+name.toUpperCase()+'? Předchozí režim a jeho čekající přenosy se ukončí.','Switch to '+name.toUpperCase()+'? The previous mode and queued transmissions will stop.')))return;
- changing=true;try{render(await command('mode_set',{mode:name,confirm:true}));for(const frame of document.querySelectorAll('iframe')){if(frame.parentElement.id!=='frame-'+name)frame.remove();}openSection(name);}catch(e){$('station-notice').textContent=e.message;}finally{changing=false;}
+function frameIdentity(frame){return JSON.stringify([frame.time,frame.source,frame.destination,frame.path,frame.hex_data||frame.payload||frame.summary]);}
+function renderTerminal(state){
+ if($('terminal-pause').checked)return;
+ const history=(Array.isArray(state.history)?state.history:[]).filter(f=>f&&typeof f==='object').slice(0,150);
+ const frames=history.filter(frame=>!hiddenFrames.has(frameIdentity(frame))).reverse();
+ const text=frames.map(f=>[String(f.time||''),String(f.source||'?')+' > '+String(f.destination||'?'),f.path?'['+f.path+']':'[DIRECT]',String(f.kind||''),String(f.payload||f.summary||'')].filter(Boolean).join('  ')+(f.payload&&f.summary&&f.payload!==f.summary?'\n    '+f.summary:'')).join('\n');
+ if(text!==terminalSignature){const log=$('terminal-output'),position=log.scrollTop;log.textContent=text||tr('Čekám na přijaté rámce…','Waiting for received frames…');terminalSignature=text;if($('terminal-scroll').checked)log.scrollTop=log.scrollHeight;else log.scrollTop=position;}
+ $('terminal-count').textContent=tr('Zobrazené rámce: ','Displayed frames: ')+frames.length+' / 150';
+ // Keep only fingerprints still present in the bounded service history.
+ const present=new Set(history.map(frameIdentity));hiddenFrames=new Set([...hiddenFrames].filter(id=>present.has(id)));
 }
+async function refresh(){if(polling)return;polling=true;try{const [s,frames]=await Promise.all([get('/api/station'),get('/api/state')]);render(s);renderTerminal(frames);$('station-notice').textContent='';}catch(e){$('station-notice').textContent=tr('Spojení se službou přerušeno; zobrazený stav může být neaktuální. ','Service connection lost; displayed state may be outdated. ')+e.message;}finally{polling=false;}}
+function select(name){const routes={aprs:'/aprs',bbs:'/bbs',settings:'/settings'};if(routes[name])location.assign(auth(routes[name]));}
 document.querySelectorAll('[data-section]').forEach(btn=>btn.addEventListener('click',()=>select(btn.dataset.section)));
-document.querySelectorAll('.back').forEach(btn=>btn.addEventListener('click',()=>openSection('')));
-window.addEventListener('hashchange',()=>openSection(location.hash.slice(1)));
-$('mode-off').onclick=async()=>{if(!confirm(tr('Ukončit aktivní režim?','Stop the active mode?')))return;try{render(await command('mode_set',{mode:'off',confirm:true}));}catch(e){$('station-notice').textContent=e.message;}};
+$('terminal-clear').onclick=async()=>{try{const state=await get('/api/state');hiddenFrames=new Set((state.history||[]).slice(0,150).map(frameIdentity));terminalSignature=null;$('terminal-output').textContent='';$('terminal-count').textContent=tr('Zobrazené rámce: ','Displayed frames: ')+'0 / 150';renderTerminal(state);}catch(e){$('station-notice').textContent=e.message;}};
+$('terminal-pause').addEventListener('change',refresh);
 $('logout').onclick=async()=>{try{await fetch('/api/logout',{method:'POST',headers:{'X-APRS-CSRF':'1'}});}finally{location.replace('/login');}};
-$('station-settings').addEventListener('submit',async event=>{
- event.preventDefault();if(!loaded)return;
- const station={call:$('base-call').value.trim().toUpperCase()};for(const role of ['igate','digi','bbs','client'])station[role+'_ssid']=Number($(role+'-ssid').value);
- if(!confirm(tr('Uložit CALL a nastavení? Aktivní funkce se zastaví. Při změně CALL použij novou značku i pro přihlášení a znovu nastav APRS-IS passcode.','Save CALL and settings? Running functions will stop. If CALL changes, use the new callsign to sign in and set its APRS-IS passcode.')))return;
- $('settings-save').disabled=true;
- try{await command('station_save',{station,serial:{port:$('tnc-port').value.trim()},tnc:{transport:$('tnc-transport').value,tcp_host:$('tnc-host').value.trim(),tcp_port:Number($('tnc-tcp-port').value)}});$('settings-result').textContent=tr('Nastavení uloženo.','Settings saved.');for(const frame of document.querySelectorAll('iframe'))frame.remove();await refresh();}catch(e){$('settings-result').textContent=e.message;}finally{$('settings-save').disabled=false;}
-});
-async function loadSettings(){try{const c=await get('/api/config');$('base-call').value=c.station.call;for(const role of ['igate','digi','bbs','client'])$(role+'-ssid').value=c.station[role+'_ssid'];$('tnc-port').value=c.serial.port;$('tnc-transport').value=c.tnc.transport;$('tnc-host').value=c.tnc.tcp_host;$('tnc-tcp-port').value=c.tnc.tcp_port;loaded=true;}catch(e){$('settings-result').textContent=e.message;}}
-window.addEventListener('ok5tvr:language',()=>{language();for(const frame of document.querySelectorAll('iframe')){try{frame.contentWindow.OK5TVRLocale?.setLanguage(window.OK5TVRLocale.language);}catch(_){}}});
+window.addEventListener('ok5tvr:language',language);
 function clock(){$('station-clock').textContent=new Date().toLocaleString(window.OK5TVRLocale.language==='en'?'en-GB':'cs-CZ');}
-language();clock();setInterval(clock,1000);loadSettings();refresh();openSection(location.hash.slice(1));setInterval(refresh,3000);
+// Old bookmarks remain navigation-only; opening them never selects a mode.
+const hash=location.hash.slice(1);if(hash==='settings')select('settings');else if(hash==='bbs')select('bbs');else if(hash==='aprs'||hash.startsWith('aprs/'))location.replace(auth('/aprs')+(hash.includes('/')?'#'+hash.split('/')[1]:''));
+language();clock();setInterval(clock,1000);refresh();setInterval(refresh,3000);
 </script></body></html>

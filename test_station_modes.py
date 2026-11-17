@@ -181,7 +181,7 @@ class ClientTests(unittest.TestCase):
 
 class LauncherScriptTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which('node'),'Node.js required')
-    def test_launcher_colors_and_sections_follow_confirmed_backend_mode(self):
+    def test_launcher_navigation_is_read_only_and_terminal_is_bounded(self):
         source=re.findall(r'<script>(.*?)</script>',Path(__file__).with_name('web_station.html').read_text(),re.S)[0]
         harness=r'''
         const assert=require('node:assert/strict'),vm=require('node:vm');
@@ -192,22 +192,32 @@ class LauncherScriptTests(unittest.TestCase):
         }
         const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new Element(id));return nodes.get(id);};
         const frames=()=>[...nodes.values()].flatMap(n=>n.children);
-        let mode='aprs';const calls=[];
+        const mode='aprs',calls=[],navigations=[];
         const state=()=>({call:'OK5TVR',mode,ip:'192.0.2.2',tnc_connected:true,tnc_port:'TEST'});
-        const document={getElementById:get,createElement:()=>new Element(),querySelectorAll:s=>s==='iframe'?frames():[]};
-        const context={document,window:{OK5TVRLocale:{language:'cs'},addEventListener:()=>{}},URLSearchParams,AbortController,setTimeout,clearTimeout,setInterval:()=>{},Date,confirm:()=>true,console,
-          location:{search:'',hash:'',pathname:'/app'},history:{pushState(a,b,path){context.location.hash=path.startsWith('#')?path:'';}},
-          fetch:async(path,opts)=>{if(opts&&opts.method==='POST'){const call=JSON.parse(opts.body);calls.push(call);mode=call.mode;return {ok:true,json:async()=>({ok:true,result:state()})};}
-          return {ok:true,json:async()=>path==='/api/config'?{station:{call:'OK5TVR',igate_ssid:10,digi_ssid:3,bbs_ssid:8,client_ssid:7},serial:{port:'auto'},tnc:{transport:'serial',tcp_host:'localhost',tcp_port:8001}}:state()};}};
+        const history=[{time:'12:01',source:'OK1ABC-7',destination:'APRS',path:'WIDE1-1',kind:'RAW',payload:'<script>test</script>',summary:'Decoded packet'},
+          {time:'12:00',source:'OK2XYZ',destination:'APRS',kind:'Status',payload:'Hello'}];
+        const document={getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[]};
+        const context={document,window:{OK5TVRLocale:{language:'cs'},addEventListener:()=>{}},URLSearchParams,AbortController,setTimeout,clearTimeout,setInterval:()=>{},Date,confirm:()=>{throw Error('Navigation must not ask to switch mode');},console,
+          location:{search:'?admin=test-key',hash:'',pathname:'/app',assign:url=>navigations.push(url)},
+          fetch:async(path,opts)=>{if(opts&&opts.method==='POST'){calls.push(JSON.parse(opts.body));throw Error('Unexpected POST');}
+          return {ok:true,json:async()=>path.startsWith('/api/state?')?{history}:state()};}};
         (async()=>{vm.createContext(context);vm.runInContext(SOURCE,context);await new Promise(setImmediate);
-          assert.equal(calls.length,0,'Login must not activate RF');
+          assert.equal(calls.length,0);
           assert(get('open-aprs').classes.has('on'));assert(!get('open-bbs').classes.has('on'));
-          await context.select('bbs');assert.equal(calls[0].action,'mode_set');assert.equal(mode,'bbs');
-          assert(get('open-bbs').classes.has('on'));assert(!get('open-aprs').classes.has('on'));
-          assert.equal(get('workspace-bbs').hidden,false);assert.equal(get('workspace-aprs').hidden,true);
-          await context.select('settings');assert.equal(calls.length,1,'Opening settings does not change radio mode');
-          assert.equal(get('workspace-settings').hidden,false);
-          context.openSection('aprs/messages');assert(get('frame-aprs').children[0].src.endsWith('#messages'));
+          context.select('bbs');context.select('settings');context.select('aprs');
+          assert.deepEqual(navigations,['/bbs?admin=test-key','/settings?admin=test-key','/aprs?admin=test-key']);
+          assert.equal(calls.length,0,'All launcher buttons must be navigation-only');
+          assert(get('open-aprs').classes.has('on'),'Navigation must not change status colors');
+          const text=get('terminal-output').textContent;
+          assert(text.includes('<script>test</script>'),'Packet markup is rendered as literal text');
+          assert(text.indexOf('12:00')<text.indexOf('12:01'),'Terminal is chronological');
+          get('terminal-pause').checked=true;context.renderTerminal({history:[]});assert.equal(get('terminal-output').textContent,text);
+          get('terminal-pause').checked=false;
+          context.renderTerminal({history:Array.from({length:200},(_,i)=>({time:String(i),source:'OK1ABC',payload:'frame'}))});
+          assert(get('terminal-count').textContent.includes('150 / 150'));
+          await get('terminal-clear').onclick();assert(!get('terminal-output').textContent.includes('12:01'));
+          assert.equal(calls.length,0,'Clearing the view must not mutate service history');
+          assert.equal(history.length,2);
           assert.equal(get('station-call').textContent,'OK5TVR');assert.equal(get('station-ip').textContent,'IP: 192.0.2.2');
         })().catch(e=>{console.error(e);process.exitCode=1;});
         '''
